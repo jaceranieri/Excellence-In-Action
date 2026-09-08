@@ -286,15 +286,37 @@ function deleteEvidenceEntry(entryId, schoolName) {
  * regardless of the script's own execute-as setting. See HANDOFF.md for
  * the full Cloud Console + Script Properties setup this requires.
  */
+// Full `drive` scope, not the narrower `drive.file` this started with:
+// drive.file only grants read/write on a picked file's own content, NOT
+// the ability to change who else it's shared with — calling
+// permissions.create on a file the visitor picked (but didn't create
+// via this app) 403s under drive.file with "insufficientFilePermissions",
+// which is exactly the "share the attachment with the review group"
+// step this app needs to do. There's no scope narrower than full `drive`
+// that still permits managing sharing on an arbitrary existing file.
+// Since the OAuth consent screen is Internal (see HANDOFF.md), this
+// doesn't trigger Google's app-verification review — it does mean
+// visitors see a broader-sounding consent prompt ("See, edit, create,
+// and delete all of your Google Drive files"), even though this app's
+// own code only ever touches files someone explicitly attaches via the
+// Picker.
 function getDriveService_() {
-  return OAuth2.createService('drive')
+  // Named 'drive_v2', not 'drive': the OAuth2 library stores each
+  // visitor's granted token keyed by this service name in their own
+  // UserProperties, and has no idea the *scope* requested under the old
+  // name changed — a visitor who already authorized 'drive' (drive.file)
+  // would keep using that stale, too-narrow token forever otherwise,
+  // hitting the exact same 403. The name change forces everyone
+  // (including whoever already authorized once) through a fresh
+  // authorization under the new, broader scope.
+  return OAuth2.createService('drive_v2')
     .setAuthorizationBaseUrl('https://accounts.google.com/o/oauth2/v2/auth')
     .setTokenUrl('https://oauth2.googleapis.com/token')
     .setClientId(requireProp_('DRIVE_OAUTH_CLIENT_ID'))
     .setClientSecret(requireProp_('DRIVE_OAUTH_CLIENT_SECRET'))
     .setCallbackFunction('driveAuthCallback')
     .setPropertyStore(PropertiesService.getUserProperties())
-    .setScope('https://www.googleapis.com/auth/drive.file');
+    .setScope('https://www.googleapis.com/auth/drive');
 }
 
 /** OAuth2 library's redirect target after the visitor grants/denies access. */

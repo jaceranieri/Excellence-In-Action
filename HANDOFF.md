@@ -202,6 +202,31 @@ access — since the visitor is the one with permission to share their own
 file; a server-side `DriveApp.addViewer()` as the developer would fail,
 since the developer never had access to that file to begin with.
 
+**The Drive scope is full `https://www.googleapis.com/auth/drive`, not
+`drive.file`.** `drive.file` was tried first (narrower, "least privilege"
+— the obvious first choice) and does let the Picker/attach flow work,
+but the sharing step then 403s with `insufficientFilePermissions`:
+`drive.file` only grants read/write on a file's own content, not the
+ability to change who it's shared with, unless the app itself created
+that file — which a picked pre-existing file wasn't. There's no
+narrower scope that still permits managing sharing on an arbitrary
+existing file, so `getDriveService_()` requests full `drive`. Since the
+OAuth consent screen is Internal, this doesn't trigger Google's
+app-verification review; it does mean the consent popup visitors see
+says "See, edit, create, and delete all of your Google Drive files"
+rather than the narrower `drive.file` wording, even though this app's
+own code still only ever touches files someone explicitly attaches.
+The OAuth2 service is also named `'drive_v2'`, not `'drive'` — the
+library stores each visitor's granted token keyed by that name in their
+own `UserProperties`, with no idea a code change altered the requested
+scope, so anyone who'd already authorized under the old `'drive'` name
+would keep silently reusing their too-narrow token and hitting the same
+403 forever. The name change forces a fresh authorization prompt for
+everyone, old testers included. (This does NOT require touching the
+Cloud Console redirect URI again — `usercallback`'s registered URL is
+one fixed endpoint per script project, unrelated to the OAuth2 service's
+internal name.)
+
 **All config now lives in Script Properties, not `Code.gs`** (the
 project owner's preference, and better practice regardless — this file
 gets pasted around and eyeballed, Script Properties don't). `Code.gs` no
@@ -251,8 +276,9 @@ to it instead, per step 5 below):
      screen first — set **User type: Internal** (this app is already
      domain-restricted via `appsscript.json`'s `access: DOMAIN`, so
      Internal keeps it that way and skips Google's app-verification
-     review, which External would otherwise require for the
-     `drive.file` scope).
+     review, which External would otherwise require for the full
+     `drive` scope this app requests — see "The Drive scope is full
+     ... not drive.file" above for why).
    - Application type: **Web application**.
    - Leave "Authorized JavaScript origins" **empty** — this flow doesn't
      use it, and no origin here would be accepted anyway.
@@ -296,6 +322,15 @@ to it instead, per step 5 below):
      the same time is harmless noise (a report-only CSP on Google's own
      infrastructure, "logged, but no further action taken") — not the
      actual error, ignore it.
+   - If the Picker itself opens fine and you can pick/upload a file, but
+     the browser console shows `POST
+     https://www.googleapis.com/drive/v3/files/{id}/permissions 403
+     (Forbidden)` — that's the `drive.file`-vs-full-`drive` scope issue
+     described above. If you're testing against a version of `Code.gs`
+     from before that fix, or you authorized once already and the fix
+     hasn't forced a re-prompt for some reason, revoke this app's access
+     at https://myaccount.google.com/permissions and try Attach Files
+     again to force a completely fresh authorization.
 
 **Not yet done / worth knowing**:
 - None of this has been exercised against a live deployment or real

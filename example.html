@@ -215,13 +215,14 @@
     // source file (L_CPP_CBR_Vision etc.) — not used by any rendering
     // code, kept for traceability back to the source.
     //
-    // The ONE exception: 'collaborative-planning' → "Collective belief
-    // and responsibility" keeps the worked-example state from earlier
-    // rounds (rubric selections, computed grade, and its two evidence
-    // entries) re-attached after import, so there's still one fully
-    // populated example to demonstrate the feature. Every other Theme
-    // (all 35 of them) is genuinely fresh: 'ungraded', nothing selected,
-    // no evidence — none of that exists in the source file.
+    // Every Theme here is genuinely fresh: 'ungraded', nothing selected,
+    // no evidence — none of that exists in the source file. (An earlier
+    // round kept one hand-populated worked example on 'collaborative-
+    // planning' → "Collective belief and responsibility" to demo the
+    // feature; removed now that the gas/ build actually loads real
+    // ratings/evidence from the backend — this static build has no
+    // backend of its own, so it just stays fully fresh like every other
+    // Theme.)
         var ELEMENT_THEMES = {
       "instructional-coaching": {
         themes: [
@@ -472,10 +473,10 @@
           {
             title: "Collective belief and responsibility",
             id: "L_CPP_CBR",
-            grade: "delivering",
+            grade: "ungraded",
             rubric: [
               {
-                selected: "pre-delivering",
+                selected: null,
                 cells: {
                   "pre-delivering": "Improvement planning is mainly the work of school leaders",
                   "delivering": "The school vision references collective efficacy, and school leaders encourage a sense of collective belief and responsibility for improvement. Leaders and teachers participate in planning improvement cycles.",
@@ -484,7 +485,7 @@
                 }
               },  // L_CPP_CBR_Vision
               {
-                selected: "delivering",
+                selected: null,
                 cells: {
                   "pre-delivering": "Leadership development is informal and dependent on individual initiative. Improvement initiatives may be isolated, short‑term, or dependent on individual champions.",
                   "delivering": "Some staff take on leadership roles, but development is not systematic. Improvement initiatives are implemented but not consistently monitored or scaled.",
@@ -493,7 +494,7 @@
                 }
               },  // L_CPP_CBR_Leadership
               {
-                selected: "sustaining",
+                selected: null,
                 cells: {
                   "pre-delivering": "Curriculum materials are developed individually or cooperatively, with limited collaboration or evaluation.",
                   "delivering": "Some collaborative development of curriculum materials occurs, but quality and consistency vary.",
@@ -502,25 +503,7 @@
                 }
               }  // L_CPP_CBR_CurriculumMaterials
             ],
-            evidence: [
-              {
-                number: 1,
-                type: 'note',
-                date: "28.08.27",
-                text: "Teachers conduct observations of students in their classrooms, particularly year 1 students completing an assessment task.",
-                attachments: [
-                  { name: "Observation Notes", kind: "doc" },
-                  { name: "Observation Timetable", kind: "xlsx" }
-                ]
-              },
-              {
-                number: 2,
-                type: 'note',
-                date: "02.09.27",
-                text: "Placeholder second evidence entry — replace with real evidence when available. This one has no attachments, to show that case too.",
-                attachments: []
-              }
-            ]
+            evidence: []
           },
           {
             title: "Shared clarity on goals and expected student progress",
@@ -1677,7 +1660,7 @@
         badge.setAttribute('title', count + ' evidence piece' + (count === 1 ? '' : 's'));
         badge.innerHTML = attachmentGlyph() + (count > 0 ? '<span>' + count + '</span>' : '');
       }
-      renderDotRing(); // this Theme's overview dot needs the same colour update
+      updateDotRingColors(); // this Theme's overview dot needs the same colour update
     }
 
     // =======================================================================
@@ -1710,9 +1693,12 @@
     dotLayer.setAttribute('class', 'ew-theme-indicator-layer');
     dotLayer.setAttribute('aria-hidden', 'true'); // decorative only — the same info is reachable, accessibly, via the cards
 
-    var dotRingEntranceDone = false;
-
-    function renderDotRing() {
+    // Built once, structure-only (every slice starts grey/"ungraded") —
+    // updateDotRingColors() below is what actually paints real grades in,
+    // by changing each path's own `fill` in place rather than rebuilding
+    // the layer, so a CSS `transition: fill` (see theme-dots.css) has
+    // something to animate between.
+    function buildDotRing() {
       var geo = ExcellenceWheel.GEOMETRY;
       var entrance = ExcellenceWheel.ENTRANCE;
       var html = '';
@@ -1728,19 +1714,26 @@
         for (var i = 0; i < n; i++) {
           var a0 = spanStart + i * sliceWidth + INDICATOR_SLICE_GAP / 2;
           var a1 = spanStart + (i + 1) * sliceWidth - INDICATOR_SLICE_GAP / 2;
-          var grade = themes[i].grade;
-          var g = GRADES[grade] || GRADES.ungraded;
-          var color = (!grade || grade === 'ungraded') ? INDICATOR_UNGRADED_COLOR : g.color;
           var d = ExcellenceWheel.sectorPath(geo.R.dotRingInner, geo.R.dotRingOuter, a0, a1);
-          html += '<path class="ew-theme-indicator" d="' + d + '" fill="' + color + '" style="animation-delay:' + delay + 'ms"/>';
+          html += '<path class="ew-theme-indicator" d="' + d + '" fill="' + INDICATOR_UNGRADED_COLOR + '"' +
+            ' style="animation-delay:' + delay + 'ms" data-seg-id="' + seg.id + '" data-theme-idx="' + i + '"/>';
         }
       });
       dotLayer.innerHTML = html;
-      // Entrance only plays once (page load) — toggled off before any
-      // later re-render (e.g. from syncCard() on a grade change) can
-      // apply it again; see the .is-entering scoping in theme-dots.css.
-      dotLayer.classList.toggle('is-entering', !dotRingEntranceDone);
-      dotRingEntranceDone = true;
+      dotLayer.classList.add('is-entering'); // plays once, on this initial build only
+    }
+
+    // Repaints every slice's fill from ELEMENT_THEMES' current grades, in
+    // place — call this (not buildDotRing()) whenever grades change after
+    // the initial build, e.g. from syncCard() on a rubric/grade change.
+    function updateDotRingColors() {
+      dotLayer.querySelectorAll('.ew-theme-indicator').forEach(function (path) {
+        var data = ELEMENT_THEMES[path.getAttribute('data-seg-id')];
+        var theme = data && data.themes && data.themes[parseInt(path.getAttribute('data-theme-idx'), 10)];
+        var grade = theme && theme.grade;
+        var g = GRADES[grade] || GRADES.ungraded;
+        path.setAttribute('fill', (!grade || grade === 'ungraded') ? INDICATOR_UNGRADED_COLOR : g.color);
+      });
     }
 
     // =======================================================================
@@ -2242,7 +2235,7 @@
     // an enlarging wedge.
     var svgRoot = wheel.getSvgRoot();
     svgRoot.insertBefore(dotLayer, svgRoot.querySelector('.ew-wedge'));
-    renderDotRing();
+    buildDotRing();
 
     // Other things you can do with the returned handle:
     // wheel.select('differentiation');

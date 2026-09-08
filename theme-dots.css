@@ -7,7 +7,7 @@
  * has no idea Themes or grades exist, it just exposes its centre point,
  * radii, and its own annular-sector path builder (`sectorPath`), plus a
  * handle to its own <svg> so this layer can be drawn in true alignment
- * with it (see renderDotRing() in the demo script).
+ * with it (see buildDotRing() in the demo script).
  *
  * Purely visual — no hover, click, or keyboard interaction (`pointer-
  * events: none`, and the layer is `aria-hidden`); reaching a specific
@@ -25,7 +25,7 @@
  * always loaded together on the same page, and CSS keyframes are
  * global, so this is a real dependency on that file, not a copy of it.
  * Staggered per Element using `ExcellenceWheel.ENTRANCE.indicatorStart`/
- * `indicatorStagger` (see renderDotRing), which slots it into the same
+ * `indicatorStagger` (see buildDotRing), which slots it into the same
  * inside-out sequence right after the wedges finish appearing.
  */
 
@@ -33,15 +33,25 @@
   pointer-events: none;
 }
 
-/* Entrance only plays the first time this layer renders (page load) —
-   scoped under .is-entering rather than being an unconditional property
-   on .ew-theme-indicator, since renderDotRing() also re-renders on every
-   grade change (a full innerHTML rebuild), and without this scoping the
-   pop-in would replay every time, not just once. See renderDotRing() in
-   the demo script for how the class is added once then removed. */
+/* Each slice is built once, grey ("ungraded"), then only ever has its
+   `fill` attribute changed in place (see updateDotRingColors() in the
+   demo script) — never replaced/rebuilt — specifically so this
+   transition has something to animate between. That's what turns the
+   real per-Theme grades arriving a moment after the wheel's own initial
+   entrance (a separate animation, below) into a slow, deliberate colour
+   fade-in rather than a jump-cut; the same transition also softens any
+   later live grade change (a rubric click, the grade dropdown). */
+.ew-theme-indicator {
+  transition: fill 2s ease;
+}
+
+/* Entrance plays once, when buildDotRing() first constructs this layer
+   (see the demo script) — a later grade change only ever updates each
+   path's own `fill` in place via updateDotRingColors(), never rebuilds
+   the layer, so .is-entering is never re-added and this never replays. */
 .ew-theme-indicator-layer.is-entering .ew-theme-indicator {
   animation: ew-pop-in 320ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
-  /* animation-delay set per Element inline — see renderDotRing() */
+  /* animation-delay set per Element inline — see buildDotRing() */
 }
 
 @media (prefers-reduced-motion: reduce) {

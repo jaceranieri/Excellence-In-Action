@@ -15,10 +15,12 @@ WHAT THIS DOES NOT DO: it never rewrites, trims, or otherwise touches
 any rubric text from the source file — only key names change. It also
 does not preserve live state (rubric selections, grades, evidence) from
 a previous ELEMENT_THEMES — every Theme comes out fresh (Ungraded, no
-selections, no evidence). If you want to carry forward the one worked
-example ('Collective belief and responsibility'), or any other live
-state, re-apply it after running this script — see the merge step
-that was done by hand the first time, documented in README.md.
+selections, no evidence), which is what you want: real per-school state
+now comes from the Ratings/EvidenceLog sheets (see HANDOFF.md), not from
+anything hardcoded here. (An earlier round of this project did carry
+forward one hand-populated worked example — 'Collective belief and
+responsibility' — as a demo before that backend existed; that's gone
+now, on purpose, don't reintroduce it.)
 """
 
 import json
