@@ -56,11 +56,14 @@
   grid-template-columns: repeat(2, 1fr);
   gap: 14px; /* extra room for the shadow band on the row below */
   align-items: stretch;
-  /* Breathing room for the cards' own box-shadow ring (see .theme-card
-     below) — #detail, the ancestor this renders into, has overflow:
-     hidden at a fixed width, so without this the ring's outer 2px on
-     the left/right edge cards was getting clipped. */
-  padding: 4px;
+  /* Breathing room for the cards' own box-shadow ring + shadow band
+     (see .theme-card below) — #detail, the ancestor this renders into,
+     has overflow: hidden at a fixed width/height, so without this the
+     ring/shadow on the grid's own outer edges (all four sides, not just
+     the last row) gets clipped. Extra at the bottom: the shadow band
+     alone is 5px (8px on hover) below the ring's own 2px, taller than
+     the ring needs on the other three sides. */
+  padding: 4px 4px 10px;
 }
 
 /* auto-fit's minmax(190px, 1fr) previously collapsed to a single column

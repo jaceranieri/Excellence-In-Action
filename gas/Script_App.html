@@ -1550,10 +1550,9 @@
         'stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
     }
 
-    function renderThemeCard(theme, idx, accentHex, accentRgb, delay) {
+    function renderThemeCard(theme, idx, accentHex, accentRgb, shadowHex, delay) {
       var grade = GRADES[theme.grade] || GRADES.ungraded;
       var count = (theme.evidence || []).length;
-      var shadowHex = darkenHex(accentHex, 0.2);
       var gradePillShadow = darkenHex(grade.color, 0.22);
       return '<div class="theme-card" tabindex="0" role="button"' +
           ' data-theme-index="' + idx + '"' +
@@ -1594,8 +1593,15 @@
       var style = ExcellenceWheel.CATEGORY_STYLE[segment.category];
       var accentHex = style.wedge;
       var accentRgb = hexToRgbString(accentHex);
+      // Teaching's wedge colour is a golden yellow (#FDB40F) — darkening
+      // it (the default for every other category) came out a muddy
+      // mustard rather than reading as "Teaching's colour, darker". Use
+      // Teaching's own ring/accent orange (#F3712D, the same orange as
+      // its wheel ring and Element title) as the shadow instead, for
+      // that category only.
+      var shadowHex = segment.category === 'teaching' ? style.accent : darkenHex(accentHex, 0.2);
       var cardsHtml = themes.map(function (t, i) {
-        return renderThemeCard(t, i, accentHex, accentRgb, i * 35);
+        return renderThemeCard(t, i, accentHex, accentRgb, shadowHex, i * 35);
       }).join('');
       detailEl.innerHTML =
         '<div class="element-detail" style="--title-color:' + style.ring + '">' +

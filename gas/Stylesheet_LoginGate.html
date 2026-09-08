@@ -87,8 +87,13 @@
   font-family: 'Winter Day', 'Pacifico', 'Segoe UI', cursive;
   font-weight: 400;
   font-size: 62px;
-  line-height: 0.6;
-  margin-top: -6px; /* pulls "Action" up so it slightly overlaps "Excellence in" */
+  /* Winter Day's swashes sit much taller/lower in its own line box than
+     Pacifico's did — the original 0.6/-6px pairing (tuned for Pacifico)
+     made "Excellence in" and "Action" overlap far too heavily once
+     Winter Day actually loaded. Loosened for Winter Day's real
+     proportions; still a deliberate slight overlap, not a full gap. */
+  line-height: 0.95;
+  margin-top: -2px;
   color: #f5b400;
 }
 
