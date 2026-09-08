@@ -1,0 +1,223 @@
+/*!
+ * Theme cards — the 1–6 cards shown below the wheel once an Element
+ * (wedge) is selected: each with a fixed title, a Grade pill, and an
+ * Evidence-count badge. This is presentation for YOUR data — pair it
+ * with the ELEMENT_THEMES object (see the demo script) which you
+ * should replace with the real, fixed theme text per Element.
+ *
+ * Clicking a card opens the rubric/grade/evidence modal — that's
+ * theme-modal.css, a separate file/concern from this one.
+ *
+ * Each card takes a matching darkened shadow colour from --card-shadow
+ * (derived from the Element's own wheel colour) for its bottom shadow
+ * band, and the Element title takes --title-color — both set inline
+ * per render by the demo script (see renderElementDetail / darkenHex).
+ * The card's own accent border was removed (kept only on the shadow,
+ * per request) — --card-accent/--card-accent-rgb are still set and
+ * still used for the hover glow and the selected-state ring.
+ *
+ * Depends on nothing but its own rules below; safe to drop next to
+ * excellence-wheel.css in any page that also renders the wheel.
+ */
+
+.element-detail {
+  width: 100%;
+}
+
+.element-title {
+  margin: 0 0 16px;
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+  font-weight: 800;
+  font-size: 30px;
+  text-align: center;
+  color: var(--title-color, #1c1f4f);
+}
+
+.element-icon-placeholder {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 14px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 2px solid var(--title-color, #1c1f4f);
+  color: var(--title-color, #1c1f4f);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.element-icon-placeholder svg {
+  width: 28px;
+  height: 28px;
+}
+
+.theme-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 22px; /* extra room for the shadow band on the row below */
+  align-items: stretch;
+}
+
+@keyframes tc-fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Card is a column: the title fills whatever space is left above the
+   Grade/Evidence row at the bottom, so that row sits at the same place
+   on every card regardless of title length — and, since the grid
+   stretches every card in a row to match the tallest, that holds
+   across the whole row too. */
+.theme-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 172px;
+  background: #ffffff;
+  border: 1px solid #d5d7e0;
+  border-radius: 10px;
+  padding: 16px 18px;
+  box-shadow: 0 5px 0 0 var(--card-shadow, #9a9cab);
+  box-sizing: border-box;
+  cursor: pointer;
+  outline: none;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  animation: tc-fade-in 220ms ease backwards;
+  /* animation-delay set per card inline, a slight stagger */
+}
+
+.theme-card:hover,
+.theme-card:focus-visible {
+  transform: translateY(-3px);
+  border-color: var(--card-accent, #c9cbd4);
+  box-shadow:
+    0 8px 0 0 var(--card-shadow, #9a9cab),
+    0 16px 26px rgba(var(--card-accent-rgb, 30, 32, 38), 0.16);
+}
+
+.theme-card:active {
+  transform: translateY(2px);
+  box-shadow: 0 2px 0 0 var(--card-shadow, #9a9cab);
+}
+
+.theme-card.is-selected {
+  border-color: var(--card-accent, #1c1f4f);
+  box-shadow:
+    0 0 0 2px var(--card-accent, #1c1f4f),
+    0 8px 0 0 var(--card-shadow, #9a9cab),
+    0 16px 26px rgba(var(--card-accent-rgb, 30, 32, 38), 0.16);
+}
+
+.theme-card-title {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 4px 2px 16px;
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+  font-weight: 400;
+  font-size: 14px;
+  line-height: 1.4;
+  color: #111318;
+  text-align: center;
+}
+
+/* Grade + Evidence — one row, no separator: a large Grade pill (coloured
+   to the grade itself, matching the modal's own Grade badge treatment)
+   takes most of the width, with a small square Evidence-count badge
+   beside it. */
+.theme-card-indicators {
+  flex: none;
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.theme-card-grade-pill {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 9px 10px;
+  border-radius: 10px;
+  background: var(--grade-pill-color, #9aa0a6);
+  box-shadow: 0 2px 0 0 var(--grade-pill-shadow, #6d7278);
+  color: #ffffff;
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+  font-weight: 700;
+  font-size: 12.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.theme-card-evidence-badge {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 40px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--grade-pill-color, #eceef3);
+  box-shadow: 0 2px 0 0 var(--grade-pill-shadow, #d8dae2);
+  color: #ffffff;
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+  font-weight: 700;
+  font-size: 12.5px;
+}
+
+.theme-card-evidence-badge svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-card {
+    transition: none;
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Dark theme (optional): only kicks in if the host page opts in via
+   data-theme="dark" or the OS preference, matching the wheel's own
+   pattern. Safe to delete this block if your app is always light. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .theme-card {
+    background: #1e2030;
+    border-color: #2c2e42;
+    box-shadow: 0 5px 0 0 rgba(0, 0, 0, 0.4);
+  }
+  :root:not([data-theme="light"]) .theme-card-title {
+    color: #f2f3fa;
+  }
+  :root:not([data-theme="light"]) .element-title {
+    color: #eef0ff;
+  }
+  :root:not([data-theme="light"]) .element-icon-placeholder {
+    background: #262838;
+    border-color: #4a4d66;
+    color: #eef0ff;
+  }
+}
+:root[data-theme="dark"] .theme-card {
+  background: #1e2030;
+  border-color: #2c2e42;
+  box-shadow: 0 5px 0 0 rgba(0, 0, 0, 0.4);
+}
+:root[data-theme="dark"] .theme-card-title {
+  color: #f2f3fa;
+}
+:root[data-theme="dark"] .element-title {
+  color: #eef0ff;
+}
+:root[data-theme="dark"] .element-icon-placeholder {
+  background: #262838;
+  border-color: #4a4d66;
+  color: #eef0ff;
+}

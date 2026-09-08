@@ -1,0 +1,2095 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Excellence in Action — Wheel Example</title>
+<link rel="stylesheet" href="excellence-wheel.css">
+<link rel="stylesheet" href="theme-cards.css">
+<link rel="stylesheet" href="theme-modal.css">
+<link rel="stylesheet" href="theme-dots.css">
+<link rel="stylesheet" href="app-banner.css">
+<style>
+  :root { color-scheme: light; }
+  body {
+    margin: 0;
+    padding: 48px 24px;
+    background: #f4f5f7;
+    font-family: 'Figtree', 'Segoe UI', sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 32px;
+  }
+  .app-banner { margin-bottom: 72px; }
+
+  /* Wheel + Theme cards side by side on wide screens (cards to the
+     right), stacking (cards below) once there's not enough room for
+     both comfortably — see the media query below for the threshold. */
+  .main-layout {
+    display: flex;
+    gap: 32px;
+    align-items: flex-start;
+    justify-content: center;
+    width: 100%;
+    max-width: 1280px;
+  }
+  #wheel-host { flex: 0 0 auto; width: 100%; max-width: 700px; }
+  #detail {
+    flex: 1 1 380px;
+    max-width: 560px;
+    min-width: 300px;
+    min-height: 90px;
+    box-sizing: border-box;
+  }
+  #detail .placeholder { color: #999; font-style: italic; margin: 0; text-align: center; }
+
+  @media (max-width: 1150px) {
+    .main-layout { flex-direction: column; align-items: center; }
+    #detail { max-width: 720px; width: 100%; }
+  }
+</style>
+</head>
+<body>
+
+  <header class="app-banner">
+    <div class="app-banner-logo" aria-hidden="true">
+      <!-- Placeholder logo — swap for the real school/org mark -->
+      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="12" cy="12" r="9.5" stroke="#1c1f4f" stroke-width="1.4"/>
+        <path d="M12 3.5 14 9 20 9 15 12.5 17 18.5 12 15 7 18.5 9 12.5 4 9 10 9Z" stroke="#1c1f4f" stroke-width="1.2" stroke-linejoin="round"/>
+      </svg>
+    </div>
+    <div class="app-banner-titles">
+      <p class="app-banner-title">Excellence in Action</p>
+      <p class="app-banner-subtitle">Placeholder School Name</p>
+    </div>
+    <div class="app-banner-avatar" aria-hidden="true" title="Placeholder avatar">
+      <!-- Placeholder avatar — swap for the signed-in user's real photo/initials -->
+      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="12" cy="8.5" r="3.5" fill="#fff"/>
+        <path d="M4.5 20c1.4-4 4.2-6 7.5-6s6.1 2 7.5 6" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/>
+      </svg>
+    </div>
+  </header>
+
+  <div class="main-layout">
+    <div id="wheel-host"></div>
+
+    <!-- This is where YOUR app renders the selected Element's title and its
+         Theme cards. The wheel component itself only ever emits an id/segment
+         object; it never renders this panel for you. -->
+    <div id="detail">
+    <p class="placeholder">Select an Element to see its Themes here.</p>
+    </div>
+  </div>
+
+  <script src="excellence-wheel.js"></script>
+  <script>
+    // =======================================================================
+    // Data
+    // =======================================================================
+
+    // The 5 fixed grade levels. Pre-Delivering/Delivering colours are an
+    // interpolated guess between Ungraded (grey) and Sustaining/Excelling
+    // (sampled from your mockup, #F5B400 / #1E8E4F). Used for the outer
+    // cards' dot, the grade dropdown, and the modal's Grade badge itself
+    // (which fades between colours via CSS transition on change).
+    var GRADES = {
+      'ungraded':       { label: 'Ungraded',       color: '#9AA0A6' },
+      'pre-delivering': { label: 'Pre-Delivering',  color: '#E2574C' },
+      'delivering':     { label: 'Delivering',      color: '#F2994A' },
+      'sustaining':     { label: 'Sustaining',      color: '#F5B400' },
+      'excelling':      { label: 'Excelling',       color: '#1E8E4F' }
+    };
+    var RUBRIC_LEVELS = ['pre-delivering', 'delivering', 'sustaining', 'excelling'];
+
+// ---------------------------------------------------------------------
+    // Fixed content per Element, imported from EIA.json (your real rubric
+    // text for all 9 Elements / 36 Themes / 109 rubric rows) via a one-time
+    // transform — see the README for the exact field mapping. Every value
+    // here is verbatim from that file: no wording/spelling changes, only
+    // key renames (theme_name→title, rubrics→rubric, levels→cells,
+    // pre_delivering→'pre-delivering') and the fields the file doesn't
+    // carry (selected, grade, evidence) added as fresh/empty defaults.
+    // Each rubric row's trailing comment is that row's stable id from the
+    // source file (L_CPP_CBR_Vision etc.) — not used by any rendering
+    // code, kept for traceability back to the source.
+    //
+    // The ONE exception: 'collaborative-planning' → "Collective belief
+    // and responsibility" keeps the worked-example state from earlier
+    // rounds (rubric selections, computed grade, and its two evidence
+    // entries) re-attached after import, so there's still one fully
+    // populated example to demonstrate the feature. Every other Theme
+    // (all 35 of them) is genuinely fresh: 'ungraded', nothing selected,
+    // no evidence — none of that exists in the source file.
+        var ELEMENT_THEMES = {
+      "instructional-coaching": {
+        themes: [
+          {
+            title: "Professional Learning Design",
+            grade: "ungraded",
+            rubric: [
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "An annual professional learning plan is in place.",
+                  "delivering": "An annual professional learning plan has been developed, promoting evidence-based strategies. This plan has been identified in the school’s Annual Improvement Plan and is used by most middle leaders and staff to align their individual professional growth plans. ",
+                  "sustaining": "A strategic, data-informed professional learning plan has been developed to respond to the school context. This plan has been clearly articulated in the school’s Annual Improvement Plan and is used by middle leaders and staff to align both faculty goals and professional development plan goals. There is clear evidence that the impact of the plan on both teacher practice and student learning outcomes is monitored and evaluated.  ",
+                  "excelling": "A strategic, data-informed professional learning plan has been developed to respond to the school context and is sensitive to the constraints of classroom practitioners. This plan is an integral part of the school’s Annual Improvement Plan with  a clear and visible alignment between the whole school plan, KLA, and individual staff goals. There is clear evidence of responsive adjustments to the plan based on the embedded monitoring and evaluation of the impact on teacher practice and student learning outcomes. "
+                }
+              },  // L_IC_PLD_Plan
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "There are some mechanisms in place to support teachers when engaging with professional learning. However, they are not consistently applied across the school.",
+                  "delivering": "Teachers are aware of all mechanisms, but these are applied inconsistently in supporting them to engage with professional learning. These may include motivating staff and managing cognitive load.",
+                  "sustaining": "All mechanisms are in place to support all teachers in developing practice when engaging with professional learning. Ongoing professional learning is provided to coaches to develop a school wide coaching culture",
+                  "excelling": "All mechanisms are deeply embedded in a culture of instructional coaching to support all teachers in engaging with ongoing professional learning. "
+                }
+              }  // L_IC_PLD_Support
+            ],
+            evidence: []
+          },
+          {
+            title: "Coaching for technical expertise and instructional agility",
+            grade: "ungraded",
+            rubric: [
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Teachers individually make decisions about routines, strategies, and practices that they implement in their classroom. ",
+                  "delivering": "Teachers working in grades or faculties collaborate and discuss a range of routines, strategies, and practices for use in their classrooms. These may be evidenced in curriculum materials and observed in their planning and practice for instruction. ",
+                  "sustaining": "Teachers working in grades or faculties collaborate and make decisions about the selection and use of evidence-based routines, strategies, and practices. This is visible in curriculum materials and observable in classroom practice",
+                  "excelling": "Teachers and leaders work collaboratively to make strategic decisions about the selection and use of specific evidence-based routines, strategies, and practices based on evidence-based research and data. These are systematically implemented, supported by ongoing collaborative planning, and responsively and reflectively adjusted based on the monitoring of impact on student outcomes. "
+                }
+              },  // L_IC_CTE_Decisions
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Teachers set goals about teaching and learning to meet the requirements of their annual Performance Development Plan. ",
+                  "delivering": "Teachers use data to guide their planning, goal setting, and/or actions, with some commitment to improvement goals that may align with faculty or grade goals. ",
+                  "sustaining": "Teachers work together and use data accurately to guide their planning, goal setting, and actions to improve classroom instruction that aligns with school-wide decisions about teaching routines, strategies, and practices.  These are implemented and reviewed regularly to plan future learning to meet students' needs. ",
+                  "excelling": "Teachers strategically collaborate using a wide range of data to guide their planning, goal setting, to integrate agreed school-wide routines, strategies, and practices to enhance their classroom instruction.  These are systematically reviewed to plan future learning and improve student learning outcomes.  "
+                }
+              }  // L_IC_CTE_Decisions
+            ],
+            evidence: []
+          },
+          {
+            title: "Coaching for collective efficacy",
+            grade: "ungraded",
+            rubric: [
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "The school provides limited opportunities and/or support for teachers to engage in coaching partnerships ",
+                  "delivering": "The school has implemented  practices and processes to support coaching partnerships, based on goals that have been shared but may not be widely understood.  ",
+                  "sustaining": "The school has organised structures and coaching partnerships, based on a shared goal of improving student performance through shifts in classroom instruction. ",
+                  "excelling": "The school has systematically organised structures and coaching partnerships, centred on a school-wide goal of improving student performance through shifts in classroom instruction. "
+                }
+              },  // L_IC_CCE_Partnerships
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "There are limited opportunities and/ or support for the collaboration required to support instructional coaching. Professional discussions between teachers are not characterised by the use of coaching questions. There is a limited impact on teacher understanding and practice ",
+                  "delivering": "These practices and/ or processes may be applied inconsistently, having a limited impact on enhancing collective teacher efficacy. ",
+                  "sustaining": "These structures and partnerships are intentional and are monitored for impact in supporting the participants' professional growth and building collective teacher efficacy",
+                  "excelling": "These  systems and structures are intentional and are routinely monitored for impact, enabling the professional growth of participants and strategically building collective teacher efficacy"
+                }
+              },  // L_IC_CCE_Structures
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": null,
+                  "delivering": "Instructional coaching discussions are encouraged to support collaboration and improve instructional practices.  Teachers and leaders are developing their practice of using coaching questions.",
+                  "sustaining": "Instructional coaching discussions are purposeful in their intent to improve instructional practices. They are characterised by the  use of coaching questions that support a dialogue and collaboration, which in turn  develops  understanding, encourages   new perspectives, and support  changes to practice ",
+                  "excelling": "Instructional coaching discussions are consistently purposeful in their intent to improve instructional practices. They are characterised by the skillful use of coaching questions that facilitate a collaborative dialogue, which in turn deepens understanding, stimulates new perspectives, and informs  changes to practice "
+                }
+              }  // L_IC_CCE_Discussions
+            ],
+            evidence: []
+          },
+          {
+            title: "A Culture of Instructional Coaching and Collaboration",
+            grade: "ungraded",
+            rubric: [
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "The school may be in the early stages of committing to a coaching process. Some teachers and leaders may value the notion of collaborating to improve instructional practices, but coaching practices are not yet enacted. Teachers are yet to share an understanding of instructional coaching.",
+                  "delivering": "The school is in the process of establishing a coaching culture. Some teachers and leaders collaborate to improve instructional practices, but the practice is not yet widespread. Some staff are actively involved in building a shared understanding of instructional coaching.  ",
+                  "sustaining": "The school has established a coaching culture in which most teachers and leaders collaborate to improve instructional practices using an increasingly shared, evidence-based framework for instructional coaching. ",
+                  "excelling": "The school has established a strong coaching culture in which all teachers and leaders collaborate to improve instructional practices using a shared, evidence-based framework for instructional coaching. "
+                }
+              },  // L_IC_CICC_Process
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "As yet, there is no systematic organisation of instructional coaching.",
+                  "delivering": "There is not yet an agreed-upon and clear coaching framework. Organisation of instructional coaching is varied among grades and faculties.  It generally supports school improvement initiatives.",
+                  "sustaining": "The school instructional coaching framework articulates context-specific, agreed conditions and processes that are emerging in practice. There are organisational structures that support collaboration and instructional coaching in many grades or faculties.",
+                  "excelling": "The school instructional coaching framework articulates context-specific, agreed conditions and processes, which are enacted and systematically implemented for targeted school improvement."
+                }
+              }  // L_IC_CICC_Framework
+            ],
+            evidence: []
+          },
+          {
+            title: "Coaching for responsive and reflective thinking",
+            grade: "ungraded",
+            rubric: [
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Teachers use a range of routines and strategies in their own classrooms. This leads to a high level of variability in the fidelity of application of instructional practices across the school.",
+                  "delivering": "Some teachers work collaboratively, in informal and/or formal groups, to select and use evidence-based routines and strategies in instructional programs.",
+                  "sustaining": "Teachers and leaders are establishing the use of agreed evidence-based routines, strategies, and practices across the instructional program. These are implemented by teachers with consistency across the instructional program. ",
+                  "excelling": "The school enables teachers and leaders to strategically collaborate in establishing and contextualising school-wide evidence-based routines, strategies, and practices. These are consistently integrated and applied with precision and fidelity across the instructional program in grade and faculty-appropriate ways. Processes for onboarding new staff are in place to ensure sustainability."
+                }
+              },  // L_IC_CRRT_Routines
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Teachers sometimes use data to inform instructional choices and/or improvement goals.",
+                  "delivering": "Some teachers are working together in groups across the school, yet they may be operating independently of each other.  These groups of teachers are focused on making improvements outside of a school-wide strategy and/or with a noticeable variability in their approaches.  ",
+                  "sustaining": "Agreed, school-wide instructional choices are aligned, and they are visible in classrooms and curriculum materials. They are intentionally used by most teachers in most KLAs and grades.",
+                  "excelling": "Agreed, school-wide instructional choices have been strategically selected and implemented in alignment with data-informed school improvement goals. Staff voice has been included in the selection process, and they are systematically aligned across KLAs and grades."
+                }
+              },  // L_IC_CRRT_Alignment
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Teachers may work together to review and develop instructional techniques, but this is not through any established coaching process  ",
+                  "delivering": "Teachers are exploring opportunities to work in coaching partnerships to develop instructional techniques. They may be using coaching frameworks without consistent application. ",
+                  "sustaining": "Using agreed coaching frameworks, teachers work together to develop fluency in the implementation of routines, strategies, and practices.  They have established a high level of consistency and competence in their use.  ",
+                  "excelling": "Using agreed coaching frameworks, teachers and leaders work together to develop fluency and fidelity in the use of instructional techniques. They enact coaching cycles to review, develop, and refine instructional techniques in responsive and adaptive ways.  They have established a high level of consistency and precision in their application."
+                }
+              }  // L_IC_CRRT_Consistent
+            ],
+            evidence: []
+          }
+        ]
+      },
+      "data-analysis": {
+        themes: [
+          {
+            title: "Data Collection and Analysis",
+            grade: "ungraded",
+            rubric: [
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Teachers collect data in an ad-hoc fashion, which is often determined by legislative requirements and/ or to assign grades",
+                  "delivering": "Teachers collect data, which is mostly summative assessment data, to monitor achievements, identify gaps in learning, and  to inform planning for student groups and individual students",
+                  "sustaining": "Teachers strategically collect  and triangulate data from a variety assessment practices to identify starting points, monitor improvement, and evaluate effectiveness.",
+                  "excelling": "The strategic collection, triangulation and distribution of data to all key stakeholders is the custom and practice of the school.  This is supported by embedded structures that facilitate collaborative analysis and ongoing feedback loops   to ensure that students can make the greatest possible learning progress"
+                }
+              },  // L_DCDM_DCA_Collection
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Teachers rarely use data to inform instructional changes or monitor student progress",
+                  "delivering": "Teachers use data to monitor student progress and adjust teaching practice, however, they may not have  a clear understanding of the  learning continuum within a given discipline for interpreting data.",
+                  "sustaining": "Teachers consistently use data to monitor student progress and adjust their teaching practice based on evidence and have understanding of the  learning continuum within a given discipline to interpret data",
+                  "excelling": "The alignment between data, subject specific learning continuums  and instruction is  a cultural norm across the school. All instructional decisions are evidence-informed, and data is systematically used to identify  needs and proactively target interventions school-wide."
+                }
+              }  // L_DCDM_DCA_Usage
+            ],
+            evidence: []
+          },
+          {
+            title: "Data Practice",
+            grade: "ungraded",
+            rubric: [
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "The discussion of data is restricted to middle managers and to leadership teams",
+                  "delivering": "The discussion of, and reflection upon, the meaning of student data is supported by emerging structures. These structures provide a foundation for a distribution of responsibility, but accountabilities in relation to the collection and use of adat are not always clear.",
+                  "sustaining": "Teachers consistently access and discuss data in psychosocially safe and peer-mediated collaborative structures to reflect on their professional  practice and student learning progress",
+                  "excelling": "Dedicated systems and structures are routinely leveraged  school wide to enable collaborative data discussions aligned the school's Annual  Improvement Plan."
+                }
+              },  // L_DCDM_DP_Discuss
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "There is no documentation or time provided to guide teacher use of data",
+                  "delivering": "Documentation and time have been provided to guide teacher  use of data, but the application of this documentation and the use of time is inconsistent  ",
+                  "sustaining": "Documentation  establishes data as a fundamental component  of the school's learning culture through a clear articulation of its purpose and responsibilities in relation to its use.",
+                  "excelling": "Documentation ensures that data use is deeply embedded, systematic, and sustained, leading to high collective teacher efficacy."
+                }
+              }  // L_DCDM_DP_Documentation
+            ],
+            evidence: []
+          },
+          {
+            title: "Data Leadership",
+            grade: "ungraded",
+            rubric: [
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Leaders do not actively champion data use in driving a school improvement agenda",
+                  "delivering": "Leaders acknowledge the importance of data and may direct attention to general areas of concern, rather than specify a clear focus  for improvement.",
+                  "sustaining": "Leaders play a pivotal role in setting a tight area of focus for improvement based on data, and ensure there are clear accountabilities amongst staff.  ",
+                  "excelling": "Leaders provide  comprehensive oversight of the data strategy (planning, implementation, monitoring, refinement), and ensure sustainability by putting structures in place that enable the distribution of responsibility."
+                }
+              },  // L_DCDM_DL_Leader
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Data provided to teachers is unprocessed, voluminous and creates high cognitive load",
+                  "delivering": "Data provided to teachers is digestible, but is not clearly aligned with a specific focus for improvement",
+                  "sustaining": "Data is provided to teachers in an accessible format, which is clearly aligned with a tight area of focus for improvement ",
+                  "excelling": "Data is provided to all key stakeholders in a highly accessible manner, allowing for a coordinated and embedded diagnostic analysis and actions across all level of the school, that draws  clear alignment with the planning. monitoring and evaluating the schools Annual Improvement Plan."
+                }
+              },  // L_DCDM_DL_Provided
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Teachers receive limited or no professional development  on data use.",
+                  "delivering": "Teachers are provided with data focused professional development, but the required follow up actions and accountabilities from this professional development are not clearly defined",
+                  "sustaining": "Teacher are provided with regular opportunities for teachers to engage collaboratively with data and receive targeted professional development in the use of data. This professional development provides the basis for inquiry cycles that allow iterative  feedback loops on the application of learning to enhance student learning outcomes",
+                  "excelling": "The fostering of skills as well as the provision of time and resources to enable teachers  to confidently and accurately link data analysis to improved student learning outcomes school-wide is culturally embedded. The use of evidence-informed inquiry cycles to identify gaps in student learning, strategically adjust teaching practices  and develop an agreed plan of implementation for improvement is a key driver of continuous improvement"
+                }
+              }  // L_DCDM_DL_ProfessionalLearning
+            ],
+            evidence: []
+          }
+        ]
+      },
+      "collaborative-planning": {
+        title: "Collaborative Planning and Programming",
+        themes: [
+          {
+            title: "Collective belief and responsibility",
+            grade: "delivering",
+            rubric: [
+              {
+                selected: "pre-delivering",
+                cells: {
+                  "pre-delivering": "Improvement planning is mainly the work of school leaders",
+                  "delivering": "The school vision references collective efficacy, and school leaders encourage a sense of collective belief and responsibility for improvement. Leaders and teachers participate in planning improvement cycles.",
+                  "sustaining": "There is a clear and explicit vision that names and enacts collective efficacy as a driver of school improvement.\nLeaders actively engage in improvement cycles and create consistent structures that enable collaboration and distributed leadership\n",
+                  "excelling": "A culture of collective efficacy is deeply embedded, driving coherent, school‑wide improvement with shared ownership. Leadership is distributed, with empowered teacher‑leaders driving a culture of continuous improvement across the school"
+                }
+              },  // L_CPP_CBR_Vision
+              {
+                selected: "delivering",
+                cells: {
+                  "pre-delivering": "Leadership development is informal and dependent on individual initiative. Improvement initiatives may be isolated, short‑term, or dependent on individual champions.",
+                  "delivering": "Some staff take on leadership roles, but development is not systematic. Improvement initiatives are implemented but not consistently monitored or scaled.",
+                  "sustaining": "Leaders intentionally build the leadership capacity of others to enact, sustain, and monitor improvement. Teams collaboratively implement and monitor improvement initiatives, scaling those with demonstrated impact.",
+                  "excelling": "Leadership capacity is strong and distributed, enabling sustained improvement regardless of personnel changes. Improvement work is systematic, evidence‑driven, and results in high expectations and consistent practice across all classrooms."
+                }
+              },  // L_CPP_CBR_Leadership
+              {
+                selected: "sustaining",
+                cells: {
+                  "pre-delivering": "Curriculum materials are developed individually or cooperatively, with limited collaboration or evaluation.",
+                  "delivering": "Some collaborative development of curriculum materials occurs, but quality and consistency vary.",
+                  "sustaining": "Teams collaboratively develop and evaluate curriculum materials, adjusting and modifying as required. There is shared responsibility for quality and responsiveness to student need",
+                  "excelling": "Collaborative curriculum design is embedded, high‑quality, and continuously refined through evidence and feedback."
+                }
+              }  // L_CPP_CBR_CurriculumMaterials
+            ],
+            evidence: [
+              {
+                number: 1,
+                type: 'note',
+                date: "28.08.27",
+                text: "Teachers conduct observations of students in their classrooms, particularly year 1 students completing an assessment task.",
+                attachments: [
+                  { name: "Observation Notes", kind: "doc" },
+                  { name: "Observation Timetable", kind: "xlsx" }
+                ]
+              },
+              {
+                number: 2,
+                type: 'note',
+                date: "02.09.27",
+                text: "Placeholder second evidence entry — replace with real evidence when available. This one has no attachments, to show that case too.",
+                attachments: []
+              }
+            ]
+          },
+          {
+            title: "Shared clarity on goals and expected student progress",
+            grade: "ungraded",
+            rubric: [
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Curriculum materials and assessments are rarely shared between classes. There is minimal collaboration between teachers, so goals and expectations vary significantly",
+                  "delivering": "Curriculum materials, including assessments, are shared, and teachers collaborate using data to respond to student needs and school goals.",
+                  "sustaining": "Teams collaboratively design curriculum materials using backward‑design principles with clear learning outcomes and aligned assessments. Assessment is used to monitor progress and guide responsive teaching.",
+                  "excelling": "Curriculum materials are collaboratively designed and refined regularly. Teachers can articulate the desired outcomes for students. Assessment routines are embedded, high‑quality, and drive precise adjustments to instruction across all classrooms"
+                }
+              },  // L_CPP_SCOG_Sharing
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Teachers and leaders do not have a shared language to describe student progress, and expectations differ between classes.",
+                  "delivering": "A shared language is used to describe student progress and expectations, but consistency varies between classes and teams.",
+                  "sustaining": "A shared language of progressions and standards is used across teams to discuss student learning.",
+                  "excelling": "A whole‑school shared language of learning is deeply embedded, enabling consistent expectations and smooth transitions across year levels."
+                }
+              },  // L_CPP_SCOG_Language
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Success criteria and exemplars are sometimes used by teachers and shared with students. ",
+                  "delivering": "Teams engage in the moderation of student work against standards, but processes are not systematic across the school. Most teachers share success criteria with students, but alignment between classes may vary.",
+                  "sustaining": "Collaborative moderation of student work occurs, strengthening the shared understanding of standards. Teams co‑develop and use success criteria, exemplars, and progress goals to support student clarity.",
+                  "excelling": "Collaborative moderation of student work is systemic, rigorous, and drives continuous refinement of curriculum, assessment, and expectations. Success criteria and exemplars are collaboratively developed, student‑friendly, and used to drive student agency and differentiated support across the school."
+                }
+              }  // L_CPP_SCOG_Moderation
+            ],
+            evidence: []
+          },
+          {
+            title: "Collaborative expertise in assessment, differentiation and intervention",
+            grade: "ungraded",
+            rubric: [
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Assessment practices vary widely between teachers, with limited use of common tools or shared routines.",
+                  "delivering": "Clear school assessment guidelines are in place that guide school wide assessment and feedback practices and promote the use of data to inform student learning and monitor progress",
+                  "sustaining": "Teachers engage with assessment guidelines and collaborate when designing common assessments. They engage in planned moderation discussions use data to identify misconceptions and learning needs.",
+                  "excelling": "Assessment, moderation, and data analysis, including progress monitoring, are embedded, high‑quality. They drive precise, team‑based instructional decisions across the whole school. Teachers and leaders regularly engage in conversations about student progress "
+                }
+              },  // L_CPP_CEA_Guidelines
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Differentiation and intervention are largely individual teacher practices. Student adjustments may be tracked in curriculum materials. Tracking of targeted students is inconsistent, and intervention practices rely on individual teacher judgement.",
+                  "delivering": "Teachers use some agreed differentiation strategies, though there are few opportunities to collaborate. Intervention plans are in place, with monitoring and tracking, though follow‑up actions to inform learning design are limited and/or not shared beyond the classroom teacher.",
+                  "sustaining": "Teams collaboratively design and monitor differentiation and intervention plans, using strategies such as flexible grouping, scaffolding, and reteaching. Teams systematically track targeted students, adjust interventions promptly, and plan future support collaboratively. ",
+                  "excelling": "Differentiation and intervention are systematic, team‑driven, and consistently applied across classrooms, ensuring equitable support and challenge for all learners. Tracking, intervention, and future planning are rigorous, team‑based, and supported by collaboratively developed unit plans and materials that ensure continuity of learning across year levels. "
+                }
+              }  // L_CPP_CEA_Differentiation
+            ],
+            evidence: []
+          }
+        ]
+      },
+      "highly-effective-teaching": {
+        themes: [
+          {
+            title: "Deep Knowledge",
+            grade: "ungraded",
+            rubric: [
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Teachers may experience barriers to accessing tailored professional learning to deepen their understanding of how students learn in curriculum areas and/or expand their disciplinary knowledge. ",
+                  "delivering": "Teachers are proficient in the subject matter they teach and know the curriculum framework that underpins it and/ or typical student developmental pathways. ",
+                  "sustaining": "Teachers are highly proficient in the subject matter they teach, and are conversant with the curriculum framework that underpins it, as well as with typical student developmental pathways. ",
+                  "excelling": "Teachers are experts in the subject matter they teach, the curriculum framework that underpins it, as well as in typical student developmental pathways. "
+                }
+              },  // T_HET_DK_Access
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Teachers have few opportunities to collaborate and/ or receive feedback on their teaching practice via peer observations, mentoring or instructional coaching. Stand-alone professional learning activities are undertaken by some teachers.",
+                  "delivering": "Teachers regularly engage in professional learning activities, however, these are not necessarily aligned with school priorities and individual needs or monitored for impact.",
+                  "sustaining": "Teachers are committed to ongoing professional development and regularly participate in tailored professional learning designed to expand their disciplinary knowledge and deepen their understanding of how students learn.",
+                  "excelling": "Teachers are eager to keep up-to-date with new developments in their fields through a professional learning plan, as well as to share expertise with others within and across schools, networks, and PLCs."
+                }
+              },  // T_HET_DK_Access
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Student and/ or  school performance data is collected, but is not used to inform teacher practice. ",
+                  "delivering": "Student and school performance data is analysed, and is generally used to reflect on teacher practice.",
+                  "sustaining": "Student and school performance data is analysed, in conjunction with feedback from students and colleagues, to reflect on and refine teacher practice.",
+                  "excelling": "Student and school performance data is analysed, in conjunction with routine feedback from students and colleagues, to critically reflect on and continuously refine teacher practice."
+                }
+              }  // T_HET_DK_Access
+            ],
+            evidence: []
+          },
+          {
+            title: "Precision of Instruction (Clarity)",
+            grade: "ungraded",
+            rubric: [
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "There is a lack of clarity and consistency about what students are expected to know and be able to do.",
+                  "delivering": "In the main, teachers adopt an explicit teaching approach by reviewing previous learning and clearly communicating learning intentions and success criteria for future learning.",
+                  "sustaining": "Teachers are encouraged to adopt an explicit teaching approach in order to reduce the extraneous cognitive load placed upon students.",
+                  "excelling": "The school supports all teachers in reducing the extraneous cognitive load placed upon students through the sharing and application of explicit teaching strategies. "
+                }
+              },  // T_HET_POI_ExplicitTeaching
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "There is minimal explicit and guided instruction, limited aspirations for student progress, and little attention to individual learning needs.",
+                  "delivering": "Teachers are practised at utilising a range of explicit teaching techniques to be responsive to individual students' needs, but these may be applied inconsistently, having a limited impact on enhancing student learning outcomes across the school ",
+                  "sustaining": "Teachers are skilled at adapting a range of explicit teaching techniques to be responsive to individual student needs and enhance the learning outcomes of all students across the continuum of student learning from novice to expert",
+                  "excelling": "Teachers carefully select learning activities informed by student and school data, student feedback, and curriculum requirements to identify and address achievement gaps and establish continuous improvement goals for all students."
+                }
+              }  // T_HET_POI_Adapting
+            ],
+            evidence: []
+          },
+          {
+            title: "Learning Design",
+            grade: "ungraded",
+            rubric: [
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "The school's vision for learning design is not clearly articulated and / or well understood.",
+                  "delivering": "The school’s vision for learning design meets system and government requirements, and is generally understood.",
+                  "sustaining": "The school's vision for learning design is informed by research, responsive to student data and has been clearly communicated with the community and key stakeholders  ",
+                  "excelling": "The school's vision for learning design is evidence-based and shared by all.  The vision is rigorously informed by contemporary research and highly responsive to student data. "
+                }
+              },  // T_HET_LD_Vision
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "The planning of curriculum materials is often undertaken by individuals who work in isolation from colleagues, with a focus on the coverage of specific syllabus content requirements.  ",
+                  "delivering": "The planning of curriculum materials is limited to some collaborative efforts by teachers, with a focus on the acquisition of disciplinary knowledge that may offer some opportunity for application. ",
+                  "sustaining": "The planning of curriculum materials is collaboratively implemented by teachers, fostering collective teacher efficacy and supporting the continuity of student learning  ",
+                  "excelling": "Teachers are eager to keep up-to-date with new developments in their fields through a professional learning plan, as well as to share expertise with others within and across schools, networks, and PLCs. "
+                }
+              },  // T_HET_LD_Planning
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "A school-wide assesement framework is not evident ",
+                  "delivering": "A school-wide assessment framework does exist but is not widely-known, understood or used in the community.  If it is in use, it may be applied inconsistently.  ",
+                  "sustaining": "A school-wide assessment framework is evident and clearly observed in the planned sequencing of tasks and some evaluation of the efficacy of these materials.  ",
+                  "excelling": "Student and school performance data is analysed, in conjunction with routine feedback from students and colleagues, to critically reflect on and continuously refine teacher practice. "
+                }
+              }  // T_HET_LD_Assessment
+            ],
+            evidence: []
+          },
+          {
+            title: "Engagement",
+            grade: "ungraded",
+            rubric: [
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Teachers are sometimes optimistic about the difference they can make to student outcomes and may be open to working cooperatively to refine teaching and learning.",
+                  "delivering": "Teachers are optimistic about the difference they can make to student outcomes and take some opportunities to work cooperatively to refine teaching and learning.",
+                  "sustaining": "Teachers contribute to a sense of collective teacher efficacy, creating a culture in which students are expected to learn successfully, and teachers collaborate in the pursuit of continuous improvements to teaching and learning.",
+                  "excelling": "Teachers actively contribute to a sense of collective teacher efficacy, creating a culture in which all students are expected to learn successfully, and teachers actively collaborate in the pursuit of continuous improvements to teaching and learning. "
+                }
+              },  // T_HET_E_Culture
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Expectations for students’ progress in learning are sometimes communicated and may be reinforced at times. ",
+                  "delivering": "High expectations for students’ progress in learning are communicated but may not be consistently reinforced. ",
+                  "sustaining": "High expectations are communicated to students, outlining what students are expected to learn and be able to do. ",
+                  "excelling": "High expectations are communicated and understood by all students. Teachers explicitly outline what students are expected to learn and be able to do. "
+                }
+              },  // T_HET_E_Expectations
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Learning environments are sometimes orderly with many interruptions to planned teaching time.",
+                  "delivering": "Learning environments are mostly orderly, with some interruptions to planned teaching time. ",
+                  "sustaining": "Learning environments are orderly and predictable. A variety of routines for engagement are embedded in learning allowing students to feel safe to take risks in their learning.",
+                  "excelling": "Learning environments are orderly across the school. There is an explicit expectation that all students are actively engaged, appropriately challenged, and emboldened to take regular risks in their learning. "
+                }
+              },  // T_HET_E_Environments
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Routines for engagement are not clearly set in place. Students do not  appear to be engaged in productive learning.  ",
+                  "delivering": "Routines for engagement are generally in place and some of these may be automatic. Some students appear to be minimally engaged in productive learning. ",
+                  "sustaining": "Routines for engagement are in place and are explicitly reinforced when required. Students respond to routines with automaticity, resulting in most students being engaged. ",
+                  "excelling": "Teachers have a wide repertoire of routines for engagement that students know and respond to with automaticity."
+                }
+              }  // T_HET_E_Routines
+            ],
+            evidence: []
+          }
+        ]
+      },
+      "differentiation": {
+        themes: [
+          {
+            title: "School-wide approach to differentiation",
+            grade: "ungraded",
+            rubric: [
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "There is no documented school-wide plan for differentiation or shared vision for equitable access.",
+                  "delivering": "The school has or, is developing a school-wide plan for differentiation that has not as yet been implemented consistently across the school. ",
+                  "sustaining": "A multifaceted school-wide plan for differentiation is established and clearly documented. It is understood by all staff and guides the delivery of the curriculum.",
+                  "excelling": "The school-wide plan for differentiation is a living document that is systematically reviewed and refined. Differentiation is a core, non-negotiable value embedded in all aspects of school culture."
+                }
+              },  // T_DIF_SWD_Plan
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Teachers have limited access to shared materials, with tiered options, leaving the responsibility for differentiation solely upon the classroom teacher",
+                  "delivering": "Teachers have some access to shared materials, with tiered options, but usage varies across the school. Tiered support is reactive, often occurring only when a student is clearly struggling.",
+                  "sustaining": "Teachers have access to shared materials with tiered options. A clear framework for the application of tiered instruction is in place instruction is in place, providing a foundation for the further individualising of student instruction ",
+                  "excelling": "Teachers are able to provide high-quality and seamless, tiered support. Shared curriculum materials are  a living resource, constantly refined by data  to ensure equitable access to an appropriately high level of learning for each student "
+                }
+              },  // T_DIF_SWD_Materials
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Evidence of differentiation is limited, with instruction often following a one size fits all model. ",
+                  "delivering": "Differentiation is left to the discretion of individual teachers, with some teachers sporadically using evidence based  instructional strategies (e.g. flexible grouping, tiered tasks, etc) ",
+                  "sustaining": "Evidence-based differentiation strategies are consistently used across the school to ensure all students access high-quality instruction.",
+                  "excelling": "Highly personalised instruction is the norm. Teachers fluidly adjust content, process, and product. Evidence-based differentiation strategies  are targeted and expertly applied."
+                }
+              },  // T_DIF_SWD_Evidence
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "School wide routines and instructional practices  are inconsistent between classrooms. The school environment can feel unpredictable for vulnerable students, inhibiting their engagement with their learning. ",
+                  "delivering": "Some school-wide routines and instructional practices exist, but they are not  explicitly linked to inclusive pedagogy or supporting students to progress along a learning continuum",
+                  "sustaining": "Visible learning routines and instructional practices are documented and practiced school-wide, encouraging students to take risks in their learning through the provision of increased psychological safety. ",
+                  "excelling": "Visible learning routines and instructional routines are  embedded in everyday practice.  This develops both students and teacher self efficacy, through a clear understanding of the appropriate level of challenge and the impacts of cognitive load. "
+                }
+              },  // T_DIF_SWD_Routines
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Professional development  on differentiation is infrequent or non-existent. Teachers work in isolation regarding student adjustments. Interaction with specialist staff is rare or restricted to work around crisis management and/ or compliance. ",
+                  "delivering": "Some professional development  on differentiation is provided. Collaborative planning occurs occasionally, but the focus is more on what to teach rather than how to differentiate. Specialist staff provide advice, but it is not always integrated into the learning  design",
+                  "sustaining": "Targeted professional development  and coaching on differentiation is provided to all staff.  Scheduled, proactive co-planning sessions occur between classroom teachers  and specialist staff, to actively address  diverse learner needs  in the development of the leaning design ",
+                  "excelling": "Peer coaching and collaborative action research  on differentiation is standard, Collaboration is a  cultural norm, with specialists and teachers co-designing  and often co-delivering  instruction, ensuring that differentiated learning is  sophisticated, seamless and highly effective."
+                }
+              }  // T_DIF_SWD_ProfessionalLearning
+            ],
+            evidence: []
+          },
+          {
+            title: "Evidence collection and evidence-based decision making",
+            grade: "ungraded",
+            rubric: [
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Teachers often rely on single  high-stakes tests or teacher intuition to inform decisions. Assessment is often one-dimensional, ignoring the complexity of student ability.",
+                  "delivering": "Teachers collect both objective and subjective data,  but these  data sources are not triangulated to inform teaching and learning decisions. Decisions still often rely  on one metric.",
+                  "sustaining": "Teachers collect a comprehensive range of evidence, including data from diagnostic, formative, and summative assessments, as well as student work samples and behavioral data. This evidence is used build holistic student profiles, counter bias and inform teaching and learning decisions ",
+                  "excelling": "Teachers systematically  collect and triangulate   multiple sources of ability and achievement data. This includes incorporating  student voice and longitudinal growth data to create a 360-degree view of learning and  identify the next step for each student in their learning progression. "
+                }
+              },  // T_DIF_E_Data
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Teachers measure student progress against rigid grade-level averages rather than a subject  specific learning continuum. Learning goals are the same for everyone and success is defined by a grade rather than individual growth.",
+                  "delivering": "Teachers have access to a  subject specific learning continuum, but it is used inconsistently. Some teachers still struggle to place students accurately on this continuum. Some students have individual goals, but they are often generic and not updated frequently enough to be meaningful to the learner.",
+                  "sustaining": "Teachers accurately and consistently use a subject specific  learning continuum to identify where every student is currently at and what their next steps for growth are. Specific, data-backed growth targets are established for each student. These targets are adaptable and focus on  personal best progress.",
+                  "excelling": "Teachers use a subject specific  learning continuum dynamically. It serves as the primary tool for tracking progress over time, ensuring no student's growth stalls regardless of their starting point. Students are partners in setting, tracking, and celebrating growth targets, fostering a deep sense of agency and achievement."
+                }
+              },  // T_DIF_E_Continuum
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Teachers deliver new information in their lesson regardless of whether students have the foundational schemas on which to build new information. ",
+                  "delivering": "Teachers provide some adjustments based on evidence  if the majority of the class struggles, but the cognitive load is often too high for some and too low for others.",
+                  "sustaining": "Teachers intentionally adjust instructional design based on evidence. They  explicitly anchor new content to what the data shows students already know.",
+                  "excelling": "Teachers are highly responsive to evidence of student learning, student achievement and student ability.  They use this evidence to manage cognitive load, assess student placement on a learning continuum to ensure that each student is positioned to experience  optimal learning."
+                }
+              },  // T_DIF_E_Adjustments
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Teacher checking for understanding is characterised by low challenge questions   (e.g., \"Does everyone understand?) ",
+                  "delivering": "Teachers use some checking for understanding practices(e.g., thumbs up/down), but the pace, content and complexity  of the lesson remains largely the same for the whole group.",
+                  "sustaining": "Teachers use a range of checking for understanding practices (e.g., mini-whiteboards, exit tickets) is used to pivot, and adjust the content, pace and/ or complexity according to the individual needs of students. ",
+                  "excelling": "Teachers seamlessly integrate checking for understanding practices into every lesson, allowing them to readily read the room, and respond to individual students  by the application of necessary refinements   without interrupting the flow of the lesson."
+                }
+              }  // T_DIF_E_CheckingForUnderstanding
+            ],
+            evidence: []
+          },
+          {
+            title: "Strengths-Based Inclusive Culture",
+            grade: "ungraded",
+            rubric: [
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "The school has no  formal process to identify non-academic strengths or personal interests. Teacher instruction ignores individual interests or talents. All students follow the same path regardless of their natural inclinations or strengths.",
+                  "delivering": "The school uses occasional student interest surveys, but the information gathered is rarely used to influence instructional design. Teachers occasionally allow for student choice in their learning, but the core instruction does not strategically use student strengths to bridge learning gaps, or enhance engagement",
+                  "sustaining": "The school systematically identifies diverse student strengths (cognitive, creative, social, physical and character) using valid tools and observations. Teachers purposefully design learning opportunities that allow students to use and develop  their strengths",
+                  "excelling": "The school’s strengths identification process is a continuous, collaborative process involving students, families, and teachers, creating a comprehensive \"strengths profile\" for every learner. Teachers design learning to leverage individual strengths  as the primary vehicle for engaging with new or difficult content."
+                }
+              },  // T_DIF_IC_Process
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Learning is teacher-directed with little to no student input. Student choice is seen as a reward for finishing work early rather than a tool for engagement.",
+                  "delivering": "Teachers  offer students  simple choices in relation to their learning,  but the cognitive demand remains low. Student agency is allowed  in “fun” activities but absent in core learning.",
+                  "sustaining": "Teachers regularly provide students  with the opportunity, at the appropriate time within the teaching and learning cycle, to choose how they can best demonstrate their understanding of a learning intention, fostering a sense of ownership and curiosity.",
+                  "excelling": "Teachers build space for student agency and voice into their learning design. Students help to co-design learning pathways and can articulate how their choices, and their strengths allow them to meet and exceed personal learning goals. "
+                }
+              },  // T_DIF_IC_Choice
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "The school’s celebration of students is reserved for high achievement or \"passing\" marks. Progress from a low starting point is rarely acknowledged. Student achievements are recognized mainly via traditional grades or sporting trophies.",
+                  "delivering": "The school acknowledges student progress, but the focus remains on the achievement of standards and grades rather than celebrating individual growth milestones. The showcasing of student work is limited to high-achievers or specific events.",
+                  "sustaining": "The school celebrates excellent progress for all. Recognition is given to students who demonstrate significant growth from their unique, individual  starting points. The showcasing of student work promotes success in relation to  growth and diverse abilities. ",
+                  "excelling": "The school redefines excellence as the maximization of individual potential. Success stories highlight diverse pathways and the overcoming of significant barriers.  The understanding and acceptance of the diversity of background, interest and ability across the student body  is celebrated as instructive to the holistic development of each individual student within the school community. "
+                }
+              }  // T_DIF_IC_Celebrate
+            ],
+            evidence: []
+          },
+          {
+            title: "High Challenge and High Support",
+            grade: "ungraded",
+            rubric: [
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Teacher expectations are inconsistent. They are static, and personal best is not defined or tracked for individual students.",
+                  "delivering": "Teachers promote high expectations. But these high expectations are not uniform and the link to individual students has not been made. The alignment with instructional practice may not be clear. ",
+                  "sustaining": "Teachers support a  visible culture of high expectations for all students. Staff believe and demonstrate that every student can achieve excellence with the right support. Most students work at their proximal zone of development, with clear pathways for every student to reach their personal best.",
+                  "excelling": "The culture is aspirational and relentless. The school community celebrates rigorous intellectual risk-taking at all levels. Every student, regardless of their starting point, engages in appropriately challenging tasks that are developmentally adjusted to ensure growth and agency."
+                }
+              },  // T_DIF_HCS_Expectation
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Teacher adjustments  to teaching and learning are minimal and usually involve reducing, or increasing,  the volume of work rather than reducing or increasing the pace, content  and/ or  complexity.",
+                  "delivering": "Teacher adjustments  to teaching and learning are documented but may lack the high challenge element, focusing more on compliance than on assisting students to achieve their learning goals. ",
+                  "sustaining": "Teacher adjustments  to teaching and learning  are proactive, integrated and specifically designed to allow students with varying  needs to meet their learning goals. ",
+                  "excelling": "Teacher refinements  to teaching and learning  are seamless and sophisticated, ensuring  that excellence for individual students is defined and reachable "
+                }
+              },  // T_DIF_HCS_Adjustments
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Teachers place students in static, long-term groups. These groups rarely change, leading to fixed mindsets and predictable outcomes.",
+                  "delivering": "Teachers use flexible grouping occasionally, but it is usually based only on reading or math levels rather than interest or specific skill gaps.",
+                  "sustaining": "Teachers purposefully use flexible groupings and change frequently based on assessment data. They  mix interest-based and readiness-based groups depending on the goals of the lesson ",
+                  "excelling": "Teachers use flexible groupings regularly and dynamically. Students move fluidly between groups as they master specific skills, and they understand that their group placement is a temporary support in response to their needs and is  not a label."
+                }
+              },  // T_DIF_HCS_Grouping
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Teacher instruction is either overly discovery-based without guidance or lecture-heavy without scaffolds. Cognitive load is high, leading to student frustration or disengagement. The initial phases of the gradual release of responsibility are skipped or moved through too quickly resulting low student self efficacy ",
+                  "delivering": "Teachers use evidence based methods of instruction such as  worked examples sporadically, or use things such as scaffolds in a static rather than as adaptive or faded over time according to student need. The gradual release of responsibility is recognisable in some classrooms, but is not school wide practice.",
+                  "sustaining": "Teachers consistently use evidence based methods of instruction. Methods  such as worked examples and adaptive scaffolds are planned into units to manage cognitive load during the acquisition of new, complex skills, and are adjusted according to student needs. An appropriate amount of time is dedicated to guided and collaborative practice before students work independently.",
+                  "excelling": "Teachers expertly use evidence based methods of instruction to respond to student needs in real-time. Teachers know exactly when to step back or step in, ensuring students transition to independence only when they have the confidence and competence to succeed."
+                }
+              }  // T_DIF_HCS_Evidence
+            ],
+            evidence: []
+          }
+        ]
+      },
+      "intervention": {
+        themes: [
+          {
+            title: "Data-Informed Practices: Identification, Intervention, Monitoring and Review",
+            grade: "ungraded",
+            rubric: [
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Data and intervention are loosely connected. Data collection occurs inconsistently or relies on a limited range of information sources. Diagnostic and screening assessments may be irregular, delayed, or not systematically analysed. Student needs are often identified after concerns become significant rather than through proactive monitoring. ",
+                  "delivering": "Systems for collaborative data analysis are in place. Multiple data sources, including academic, behavioural, and well-being data, inform targeted interventions. Some teachers and leaders collaborate to design targeted instruction, assessment, and feedback cycles, drawing on input from students, parents, and allied professionals where required.",
+                  "sustaining": "Systems for collaborative data analysis are established. Many staff members are trained to identify specific student needs using multiple data sources. Teachers and leaders regularly collaborate to design research-informed Tier 2 and Tier 3 interventions with assessment and feedback cycles based on real-time data, drawing on input from students, parents, staff, and allied professionals. School leadership analyses data trends to guide decisions about funding, staffing, timetabling, and targeted professional learning.",
+                  "excelling": "Data analysis is a professional norm and drives rapid, precise, and proportionate instructional response across all tiers. Comprehensive data sources, including academic, behavioural, wellbeing, communication, and functional learning data, enable proactive identification of need. Intervention design draws systematically on input from students, parents, staff, and allied professionals. Leadership uses data strategically to inform resourcing, staffing, and professional learning that sustains and scales impact."
+                }
+              },  // T_INT_DIP_Connection
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Entry and exit criteria for intervention programs are unclear. Students and parents are sometimes involved in goal-setting, and monitoring and reporting on progress may be irregular. There is limited communication with families about interventions.",
+                  "delivering": "Intervention entry and exit criteria are defined and data informed. Processes for progress monitoring are in place. Student goal-setting and success criteria are used and families receive communication about interventions and student progress.",
+                  "sustaining": "Student goal-setting is embedded in daily practice; students can articulate their goals, progress, and next steps. Monitoring is frequent and ensures timely movement between tiers, supported by systematic tracking of intervention fidelity, including timetabling, attendance, and adherence to program design. Families receive regular updates on student progress, interventions in place, and practical strategies to support learning at home.",
+                  "excelling": "Students demonstrate strong ownership of their growth, co-constructing learning goals, success criteria, and next steps as part of daily practice. Monitoring is agile and continuous, with prompt exit and prevention built into practice. Intervention fidelity is rigorously maintained and continuously refined. Clear, accessible communication with families includes regular progress updates and opportunities for feedback and ongoing collaboration"
+                }
+              }  // T_INT_DIP_Entry
+            ],
+            evidence: []
+          },
+          {
+            title: "Multi-Tiered Systems of Support (MTSS)",
+            grade: "ungraded",
+            rubric: [
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Students who require support have learning differentiated, and some students are withdrawn for small group intervention or 1-1 support based on diagnostic assessment/screeners. ",
+                  "delivering": "The MTSS model is used in the school. Research-validated diagnostic tools and programs are used. Staff are trained in their use.",
+                  "sustaining": "The MTSS is well defined in the school and is articulated clearly in the school documentation for all stakeholders. Research-validated programs and diagnostic tools are selected, and staff are provided with ongoing training in their use.",
+                  "excelling": "The MTSS is well defined in the school and is articulated clearly in school documentation and communicated to all stakeholders. Research-validated programs and diagnostic tools are selected, and staff are provided ongoing training in their use and monitored to ensure fidelity of implementation."
+                }
+              },  // T_INT_MTSS_Model
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Tier 2 and 3 intervention programs are in place, though they may not align with tier 1 instruction; rather, they are a more general remediation. The frequency and duration of intervention programs do not adhere to what evidence says works best. ",
+                  "delivering": "Tier 2 and 3 interventions with the frequency and duration required by the research-based program. There is a deliberate focus on strengthening specific skills. Tier 2 and 3 interventions are aligned to Tier 1 instruction. ",
+                  "sustaining": "Tier 2 and 3 interventions are delivered at the frequency and duration specified by the evidence-based program and are targeted to identified areas of skill development. High-intensity supports operate as seamless extensions of Tier 1 instruction, with leaders proactively allocating specialist expertise to students with the greatest levels of need. Teachers consistently implement interventions, ensuring the intensity, frequency, and duration of support are aligned to student learning needs. ",
+                  "excelling": "Tier 2 and Tier 3 interventions are implemented with fidelity to evidence-based programs and are aligned to identified learning priorities. High-intensity supports are fully integrated within the school's multi-tiered system of support, functioning as seamless extensions of Tier 1 instruction. Leaders strategically deploy specialist expertise and resources based on ongoing analysis of student data, ensuring timely and responsive intervention. Interventions are highly coordinated across staff, resulting in a coherent, sustainable, and equitable support framework for all learners. "
+                }
+              }  // T_INT_MTSS_T2T3
+            ],
+            evidence: []
+          },
+          {
+            title: "Explicitly Managed Cognitive Load",
+            grade: "ungraded",
+            rubric: [
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Staff are building an understanding of cognitive architecture. Strategies to manage cognitive overload, including explicit instruction and gradual release of responsibility, are used inconsistently.",
+                  "delivering": "Staff have some knowledge of cognitive architecture and use some strategies to manage cognitive overload during intervention.",
+                  "sustaining": "Staff demonstrate sound knowledge of cognitive architecture and use strategies including gradual release of responsibility as well as sequencing and chunking strategies. Teachers also use modelling, worked examples, and content chunking to prevent cognitive overload during intervention.",
+                  "excelling": "Staff demonstrate extensive knowledge of cognitive architecture and use strategies, including gradual release of responsibility as well as sequencing and chunking strategies with precision. Teachers also consistently use explicit modelling, worked examples, and content chunking to optimise working memory and effectively prevent cognitive overload during intervention. "
+                }
+              },  // T_INT_MCL_Knowledge
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Some scaffolds and checks for understanding are used. Instruction may include non-essential activities and scaffolds are not systematically faded.",
+                  "delivering": "Checks for understanding and \"active response\" techniques are being embedded into the instruction. Most intervention sessions are also stripped of non-essential activities, and most scaffolding is faded as students achieve cognitive mastery.",
+                  "sustaining": "Checks for understanding and \"active response\" techniques are routine. Instruction is also stripped of non-essential activities, and scaffolding is faded as students achieve mastery.",
+                  "excelling": "High-frequency checks for understanding and \"active response\" techniques and immediate explicit feedback are a routine part of the instruction. Instruction is also stripped of non-essential activities, and scaffolding is deliberately faded to support students in achieving cognitive mastery."
+                }
+              }  // T_INT_MCL_CheckUnderstanding
+            ],
+            evidence: []
+          },
+          {
+            title: "Early Identification and Proactive Response",
+            grade: "ungraded",
+            rubric: [
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Screening processes are documented; however, consistent enactment has not yet been achieved. Risk identification may occur after gaps have widened. Teacher observation of foundational precursors to success is informal and not yet systematic.",
+                  "delivering": "Assessment and screening schedules are documented. Teachers observe foundational precursors such as communication skills, listening, fine motor skills, and foundational academic skills, particularly in the earliest years. Some lead indicators, such as attendance and engagement, are monitored.",
+                  "sustaining": "Assessment and screening schedules are documented and systematically enacted. Teachers and leaders monitor a range of lead data indicators, including attendance patterns, behavioural incidents, wellbeing concerns, assessment trends, and engagement, to proactively identify students at risk before target benchmarks are missed.",
+                  "excelling": "Early identification is proactive and predictive, using assessment and screening tools. Systematic monitoring of lead indicators, combined with skilled teacher observation of foundational precursors, ensures all students are tracked and monitored for timely, responsive instruction"
+                }
+              },  // T_INT_EI_Screening
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "School resources are allocated to support student needs. Support is largely reactive rather than preventative. Interventions may tend to be general rather than targeted to strengthen specific skills. ",
+                  "delivering": "Data informs the allocation of resources to support student needs. Interventions are targeted to strengthen specific skills identified through screening and assessment. There may be delays between data collection and intervention.",
+                  "sustaining": "A range of data is used to allocate resources, and organisational structures enable targeted and effective intervention. Interventions address specific skills identified through screening, diagnostic, and formative assessments, with a timely turnaround between data collection and response.",
+                  "excelling": "Support is mobilised immediately upon the identification of a gap because school resources and structures have been designed to be responsive and agile. Targeted interventions are matched to a student’s immediate learning needs, ensuring a rapid, proportionate response rather than offering generalised support. "
+                }
+              },  // T_INT_EI_Data
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Transition planning and protocols between grades and schools are not documented. Family and external engagement is informal. Student profiles may be incomplete, missing a wide range of indicators.",
+                  "delivering": "Transition planning and protocols are documented and used by staff to guide practice. Some communication includes families and external partners. Student profiles are beginning to incorporate broader context beyond academic data.",
+                  "sustaining": "Transition planning and protocols are enacted by staff and understood by the wider community. Families and allied health professionals engage in early intervention planning at the first signs of vulnerability, ensuring that student profiles are comprehensive, informed, and multidimensional. Lead indicators such as attendance and wellbeing are considered when identifying and addressing emerging barriers to learning  The school has processes to respond to attendance and wellbeing concerns.\n",
+                  "excelling": "Transition planning and protocols are robust and seamless. Collaborative home-school partnerships are embedded and preventative in nature, with a holistic context from families and external allied health professionals informing every student's profile. Lead indicators such as attendance and wellbeing are integrated to identify and address emerging barriers to learning before they impact student achievement and contribute to compounding disadvantage. "
+                }
+              }  // T_INT_EI_Transition
+            ],
+            evidence: []
+          }
+        ]
+      },
+      "know-engage-learner": {
+        themes: [
+          {
+            title: "Formation of the Whole Person",
+            grade: "ungraded",
+            rubric: [
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Academic outcomes dominate school priorities with minimal integration of spiritual, creative, moral, relational, or physical development. Cura personalis is unacknowledged or restricted to ad-hoc student wellbeing support.",
+                  "delivering": "Whole-person development is recognised by individual teachers, but whole-school practices reflecting cura personalis are inconsistently applied. ",
+                  "sustaining": "Leaders and teachers intentionally collaborate to ensure wellbeing, learning, faith formation, and character development are treated as interconnected dimensions of growth. ",
+                  "excelling": "A humanising education grounded in cura personalis is deeply embedded across all school, classroom, and community practices, nurturing the unique dignity and potential of every student. "
+                }
+              },  // L_KEL_FWP_CuraPersonalis
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Formation experiences beyond classroom tasks are absent or disconnected from student growth and ethical reflection. ",
+                  "delivering": "Spiritual, moral, creative, and physical growth opportunities exist sporadically across classrooms. ",
+                  "sustaining": "Whole-school practices reflecting cura personalis ensure every student is known, cared for, and supported. ",
+                  "excelling": "Staff and leaders consistently articulate and demonstrate the synergy between academic achievement, faith formation, character, and wellbeing. "
+                }
+              },  // L_KEL_FWP_Formation
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Students have few opportunities to identify or nurture their individual gifts.",
+                  "delivering": "Opportunities for students to identify gifts, reflect, or engage in service are available but not systematically integrated into the curriculum or school culture.",
+                  "sustaining": "Learning experiences systematically foster student reflection, ethical decision-making, and service opportunities aligned with personal strengths.",
+                  "excelling": "Students routinely exercise agency in ethical decision-making, service, and self-reflection as young people of wisdom, hope, and integrity."
+                }
+              }  // L_KEL_FWP_StudentAgency
+            ],
+            evidence: []
+          },
+          {
+            title: "Knowing the Learner Through Data and Evidence-Informed Practice",
+            grade: "ungraded",
+            rubric: [
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Data collection is minimal, disjointed, or relies predominantly on anecdotal assumptions and single-point summative marks. ",
+                  "delivering": "Data is collected periodically across assessment and attendance, but analysis occurs in isolation or relies on individual initiative.",
+                  "sustaining": "Multiple sources of evidence (learning, wellbeing, attendance, engagement) are regularly analysed by teams to identify trends and guide cohort and classroom decisions. ",
+                  "excelling": "Comprehensive, multi-faceted evidence systems are embedded seamlessly across all levels to deeply know each learner's strengths, needs, and aspirations. "
+                }
+              },  // L_KEL_KTL_Collection
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Teachers rarely analyse assessment, wellbeing, or attendance data to inform classroom instruction or intervention. ",
+                  "delivering": "Some teachers use evidence to identify learning gaps, but responsive instruction, intervention pathways, and student voice remain inconsistent across cohorts and subjects. ",
+                  "sustaining": "Teachers explicitly articulate each student's current achievement, growth, and next steps. ",
+                  "excelling": "Collaborative data analysis routinely drives continuous evidence-informed practice, precise differentiation, and multi-tiered systems of support (MTSS). "
+                }
+              },  // L_KEL_KTL_Analysis
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Student voice is absent in decision-making, and clear next steps for student learning and growth are ill-defined.",
+                  "delivering": "Teachers occasionally articulate student achievements and next steps.",
+                  "sustaining": "Learning, intervention, and enrichment are systematically aligned to student needs, with student voice meaningfully informing school improvements.",
+                  "excelling": "Student voice is a pervasive driver of learning design, wellbeing initiatives, and whole-school strategic planning."
+                }
+              }  // L_KEL_KTL_StudentVoice
+            ],
+            evidence: []
+          },
+          {
+            title: "Belonging Through Relationships and Community",
+            grade: "ungraded",
+            rubric: [
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Learning environments lack consistent expectations, routines, or inclusive strategies, leading to variable levels of safety and engagement. ",
+                  "delivering": "Positive relationships exist, but high expectations and orderly classroom routines are applied unevenly across staff. ",
+                  "sustaining": "A strong culture of trust, mutual respect, and care is evident across the school, fostering student safety, belonging, and connection. ",
+                  "excelling": "Pervasive, highly positive relationships create a deeply inclusive and supportive culture where every student feels known, valued, and safe. "
+                }
+              },  // L_KEL_B_Culture
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Positive relationships are ad-hoc, and student belonging is low. ",
+                  "delivering": "Classrooms are generally safe, but strategies to maintain high cognitive demand and active participation vary. ",
+                  "sustaining": "High expectations for learning and behavior are consistently supported by orderly routines and high cognitive demand. ",
+                  "excelling": "High expectations paired with high support are embedded in all learning environments, maximising learning time and participation. "
+                }
+              },  // L_KEL_B_Demand
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Student voice is rarely sought, and family engagement is reactive or administrative rather than educational.",
+                  "delivering": "Student voice is occasionally sought, and family partnerships occur mainly around scheduled reporting cycles.",
+                  "sustaining": "Student voice is routinely listened to and acted upon, and families are active partners in student learning and formation.",
+                  "excelling": "Student voice actively shapes school culture and decision-making, while deep partnerships with families and the wider community support holistic flourishing."
+                }
+              }  // L_KEL_B_Voice
+            ],
+            evidence: []
+          },
+          {
+            title: "Aspiration, Agency and Purpose",
+            grade: "ungraded",
+            rubric: [
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Goal setting is rarely practiced or limited to teacher-assigned targets without student input. ",
+                  "delivering": "Goal setting occurs sporadically, but goals are not consistently monitored or aligned with current student attainment levels. ",
+                  "sustaining": "Students regularly set appropriately challenging growth goals and systematically monitor their own progress using feedback and reflection. ",
+                  "excelling": "Student agency and self-efficacy are fully embedded; learners independently articulate, monitor, and adapt ambitious growth goals aligned with their aspirations. "
+                }
+              },  // L_KEL_AAP_Goals
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Students demonstrate low ownership, self-monitoring, or growth mindset, often viewing ability as fixed. ",
+                  "delivering": "Some students articulate growth strategies and exhibit resilience, but growth-mindset principles are inconsistently fostered across classrooms. ",
+                  "sustaining": "A growth mindset is cultivated school-wide, encouraging perseverance, effort, and resilience through setbacks. ",
+                  "excelling": "A growth-oriented disposition is pervasive, with students viewing effort, challenge, and feedback as continuous opportunities to learn. "
+                }
+              },  // L_KEL_AAP_Ownership
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Learning is seen in isolation, with minimal connection to personal purpose, character formation, service, or future aspirations.",
+                  "delivering": "Connections between learning, vocation, and service are made occasionally.",
+                  "sustaining": "Structured opportunities enable students to articulate how learning connects to their aspirations, character formation, and service to society.",
+                  "excelling": "Students consistently exercise wise judgement, integrity, and personal responsibility, connecting their growth to a life of meaning, service, and contribution."
+                }
+              }  // L_KEL_AAP_Students
+            ],
+            evidence: []
+          }
+        ]
+      },
+      "safe-supportive-environment": {
+        themes: [
+          {
+            title: "Inclusive School Culture",
+            grade: "ungraded",
+            rubric: [
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "There is minimal evidence of strategic planning to develop an inclusive school culture.",
+                  "delivering": "There is some evidence of strategic planning to develop an inclusive school culture, though it may be applied and monitored inconsistently",
+                  "sustaining": "The school engages in whole-school strategic planning and monitoring to develop an inclusive school culture. This is clearly reflected in policies, the curriculum, communication, and practices such as school celebrations.",
+                  "excelling": "Whole-school strategic planning sustains inclusion as a cultural norm. Feedback and monitoring structures are deeply embedded in whole-school practices including curriculum, celebrations and communications."
+                }
+              },  // L_SSE_ISC_StrategicPlanning
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Few established procedures support ongoing relationships between staff, students, parents, and/or the parish.",
+                  "delivering": "Some established procedures support ongoing relationships between staff, students, parents, and/or the parish, though they are inconsistently applied",
+                  "sustaining": "Processes and procedures that promote respectful, fair and dignified relationships between staff, students, parents, and the parish are in place and monitored for effectiveness.",
+                  "excelling": "Processes and procedures that promote respectful, fair, and dignified relationships between staff, students, parents, and the parish are well established, maintained, and monitored for effectiveness."
+                }
+              },  // L_SSE_ISC_Procedures
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "There are limited processes in place to gather information about student strengths, interests, perspectives, and needs.",
+                  "delivering": "There are some processes in place to gather information about student strengths, interests, perspectives, and needs, but they are not consistently applied and may only represent a small sector of the student population. ",
+                  "sustaining": "Processes are in place to gather information about students' strengths, interests, and needs. Student voice is welcomed, and opportunities are provided for all students to contribute to decisions.",
+                  "excelling": "Well established and systematic school-wide processes are embedded, allowing schools to actively know students' strengths, interests, and needs. The perspectives of all groups of students are intentionally sought and used for genuine influence."
+                }
+              },  // L_SSE_ISC_GatherInformation
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Community stakeholders and external experts are rarely engaged to support students.",
+                  "delivering": "The involvement of community stakeholders or experts is limited. Staff capacity is sometimes supported through external input. ",
+                  "sustaining": "Relationships exist with community stakeholders and/or experts who help to inform decisions, develop practice, and build staff capacity.",
+                  "excelling": "Ongoing partnerships with a diverse range of community stakeholders and/ or experts with specialised skills and knowledge who can help to inform decisions, enrich practice, and build staff capacity to create long-term impact."
+                }
+              }  // L_SSE_ISC_Community
+            ],
+            evidence: []
+          },
+          {
+            title: "Predictability and consistency",
+            grade: "ungraded",
+            rubric: [
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "School expectations, including rules and routines, are not in place, nor are they communicated to staff, students, and parents.",
+                  "delivering": "School expectations, including rules and routines, are in place. However, they are not explicitly taught nor systematically implemented across the school.",
+                  "sustaining": "Schoolwide expectations, including rules and routines, are clearly communicated to the  whole school community. They are consistently applied by most staff, and there is a process in place to track and monitor their effectiveness.",
+                  "excelling": "Schoolwide expectations, including rules and routines, are well established and are consistently applied by all staff. Data is used to inform the ongoing refinement of schoolwide expectations."
+                }
+              },  // L_SSE_PC_Expectations
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Management of student behaviours is left to a teacher's/staff discretion, and there is a reliance on reactive responses aimed at reducing negative behaviours",
+                  "delivering": "Staff know and implement some evidence-informed strategies to promote positive behaviour and reduce negative behaviour. These strategies may be inconsistently utilised, resulting in a reliance on reactive responses aimed at reducing negative behaviour",
+                  "sustaining": "Staff consistently implement evidence-informed strategies to promote positive behaviour and reduce negative behaviour.",
+                  "excelling": "Staff consistently and effectively implement schoolwide, evidence-informed strategies to promote positive behaviour and minimise negative behaviour."
+                }
+              },  // L_SSE_PC_Consistency
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "There is limited consideration of processes to promote safety and mitigate risk in buildings, classrooms and outdoor spaces.",
+                  "delivering": "A process exists to monitor potential risk in buildings, classrooms, and outdoor spaces, but it is not well implemented by all staff.",
+                  "sustaining": "An effective process exists to monitor and minimise potential risk in buildings, classrooms, and outdoor spaces. This is consistently implemented by staff.",
+                  "excelling": "A comprehensive suite of processes and practices are effectively monitored and maintained to mitigate risk and promote a sense of safety and security for all. This includes the design of buildings, classrooms, and outdoor spaces."
+                }
+              },  // L_SSE_PC_Risk
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Professional learning is compliance-driven, but has limited impact in developing staff application of policies and procedures.",
+                  "delivering": "Professional learning is in place and is supporting the development of a more consistent application of policies and procedures.",
+                  "sustaining": "Ongoing professional learning supports staff to apply policies and procedures consistently and with confidence.",
+                  "excelling": "High-quality professional learning is implemented in a way that provides ongoing support to all staff, so they are able to apply policies and procedures consistently and with confidence."
+                }
+              }  // L_SSE_PC_ProfessionalLearning
+            ],
+            evidence: []
+          },
+          {
+            title: "Responsiveness",
+            grade: "ungraded",
+            rubric: [
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Data collection and analysis is minimal. Decisions about student needs are often based on anecdotal evidence rather than systematic analysis.",
+                  "delivering": "Some student data is collected and analysed. However, the use of data  to guide practice is inconsistent.",
+                  "sustaining": "There is a widely understood plan for the regular collection and analysis of whole school data to identify and respond to student needs.",
+                  "excelling": "Data is systematically collected, analysed, and triangulated to provide deep insights into the needs of all students. Patterns and trends are identified and responded to, driving continuous improvement."
+                }
+              },  // L_SSE_R_Collection
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Support for at-risk students is limited and/or inconsistent. Interventions are rarely monitored or reviewed and show little alignment with evidence-informed practices.",
+                  "delivering": "Targeted support for at-risk students exists but is limited in scope and/or inconsistently applied. Monitoring may take place, however, reviews of interventions are occasional and not always evidence- informed.",
+                  "sustaining": "Targeted interventions for at-risk students are in place, evidence- informed, monitored and regularly reviewed for effectiveness.",
+                  "excelling": "Evidence-informed interventions are personalised, proactive, and systematically monitored and evaluated for impact. Interventions are agile and adaptive, reflecting changes in need."
+                }
+              },  // L_SSE_R_AtRisk
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "There is no consistent approach to the avenues students use to raise concerns. Issues that are raised may be addressed inconsistently.",
+                  "delivering": "Students have documented avenues to raise concerns, that are shared with staff, students and parents. Responsiveness to issues raised may be inconsistent, and left to individuals e.g. response time and method, manner of response.",
+                  "sustaining": "Students have clear, documented and well understood avenues to raise concerns, which are acknowledged and acted upon in a consistent way.",
+                  "excelling": "Students are empowered with multiple, trusted channels to express concerns and influence decisions, fostering a shared whole-school responsibility for wellbeing."
+                }
+              },  // L_SSE_R_Documentation
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Engagement with families and external stakeholders is minimal, reactive, or focused mainly on compliance rather than holistic support.",
+                  "delivering": "Families and external stakeholders are engaged in a limited way, often reactively rather than proactively. Collaboration may not yet be systematic.",
+                  "sustaining": "Families and external stakeholders are actively engaged to support a holistic and proactive response to student needs.",
+                  "excelling": "Families and external stakeholders are valued partners, contributing to a coordinated, wraparound approach to student support. Data is collected and monitored for effectiveness and used for ongoing planning."
+                }
+              },  // L_SSE_R_Families
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Professional learning related to student support is rare resulting in staff having limited capability and inconsistent practice.",
+                  "delivering": "Professional learning related to student support is evident, but opportunities can be sporadic.  Staff capability and confidence vary widely.",
+                  "sustaining": "Staff engage in regular, targeted professional learning that builds capability and confidence in implementing support strategies.",
+                  "excelling": "Ongoing, embedded professional learning ensures staff expertise is deep, collective, and continually refined, resulting in confident, consistent support for all students."
+                }
+              }  // L_SSE_R_ProfessionalLearning
+            ],
+            evidence: []
+          }
+        ]
+      },
+      "assessment-feedback": {
+        themes: [
+          {
+            title: "Feedback",
+            grade: "ungraded",
+            rubric: [
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "The processes and routines relating to the provision of student feedback are inconsistent and unclear.",
+                  "delivering": "Teachers are encouraged to provide feedback that is peer-mediated, but is often developed at an individual level.",
+                  "sustaining": "Teachers provide feedback that is developed as part of a moderation process.",
+                  "excelling": "Teachers routinely provide feedback that is peer-mediated and developed collaboratively as part of a moderation process."
+                }
+              },  // L_AF_F_ProvidingFeedback
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Teacher feedback is largely evaluative and demonstrates a limited understanding of the purpose of assessment, syllabus outcomes, and standards.",
+                  "delivering": "Teacher feedback is instructive and demonstrates a developing understanding of syllabus outcomes and standards.",
+                  "sustaining": "Teacher feedback is both evaluative and descriptive, demonstrating an understanding of syllabus outcomes and the related standards.",
+                  "excelling": "Teacher  feedback is both evaluative and descriptive, demonstrating a synthesised understanding of syllabus outcomes and the related standards."
+                }
+              },  // L_AF_F_Use
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Teacher feedback is inconsistent and lacks validity and/ or reliability.",
+                  "delivering": "Teacher feedback is often timely, focused on student achievement, and may point students towards the next steps required in order to progress their learning.",
+                  "sustaining": "Teacher feedback is timely, focused on student process and effort, and points students towards the next step, establishing that further progress is possible.",
+                  "excelling": "Teacher feedback is always timely, focused on student process and effort. It encourages student self-regulation by guiding students toward the next step, and thereby building confidence that further progress is possible. "
+                }
+              },  // L_AF_F_Quality
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Teacher feedback lacks alignment with learning objectives.",
+                  "delivering": "Teachers provide feedback with reference to learning objectives that have been shared with students.  ",
+                  "sustaining": "Teacher feedback is clearly aligned with learning objectives. Teacher's encourage student engagement with the feedback by making it clear what is being looked for as evidence of learning, whilst differentiating between levels of response. ",
+                  "excelling": "Teacher feedback is aligned with well-considered learning objectives, facilitating student engagement with, and the internalisation of feedback This feedback provides a clear line of sight by making explicit what is being looked for as evidence of successful learning, whilst differentiating between levels of response. "
+                }
+              },  // L_AF_F_Alignment
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Exemplars are not used as part of the feedback process.",
+                  "delivering": "Feedback sometimes includes exemplars as part of the feedback process. However, they are not unpacked and aligned with the marking criteria and feedback.",
+                  "sustaining": "Feedback is supported through the use of exemplars. This develops student self and peer assessment, supporting self-regulation in order to achieve desired learning goals and standards.",
+                  "excelling": "Feedback is routinely enhanced through the intentional analysis of exemplars. This enables student peer and self-assessment, promoting self-regulation in order to achieve desired learning goals and standards."
+                }
+              },  // L_AF_F_Exemplars
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "There are few opportunities for students to receive, reflect on, and act on feedback in relation to their learning.",
+                  "delivering": "There are some opportunities to receive, reflect on, and action feedback in relation to their learning. Students understand learning goals and know when and why assessment is undertaken. ",
+                  "sustaining": "Students' agency is fostered through the provision of regular opportunities to receive, reflect on, and action feedback in relation to their learning.",
+                  "excelling": "Student agency is developed through embedded processes for receiving, reflecting, and actioning feedback as part of the teaching and learning cycle."
+                }
+              }  // L_AF_F_Agency
+            ],
+            evidence: []
+          },
+          {
+            title: "Assessment Design",
+            grade: "ungraded",
+            rubric: [
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Teachers have limited familiarity with NESA requirements in relation to the design and implementation of assessment.",
+                  "delivering": "Teachers are proficient in the design and implementation of assessments that meet all NESA requirements.",
+                  "sustaining": "Teachers are highly proficient in the design and implementation of assessments that enact the curriculum. There is a clear and sustained application of the relevant syllabus and the related performance standards.",
+                  "excelling": "Teachers are experts in the design and implementation of assessments that effectively enact the curriculum. There is  an explicit and methodical application of the relevant syllabus and the related performance standards."
+                }
+              },  // L_AF_AD_Requirements
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "The development of assessment tasks often occurs at the level of the individual teacher, with there being limited opportunities for collaboration.",
+                  "delivering": "There are emerging structures and processes that support teachers to design, develop, and/ or review assessment tasks collaboratively",
+                  "sustaining": "There are well-established structures and processes within the school that support collaborative design, development, and review of assessment tasks.",
+                  "excelling": "The collaborative development and review of assessment tasks is a cultural norm."
+                }
+              },  // L_AF_AD_Structures
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Assessment tasks are implemented in all classes and data is collected. There is limited evidence to demonstrate the impact of assessment data on teaching and learning.",
+                  "delivering": "Assessment tasks are planned and implemented in all classes, and there is evidence that data is used to inform teaching.",
+                  "sustaining": "Teachers use a range of assessments to capture information about student learning, that are situated in an assessment framework. They are seen as an important tool that supports learning across the school, with assessment data often being used to inform teaching.",
+                  "excelling": "Individual assessment tasks contribute to a school-wide assessment framework that enables students to successfully navigate the curriculum. The use of assessment data to  support  student learning growth is a cultural norm."
+                }
+              }  // L_AF_AD_AssessmentPlace
+            ],
+            evidence: []
+          },
+          {
+            title: "Progress Monitoring",
+            grade: "ungraded",
+            rubric: [
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Teachers are sometimes included in assessing the alignment between the school’s curriculum implementation plan, teaching, learning, assessment, and reporting.",
+                  "delivering": "Teachers play a role in monitoring the alignment between the school’s curriculum implementation plan, teaching, learning, assessment, and reporting to support the continuity of learning across the years of schooling.",
+                  "sustaining": "Teachers play an active role in monitoring the alignment between the school’s curriculum implementation plan, teaching, learning, assessment, and reporting to support the continuity of learning across the years of schooling.",
+                  "excelling": "Teachers plan collaboratively to ensure alignment between the school’s curriculum implementation plan, teaching, learning, assessment, and reporting to ensure the continuity of learning across the years of schooling."
+                }
+              },  // L_AF_PM_Alignment
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "There are limited opportunities for teachers to analyse assessment data to identify student and/ or cohort learning progress.",
+                  "delivering": "There are some processes and practices for teachers to analyse assessment data to identify student and/ or cohort learning progress. These processes and practices are not consistently actioned or may be actioned at the level of an individual teacher.",
+                  "sustaining": "Teachers commonly analyse assessment data to identify student and cohort learning progress. They action changes in teaching that are implemented without mechanisms to monitor learning improvement.",
+                  "excelling": "Teachers routinely and collaboratively use systematic and reliable assessment information to evaluate student learning over time and implement targeted changes in teaching that are monitored to evaluate learning improvement."
+                }
+              },  // L_AF_PM_Use
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Learning goals for cohorts and/ or individual students are unclear or unspecified.",
+                  "delivering": "Many teachers have identified learning goals for cohorts and individual students. There are some shared practices for using assessment to assess student progress and achievement.",
+                  "sustaining": "Teachers have identified learning goals for cohorts and individual students. There are school-developed practices for using assessment to assess student progress and achievement against syllabus outcomes.",
+                  "excelling": "The school has identified learning goals for cohorts and individual students. There are school-wide practices for using assessment to assess and monitor student progress and achievement against syllabus outcomes."
+                }
+              },  // L_AF_PM_Goals
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Student learning goals are not a feature of progress monitoring.",
+                  "delivering": "Students and their families are advised of student learning goals.",
+                  "sustaining": "Students and their families are engaged in setting student learning goals.",
+                  "excelling": "Students and their families are actively engaged in setting and monitoring student learning goals. "
+                }
+              }  // L_AF_PM_FamilyGoals
+            ],
+            evidence: []
+          },
+          {
+            title: "Assessment Practice",
+            grade: "ungraded",
+            rubric: [
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Teachers mainly use assessment to make judgements about student achievement of syllabus intentions.",
+                  "delivering": "Teachers regularly use assessment to make judgements against syllabus outcomes and monitor student progress.",
+                  "sustaining": "School assessment practices address the intended syllabus  and are used to monitor and enhance student progress. ",
+                  "excelling": "School-wide assessment practices enable teachers to routinely draw on quality evidence of student learning and progress, to optimise achievement of syllabus outcomes."
+                }
+              },  // L_AF_AP_Judgement
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Teachers primarily collect data to assign grades. There is a tenuous relationship between assessment and teaching practice.",
+                  "delivering": "Teachers collect and use assessment data to monitor achievements and identify gaps in learning, in order  to inform planning for student groups and individual students.",
+                  "sustaining": "Teachers use evidence of learning, from a range of assessments, to inform their teaching. They are responsive to data and adapt their practice to meet the learning needs of students.",
+                  "excelling": "Assessment is used flexibly and responsively as an integral part of daily classroom instruction. Teachers collaboratively select and implement a range of assessments, supporting student efficacy and agency."
+                }
+              },  // L_AF_AP_Collection
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "There is little evidence of a clear and  consistent assessment plan being implemented. There is limited evidence of teachers systematically gathering or analysing assessment data to reflect on their teaching. When it is done, it tends to be at an individual level.",
+                  "delivering": "There is an assessment plan in place that shows the range of assessments to be implemented. Teachers use some assessment data to establish where students are in their learning, but this tends to be by some individuals or teams, rather than a whole-school approach.",
+                  "sustaining": "There is a widely understood assessment plan for the systematic use of standardised and quality classroom assessments to monitor student progress and respond to student needs.",
+                  "excelling": "Assessment practices and processes at the whole-school, team, class, and individual staff level reflect a relentless focus on the purposeful use of assessment to improve practice and student learning outcomes."
+                }
+              }  // L_AF_AP_Use
+            ],
+            evidence: []
+          },
+          {
+            title: "Reporting",
+            grade: "ungraded",
+            rubric: [
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Does not meet legislative requirements.",
+                  "delivering": "\"Student reports and parent/ teacher/ student conferences meet legislative requirements and may include personalised descriptions of the student’s strengths.",
+                  "sustaining": "Student reports and parent/ teacher/ student conferences contain information about individual student learning progress and achievement, and areas for meeting future learning goals.",
+                  "excelling": "Student reports in conjunction with  parent/ teacher/ student conferences  are personalised and clear. There is specific information about student learning progress, that informs a dialogue about next steps and improvement goals."
+                }
+              }  // L_AF_R_Information
+            ],
+            evidence: []
+          },
+          {
+            title: "Consistent Teacher Judgement",
+            grade: "ungraded",
+            rubric: [
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "There is limited opportunity and/ or support for teachers to engage in moderation processes. ",
+                  "delivering": "Teachers are practised at utilising processes to support consistency in professional judgements, but these may be applied inconsistently, having a limited impact on enhancing collective teacher efficacy. ",
+                  "sustaining": "There is a whole school approach to support consistency of teacher analysis and judgement about student achievement, clearly articulated in school learning plans and/or moderation guidelines.",
+                  "excelling": "The school supports all teachers to develop consistency in professional judgements through the collaborative development and routine review of moderation guidelines."
+                }
+              },  // L_AF_CTJ_Moderation
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "There is a lack of clarity and consistency in relation to the aims, processes, and accountabilities of moderation.",
+                  "delivering": "Teachers are encouraged to engage in moderation activities designed to develop a common language around assessment and develop a common understanding of standards-referenced assessment. They share teaching and learning strategies to support students to achieve at higher grade levels and apply marking criteria consistently.",
+                  "sustaining": "Teachers regularly engage in moderation activities. They are skilled in their understanding of standards referenced assessment  and their ability to apply marking criteria effectively and consistently. They have developed a common language around assessment which informs the development of teaching and learning strategies to support student learning progress  into higher grade levels. ",
+                  "excelling": "Teachers customarily engage in moderation activities. They are highly skilled in their understanding of standards-referenced assessment and their ability to apply marking criteria effectively and consistently. They have developed a common language around assessment, which informs the collaborative development of teaching and learning strategies to support student learning progress into higher grade levels."
+                }
+              },  // L_AF_CTJ_Skill
+              {
+                selected: null,
+                cells: {
+                  "pre-delivering": "Teachers rarely analyse student progress and adjust their practice.",
+                  "delivering": "Teachers mostly analyse student progress, but adjustments to practice in response to student achievement is inconsistent. ",
+                  "sustaining": "Teachers analyse student progress and adjust their practice in response to student achievement.",
+                  "excelling": "Teachers collaboratively analyse student progress and collectively adjust their practice in response to student achievement. "
+                }
+              }  // L_AF_CTJ_Analysis
+            ],
+            evidence: []
+          }
+        ]
+      }
+    };
+
+    // =======================================================================
+    // Helpers
+    // =======================================================================
+
+    function escapeHtml(s) {
+      return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function hexToRgbString(hex) {
+      var n = parseInt(hex.replace('#', ''), 16);
+      return ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255);
+    }
+
+    // Design language: hard-edged colour "shadow" bands (a solid box-shadow,
+    // no blur — see theme-modal.css / theme-cards.css / app-banner.css) on
+    // most containers/buttons, tied to whichever domain colour is already
+    // in scope (--modal-accent / --card-accent), darkened a bit so the
+    // shadow reads as a shadow rather than a flat duplicate of the surface
+    // it's attached to. Grade-specific elements (the Grade badge) use the
+    // current grade's own colour instead, darkened the same way.
+    function darkenHex(hex, amount) {
+      var n = parseInt(hex.replace('#', ''), 16);
+      var r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+      r = Math.max(0, Math.round(r * (1 - amount)));
+      g = Math.max(0, Math.round(g * (1 - amount)));
+      b = Math.max(0, Math.round(b * (1 - amount)));
+      function h(v) { return v.toString(16).padStart(2, '0'); }
+      return '#' + h(r) + h(g) + h(b);
+    }
+
+    function attachmentIcon(kind) {
+      var bg = kind === 'xlsx' ? '#1D8348' : (kind === 'doc' ? '#2E5AAC' : '#8a8d99');
+      return '<span class="evidence-attachment-icon" style="background:' + bg + '">' +
+        '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">' +
+          '<path d="M6 2h9l5 5v15a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z" fill="#fff"/>' +
+          '<path d="M15 2v5h5" fill="none" stroke="' + bg + '" stroke-width="1.3"/>' +
+        '</svg></span>';
+    }
+
+    // =======================================================================
+    // Outer Theme cards (below the wheel)
+    // =======================================================================
+
+    function attachmentGlyph() {
+      return '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">' +
+        '<path d="M8 12.5l6.5-6.5a3 3 0 1 1 4.24 4.24L11 18a5 5 0 1 1-7.07-7.07L12 3" ' +
+        'stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    }
+
+    function renderThemeCard(theme, idx, accentHex, accentRgb, delay) {
+      var grade = GRADES[theme.grade] || GRADES.ungraded;
+      var count = (theme.evidence || []).length;
+      var shadowHex = darkenHex(accentHex, 0.2);
+      var gradePillShadow = darkenHex(grade.color, 0.22);
+      return '<div class="theme-card" tabindex="0" role="button" aria-pressed="false"' +
+          ' data-theme-index="' + idx + '"' +
+          ' style="--card-accent:' + accentHex + ';--card-accent-rgb:' + accentRgb +
+          ';--card-shadow:' + shadowHex + ';animation-delay:' + delay + 'ms">' +
+        '<h3 class="theme-card-title">' + escapeHtml(theme.title) + '</h3>' +
+        '<div class="theme-card-indicators" style="--grade-pill-color:' + grade.color +
+            ';--grade-pill-shadow:' + gradePillShadow + '">' +
+          '<span class="theme-card-grade-pill">' + grade.label + '</span>' +
+          '<span class="theme-card-evidence-badge" title="' + count + ' evidence piece' + (count === 1 ? '' : 's') + '">' +
+            attachmentGlyph() + (count > 0 ? '<span>' + count + '</span>' : '') +
+          '</span>' +
+        '</div>' +
+        '</div>';
+    }
+
+    var detailEl = document.getElementById('detail');
+    var currentThemes = null; // the array behind whichever Element is currently shown
+
+    function elementIconPlaceholder() {
+      // Same "image placeholder" glyph style as the wheel's own wedge
+      // icons — frame, dot, mountain outline — for visual consistency
+      // with the other spot in the app already marked as a placeholder.
+      return '<div class="element-icon-placeholder" aria-hidden="true">' +
+        '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">' +
+          '<rect x="3" y="3" width="18" height="18" rx="4" stroke="currentColor" stroke-width="1.6"/>' +
+          '<circle cx="9" cy="9.5" r="2" stroke="currentColor" stroke-width="1.6"/>' +
+          '<path d="M3 16.5l5.5-5 4 3.5 3-2.5L21 16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>' +
+        '</svg>' +
+        '</div>';
+    }
+
+    function renderElementDetail(segment) {
+      var data = ELEMENT_THEMES[segment.id];
+      var title = (data && data.title) || segment.lines.join(' ');
+      var themes = (data && data.themes) || [];
+      currentThemes = themes;
+      var style = ExcellenceWheel.CATEGORY_STYLE[segment.category];
+      var accentHex = style.wedge;
+      var accentRgb = hexToRgbString(accentHex);
+      var cardsHtml = themes.map(function (t, i) {
+        return renderThemeCard(t, i, accentHex, accentRgb, i * 35);
+      }).join('');
+      detailEl.innerHTML =
+        '<div class="element-detail" style="--title-color:' + style.ring + '">' +
+          elementIconPlaceholder() +
+          '<h2 class="element-title">' + escapeHtml(title) + '</h2>' +
+          '<div class="theme-cards">' + cardsHtml + '</div>' +
+        '</div>';
+    }
+
+    // Reflects a Theme's current grade onto its outer card, live, without a
+    // full re-render (which would replay the fade-in and lose the ring).
+    function syncCard(cardEl, theme) {
+      if (!cardEl) return;
+      var g = GRADES[theme.grade] || GRADES.ungraded;
+      var indicators = cardEl.querySelector('.theme-card-indicators');
+      var pill = cardEl.querySelector('.theme-card-grade-pill');
+      if (indicators) {
+        indicators.style.setProperty('--grade-pill-color', g.color);
+        indicators.style.setProperty('--grade-pill-shadow', darkenHex(g.color, 0.22));
+      }
+      if (pill) pill.textContent = g.label;
+      var count = (theme.evidence || []).length;
+      var badge = cardEl.querySelector('.theme-card-evidence-badge');
+      if (badge) {
+        badge.setAttribute('title', count + ' evidence piece' + (count === 1 ? '' : 's'));
+        badge.innerHTML = attachmentGlyph() + (count > 0 ? '<span>' + count + '</span>' : '');
+      }
+      renderDotRing(); // this Theme's overview dot needs the same colour update
+    }
+
+    // =======================================================================
+    // Theme indicator ring — the whole ring band (between the wedges and
+    // the outer dark ring) split into even arc slices per Element, one
+    // slice per Theme, filling the wedge's full angular width — always
+    // visible, not affected by hover/selection dimming. Purely visual, no
+    // hover/click/keyboard interaction of its own (removed on request) —
+    // getting to a specific Theme is only ever done by selecting the
+    // Element on the wheel and then its Theme card, as normal. Drawn as
+    // a plain SVG layer inserted directly into the wheel's own <svg>
+    // (via wheel.getSvgRoot()), using the wheel's exposed geometry
+    // (ExcellenceWheel.GEOMETRY, ExcellenceWheel.sectorPath) and
+    // per-segment angles (already on ExcellenceWheel.SEGMENTS) — so it's
+    // guaranteed to line up with the wedges without duplicating the
+    // wheel's own arc-drawing math.
+    // =======================================================================
+
+    var INDICATOR_EDGE_GAP = 0.6;  // degrees inset from the wedge's own edges — matches the wheel's wedge-to-wedge gap
+    var INDICATOR_SLICE_GAP = 1.2; // degrees between adjacent Theme slices within one Element
+
+    // Ungraded reads as almost invisible here on purpose — barely off the
+    // ring's white background, so the eye goes straight to what's
+    // actually graded. Left as a normal visible grey everywhere else
+    // (cards, grade badge, dropdown), since white-on-white there would
+    // break legibility (e.g. the badge's white text).
+    var INDICATOR_UNGRADED_COLOR = '#EEEFF2';
+
+    var dotLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    dotLayer.setAttribute('class', 'ew-theme-indicator-layer');
+    dotLayer.setAttribute('aria-hidden', 'true'); // decorative only — the same info is reachable, accessibly, via the cards
+
+    var dotRingEntranceDone = false;
+
+    function renderDotRing() {
+      var geo = ExcellenceWheel.GEOMETRY;
+      var entrance = ExcellenceWheel.ENTRANCE;
+      var html = '';
+      ExcellenceWheel.SEGMENTS.forEach(function (seg, segIdx) {
+        var data = ELEMENT_THEMES[seg.id];
+        var themes = (data && data.themes) || [];
+        var n = themes.length;
+        if (!n) return;
+        var delay = entrance.indicatorStart + segIdx * entrance.indicatorStagger;
+        var spanStart = seg.startAngle + INDICATOR_EDGE_GAP;
+        var spanEnd = seg.endAngle - INDICATOR_EDGE_GAP;
+        var sliceWidth = (spanEnd - spanStart) / n;
+        for (var i = 0; i < n; i++) {
+          var a0 = spanStart + i * sliceWidth + INDICATOR_SLICE_GAP / 2;
+          var a1 = spanStart + (i + 1) * sliceWidth - INDICATOR_SLICE_GAP / 2;
+          var grade = themes[i].grade;
+          var g = GRADES[grade] || GRADES.ungraded;
+          var color = (!grade || grade === 'ungraded') ? INDICATOR_UNGRADED_COLOR : g.color;
+          var d = ExcellenceWheel.sectorPath(geo.R.dotRingInner, geo.R.dotRingOuter, a0, a1);
+          html += '<path class="ew-theme-indicator" d="' + d + '" fill="' + color + '" style="animation-delay:' + delay + 'ms"/>';
+        }
+      });
+      dotLayer.innerHTML = html;
+      // Entrance only plays once (page load) — toggled off before any
+      // later re-render (e.g. from syncCard() on a grade change) can
+      // apply it again; see the .is-entering scoping in theme-dots.css.
+      dotLayer.classList.toggle('is-entering', !dotRingEntranceDone);
+      dotRingEntranceDone = true;
+    }
+
+    // =======================================================================
+    // Theme modal: rubric + grade + evidence
+    // =======================================================================
+    // Built once as a persistent overlay; openThemeModal() only updates its
+    // content and toggles visibility, so listeners are attached once too
+    // (delegated on the rubric grid / grade dropdown containers).
+
+    var modalOverlay = document.createElement('div');
+    modalOverlay.className = 'theme-modal-overlay';
+    modalOverlay.innerHTML =
+      '<div class="theme-modal" role="dialog" aria-modal="true" aria-labelledby="theme-modal-title">' +
+        '<div class="theme-modal-scroll">' +
+          '<div class="theme-modal-header">' +
+            '<h2 id="theme-modal-title" class="theme-modal-title"></h2>' +
+            '<button type="button" class="theme-modal-close" aria-label="Close">&times;</button>' +
+          '</div>' +
+          '<div class="theme-modal-body">' +
+            '<div class="rubric-col">' +
+              '<div class="rubric-header"></div>' +
+              '<div class="rubric-grid"></div>' +
+            '</div>' +
+            '<div class="modal-sidebar-col">' +
+              '<p class="sidebar-label">Grade:</p>' +
+              '<div class="grade-badge-wrap">' +
+                '<button type="button" class="grade-badge"><span class="grade-badge-text"></span>' +
+                  '<svg class="grade-badge-arrow" viewBox="0 0 12 8" fill="none" xmlns="http://www.w3.org/2000/svg">' +
+                    '<path d="M1 1.5L6 6.5L11 1.5" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
+                '</button>' +
+                '<div class="grade-dropdown"></div>' +
+              '</div>' +
+              '<p class="sidebar-label">Evidence:</p>' +
+              '<div class="evidence-container">' +
+                '<div class="evidence-list-scroll"></div>' +
+                '<button type="button" class="evidence-add-btn">' +
+                  '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">' +
+                    '<path d="M12 5v14M5 12h14" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/></svg>' +
+                  '<span>Add Evidence</span>' +
+                '</button>' +
+                '<div class="evidence-compose" style="display:none">' +
+                  '<textarea class="evidence-compose-textarea" placeholder="Describe this evidence\u2026"></textarea>' +
+                  '<div class="evidence-compose-attachments"></div>' +
+                  '<input type="file" class="evidence-file-input" multiple style="display:none">' +
+                  '<p class="evidence-compose-error" style="display:none"></p>' +
+                  '<div class="evidence-compose-actions">' +
+                    '<button type="button" class="evidence-attach-btn">Attach Files</button>' +
+                    '<button type="button" class="evidence-cancel-btn">Cancel</button>' +
+                    '<button type="button" class="evidence-submit-btn">Submit</button>' +
+                  '</div>' +
+                '</div>' +
+              '</div>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(modalOverlay);
+
+    var modalBox = modalOverlay.querySelector('.theme-modal');
+    var modalTitleEl = modalOverlay.querySelector('.theme-modal-title');
+    var modalCloseBtn = modalOverlay.querySelector('.theme-modal-close');
+    var rubricHeaderEl = modalOverlay.querySelector('.rubric-header');
+    var rubricGridEl = modalOverlay.querySelector('.rubric-grid');
+    var gradeBadgeWrap = modalOverlay.querySelector('.grade-badge-wrap');
+    var gradeBadgeBtn = modalOverlay.querySelector('.grade-badge');
+    var gradeBadgeText = modalOverlay.querySelector('.grade-badge-text');
+    var gradeDropdownEl = modalOverlay.querySelector('.grade-dropdown');
+    var evidenceListScrollEl = modalOverlay.querySelector('.evidence-list-scroll');
+    var evidenceAddBtn = modalOverlay.querySelector('.evidence-add-btn');
+    var evidenceComposeEl = modalOverlay.querySelector('.evidence-compose');
+    var evidenceTextarea = modalOverlay.querySelector('.evidence-compose-textarea');
+    var evidenceComposeAttachmentsEl = modalOverlay.querySelector('.evidence-compose-attachments');
+    var evidenceComposeErrorEl = modalOverlay.querySelector('.evidence-compose-error');
+    var evidenceFileInput = modalOverlay.querySelector('.evidence-file-input');
+    var evidenceAttachBtn = modalOverlay.querySelector('.evidence-attach-btn');
+    var evidenceCancelBtn = modalOverlay.querySelector('.evidence-cancel-btn');
+    var evidenceSubmitBtn = modalOverlay.querySelector('.evidence-submit-btn');
+
+    var currentModalTheme = null;
+    var currentModalCard = null;
+    var lastFocusedEl = null;
+    var composeAttachments = []; // staged for the evidence currently being composed
+    var editingNumber = null;    // set while editing an existing entry; null while composing a new one
+
+    function renderRubricHeader(theme) {
+      return RUBRIC_LEVELS.map(function (key) {
+        var isCurrent = theme.grade === key;
+        return '<div class="rubric-header-cell' + (isCurrent ? ' is-current' : '') + '">' + GRADES[key].label + '</div>';
+      }).join('');
+    }
+
+    function renderRubricGrid(theme) {
+      var html = '';
+      theme.rubric.forEach(function (row, rowIdx) {
+        RUBRIC_LEVELS.forEach(function (key) {
+          var cellText = row.cells[key];
+          var isBlank = cellText === null || cellText === undefined || cellText === '';
+          if (isBlank) {
+            // No content for this level at this criterion (rare — one
+            // case in the real data) — render an empty, inert cell
+            // rather than "null" as text or a selectable-but-blank box.
+            html += '<div class="rubric-cell is-blank" aria-hidden="true"></div>';
+            return;
+          }
+          var isSel = row.selected === key;
+          html += '<div class="rubric-cell' + (isSel ? ' is-selected' : '') + '" tabindex="0" role="button"' +
+            ' aria-pressed="' + isSel + '" data-row="' + rowIdx + '" data-level="' + key + '">' +
+            '<span class="rubric-cell-level">' + GRADES[key].label + '</span>' +
+            escapeHtml(cellText) +
+            '</div>';
+        });
+      });
+      return html;
+    }
+
+    function renderGradeDropdown(theme) {
+      var keys = ['ungraded'].concat(RUBRIC_LEVELS);
+      return keys.map(function (key) {
+        var g = GRADES[key];
+        var isCurrent = theme.grade === key;
+        return '<div class="grade-dropdown-item' + (isCurrent ? ' is-current' : '') + '" data-grade="' + key +
+          '" style="--item-color:' + g.color + '">' + g.label + '</div>';
+      }).join('');
+    }
+
+    // Overall Grade = the average rubric level across every row that has
+    // been rated (unrated rows are excluded, not counted as 0). 'ungraded'
+    // if no row has been rated yet. Only runs when a rubric cell is
+    // clicked — never overwrites a grade that was set via the dropdown
+    // until the next rubric click.
+    function computeAverageGrade(theme) {
+      var indices = [];
+      theme.rubric.forEach(function (row) {
+        var i = RUBRIC_LEVELS.indexOf(row.selected);
+        if (i >= 0) indices.push(i);
+      });
+      if (!indices.length) return 'ungraded';
+      var avg = indices.reduce(function (a, b) { return a + b; }, 0) / indices.length;
+      var rounded = Math.max(0, Math.min(RUBRIC_LEVELS.length - 1, Math.round(avg)));
+      return RUBRIC_LEVELS[rounded];
+    }
+
+    // -- Evidence: accordion list ----------------------------------------
+    // Numbering is a stable field on each entry (assigned once, on
+    // creation), NOT derived from array/display position — so editing or
+    // deleting an entry never renumbers anything else. Display is always
+    // newest-number-first.
+    function findEvidenceByNumber(theme, number) {
+      var list = theme.evidence || [];
+      for (var i = 0; i < list.length; i++) if (list[i].number === number) return list[i];
+      return null;
+    }
+
+    function renderEvidenceList(theme) {
+      var items = (theme.evidence || []).slice().sort(function (a, b) { return (b.number || 0) - (a.number || 0); });
+      if (!items.length) {
+        evidenceListScrollEl.innerHTML = '<p class="evidence-empty">No evidence submitted yet.</p>';
+        return;
+      }
+      evidenceListScrollEl.innerHTML = items.map(renderAccordionItem).join('');
+    }
+
+    function renderAccordionItem(item) {
+      var attachments = item.attachments || [];
+      var meta = [item.date];
+      if (attachments.length) meta.push(attachments.length + ' attachment' + (attachments.length === 1 ? '' : 's'));
+      var attachmentsHtml = attachments.map(function (a) {
+        return '<div class="evidence-attachment">' + escapeHtml(a.name) + attachmentIcon(a.kind) + '</div>';
+      }).join('');
+      return '<div class="evidence-accordion-item">' +
+        '<div class="evidence-accordion-header" tabindex="0" role="button" aria-expanded="false">' +
+          '<span class="evidence-accordion-title">' +
+            '<span class="evidence-accordion-number">Evidence ' + item.number + '</span>' +
+            '<span class="evidence-accordion-meta">' + escapeHtml(meta.join(' \u00b7 ')) + '</span>' +
+          '</span>' +
+          '<svg class="evidence-accordion-chevron" viewBox="0 0 10 6" fill="none" xmlns="http://www.w3.org/2000/svg">' +
+            '<path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
+        '</div>' +
+        '<div class="evidence-accordion-body"><div class="evidence-accordion-body-inner">' +
+          '<p class="evidence-item-text">' + escapeHtml(item.text || '') + '</p>' +
+          (attachmentsHtml ? '<p class="evidence-attachments-label">Attachments</p>' + attachmentsHtml : '') +
+          '<div class="evidence-item-actions">' +
+            '<button type="button" class="evidence-edit-btn" data-number="' + item.number + '">Edit</button>' +
+            '<button type="button" class="evidence-delete-btn" data-number="' + item.number + '">Delete</button>' +
+          '</div>' +
+        '</div></div>' +
+        '</div>';
+    }
+
+    // Single-open accordion: opening one closes any other that's open.
+    function toggleAccordionItem(header) {
+      var item = header.closest('.evidence-accordion-item');
+      var wasOpen = item.classList.contains('is-open');
+      evidenceListScrollEl.querySelectorAll('.evidence-accordion-item.is-open').forEach(function (el) {
+        el.classList.remove('is-open');
+        el.querySelector('.evidence-accordion-header').setAttribute('aria-expanded', 'false');
+      });
+      if (!wasOpen) {
+        item.classList.add('is-open');
+        header.setAttribute('aria-expanded', 'true');
+      }
+    }
+
+    function deleteEvidence(number) {
+      if (!currentModalTheme) return;
+      if (!window.confirm('Delete this evidence entry? This can\u2019t be undone.')) return;
+      currentModalTheme.evidence = (currentModalTheme.evidence || []).filter(function (e) { return e.number !== number; });
+      renderEvidenceList(currentModalTheme);
+      syncCard(currentModalCard, currentModalTheme);
+    }
+
+    evidenceListScrollEl.addEventListener('click', function (e) {
+      var editBtn = e.target.closest('.evidence-edit-btn');
+      if (editBtn) { startEditEvidence(parseInt(editBtn.getAttribute('data-number'), 10)); return; }
+      var delBtn = e.target.closest('.evidence-delete-btn');
+      if (delBtn) { deleteEvidence(parseInt(delBtn.getAttribute('data-number'), 10)); return; }
+      var header = e.target.closest('.evidence-accordion-header');
+      if (header) toggleAccordionItem(header);
+    });
+    evidenceListScrollEl.addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
+      var header = e.target.closest('.evidence-accordion-header');
+      if (!header) return;
+      e.preventDefault();
+      toggleAccordionItem(header);
+    });
+
+    // -- Evidence: compose (add / edit evidence) ---------------------------
+    // Fully working client-side (typing, attaching real local files,
+    // cancelling, submitting/saving into the in-memory data, editing and
+    // deleting existing entries) — there's just no backend yet for
+    // Submit to actually send anywhere.
+    function setEvidenceMode(mode) {
+      var isCompose = mode === 'compose';
+      evidenceListScrollEl.style.display = isCompose ? 'none' : '';
+      evidenceAddBtn.style.display = isCompose ? 'none' : '';
+      evidenceComposeEl.style.display = isCompose ? 'flex' : 'none';
+    }
+
+    function renderComposeAttachments() {
+      evidenceComposeAttachmentsEl.innerHTML = composeAttachments.map(function (a, i) {
+        return '<div class="evidence-staged-attachment">' + escapeHtml(a.name) +
+          '<button type="button" class="evidence-staged-remove" data-index="' + i + '" aria-label="Remove attachment">&times;</button></div>';
+      }).join('');
+    }
+
+    function inferAttachmentKind(filename) {
+      var ext = (filename.split('.').pop() || '').toLowerCase();
+      if (ext === 'doc' || ext === 'docx' || ext === 'pdf') return 'doc';
+      if (ext === 'xls' || ext === 'xlsx' || ext === 'csv') return 'xlsx';
+      return 'doc';
+    }
+
+    function formatDateDDMMYY(d) {
+      function pad(n) { return (n < 10 ? '0' : '') + n; }
+      return pad(d.getDate()) + '.' + pad(d.getMonth() + 1) + '.' + String(d.getFullYear()).slice(-2);
+    }
+
+    function showComposeError(msg) {
+      evidenceComposeErrorEl.textContent = msg;
+      evidenceComposeErrorEl.style.display = 'block';
+    }
+    function hideComposeError() {
+      evidenceComposeErrorEl.style.display = 'none';
+    }
+
+    function updateComposeSubmitLabel() {
+      evidenceSubmitBtn.textContent = editingNumber !== null ? 'Save Changes' : 'Submit';
+    }
+
+    function enterComposeMode() {
+      editingNumber = null;
+      composeAttachments = [];
+      evidenceTextarea.value = '';
+      renderComposeAttachments();
+      hideComposeError();
+      updateComposeSubmitLabel();
+      setEvidenceMode('compose');
+      evidenceTextarea.focus();
+    }
+
+    function startEditEvidence(number) {
+      var item = currentModalTheme && findEvidenceByNumber(currentModalTheme, number);
+      if (!item) return;
+      editingNumber = number;
+      composeAttachments = (item.attachments || []).slice();
+      evidenceTextarea.value = item.text || '';
+      renderComposeAttachments();
+      hideComposeError();
+      updateComposeSubmitLabel();
+      setEvidenceMode('compose');
+      evidenceTextarea.focus();
+    }
+
+    function exitComposeMode() {
+      editingNumber = null;
+      hideComposeError();
+      setEvidenceMode('list');
+    }
+
+    evidenceAddBtn.addEventListener('click', enterComposeMode);
+    evidenceCancelBtn.addEventListener('click', exitComposeMode);
+
+    evidenceAttachBtn.addEventListener('click', function () { evidenceFileInput.click(); });
+    evidenceFileInput.addEventListener('change', function () {
+      Array.prototype.forEach.call(evidenceFileInput.files, function (f) {
+        composeAttachments.push({ name: f.name, kind: inferAttachmentKind(f.name) });
+      });
+      evidenceFileInput.value = ''; // so picking the same file again still fires 'change'
+      renderComposeAttachments();
+    });
+    evidenceComposeAttachmentsEl.addEventListener('click', function (e) {
+      var btn = e.target.closest('.evidence-staged-remove');
+      if (!btn) return;
+      composeAttachments.splice(parseInt(btn.getAttribute('data-index'), 10), 1);
+      renderComposeAttachments();
+    });
+
+    evidenceSubmitBtn.addEventListener('click', function () {
+      if (!currentModalTheme) return;
+      var text = evidenceTextarea.value.trim();
+      if (!text && composeAttachments.length === 0) {
+        showComposeError('Add a note or attach a file before submitting.');
+        return;
+      }
+      hideComposeError();
+      currentModalTheme.evidence = currentModalTheme.evidence || [];
+      if (editingNumber !== null) {
+        var existing = findEvidenceByNumber(currentModalTheme, editingNumber);
+        if (existing) {
+          existing.text = text;
+          existing.attachments = composeAttachments.slice();
+        }
+      } else {
+        var nextNumber = currentModalTheme.evidence.reduce(function (max, e) { return Math.max(max, e.number || 0); }, 0) + 1;
+        currentModalTheme.evidence.push({
+          type: 'note',
+          number: nextNumber,
+          date: formatDateDDMMYY(new Date()),
+          text: text,
+          attachments: composeAttachments.slice()
+        });
+      }
+      exitComposeMode();
+      renderEvidenceList(currentModalTheme);
+      syncCard(currentModalCard, currentModalTheme); // grade AND evidence count/icon both stay in sync
+    });
+
+    function refreshRubricAndBadge(theme) {
+      rubricHeaderEl.innerHTML = renderRubricHeader(theme);
+      rubricGridEl.innerHTML = renderRubricGrid(theme);
+      var grade = GRADES[theme.grade] || GRADES.ungraded;
+      gradeBadgeText.textContent = grade.label;
+      gradeBadgeBtn.style.setProperty('--grade-color', grade.color); // CSS transitions the fade
+      gradeBadgeBtn.style.setProperty('--grade-shadow', darkenHex(grade.color, 0.22));
+      gradeDropdownEl.innerHTML = renderGradeDropdown(theme);
+    }
+
+    function openThemeModal(theme, cardEl) {
+      currentModalTheme = theme;
+      currentModalCard = cardEl;
+      var accentHex = getComputedStyle(cardEl).getPropertyValue('--card-accent').trim();
+      var accentRgb = getComputedStyle(cardEl).getPropertyValue('--card-accent-rgb').trim();
+      modalBox.style.setProperty('--modal-accent', accentHex);
+      modalBox.style.setProperty('--modal-accent-rgb', accentRgb);
+      modalBox.style.setProperty('--modal-shadow', darkenHex(accentHex, 0.2));
+      modalTitleEl.textContent = theme.title;
+      refreshRubricAndBadge(theme);
+      setEvidenceMode('list');
+      renderEvidenceList(theme);
+
+      lastFocusedEl = document.activeElement;
+      modalOverlay.classList.add('is-open');
+      document.body.style.overflow = 'hidden';
+      modalCloseBtn.focus();
+    }
+
+    function closeThemeModal() {
+      modalOverlay.classList.remove('is-open');
+      gradeBadgeWrap.classList.remove('is-open');
+      setEvidenceMode('list'); // discard any unsaved compose state on close
+      document.body.style.overflow = '';
+      if (lastFocusedEl && typeof lastFocusedEl.focus === 'function') lastFocusedEl.focus();
+    }
+
+    // -- Rubric cell selection ------------------------------------------
+    // Selecting a rubric cell sets that row's rating; the Theme's overall
+    // Grade recomputes as the average across every rated row (see
+    // computeAverageGrade above) — this replaces whatever the Grade was
+    // set to before, including a manual override, since a rubric edit is
+    // a new "based on the ratings" signal.
+    rubricGridEl.addEventListener('click', function (e) {
+      var cell = e.target.closest('.rubric-cell');
+      if (!cell || !currentModalTheme || cell.classList.contains('is-blank')) return;
+      var row = parseInt(cell.getAttribute('data-row'), 10);
+      var level = cell.getAttribute('data-level');
+      var rowObj = currentModalTheme.rubric[row];
+      rowObj.selected = (rowObj.selected === level) ? null : level; // clicking the already-selected cell clears that row
+      currentModalTheme.grade = computeAverageGrade(currentModalTheme);
+      refreshRubricAndBadge(currentModalTheme);
+      syncCard(currentModalCard, currentModalTheme);
+    });
+    rubricGridEl.addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
+      var cell = e.target.closest('.rubric-cell');
+      if (!cell) return;
+      e.preventDefault();
+      cell.click();
+    });
+
+    // -- Grade badge / manual override -----------------------------------
+    gradeBadgeBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      gradeBadgeWrap.classList.toggle('is-open');
+    });
+    gradeDropdownEl.addEventListener('click', function (e) {
+      var item = e.target.closest('.grade-dropdown-item');
+      if (!item || !currentModalTheme) return;
+      currentModalTheme.grade = item.getAttribute('data-grade');
+      gradeBadgeWrap.classList.remove('is-open');
+      refreshRubricAndBadge(currentModalTheme); // rubric selections untouched; header highlight still needs refreshing
+      syncCard(currentModalCard, currentModalTheme);
+    });
+    document.addEventListener('click', function (e) {
+      if (gradeBadgeWrap.classList.contains('is-open') && !gradeBadgeWrap.contains(e.target)) {
+        gradeBadgeWrap.classList.remove('is-open');
+      }
+    });
+
+    // -- Close: X button, backdrop click, Escape (dropdown first, then modal) --
+    modalCloseBtn.addEventListener('click', closeThemeModal);
+    modalOverlay.addEventListener('click', function (e) {
+      if (e.target === modalOverlay) closeThemeModal();
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key !== 'Escape') return;
+      if (gradeBadgeWrap.classList.contains('is-open')) { gradeBadgeWrap.classList.remove('is-open'); return; }
+      if (modalOverlay.classList.contains('is-open')) closeThemeModal();
+    });
+
+    // -- Opening a Theme card ---------------------------------------------
+    function handleCardActivate(card) {
+      detailEl.querySelectorAll('.theme-card.is-selected').forEach(function (c) {
+        c.classList.remove('is-selected');
+        c.setAttribute('aria-pressed', 'false');
+      });
+      card.classList.add('is-selected');
+      card.setAttribute('aria-pressed', 'true');
+      var idx = parseInt(card.getAttribute('data-theme-index'), 10);
+      var theme = currentThemes && currentThemes[idx];
+      if (theme) openThemeModal(theme, card);
+    }
+    detailEl.addEventListener('click', function (e) {
+      var card = e.target.closest('.theme-card');
+      if (card) handleCardActivate(card);
+    });
+    detailEl.addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
+      var card = e.target.closest('.theme-card');
+      if (card) { e.preventDefault(); handleCardActivate(card); }
+    });
+
+    // =======================================================================
+    // Wheel
+    // =======================================================================
+
+    var wheel = ExcellenceWheel.create(document.getElementById('wheel-host'), {
+      onSelect: function (segment) {
+        if (!segment) {
+          detailEl.innerHTML = '<p class="placeholder">Select an Element to see its Themes here.</p>';
+          return;
+        }
+        renderElementDetail(segment);
+      }
+    });
+
+    // Insert the indicator layer BEFORE the wedges in the SVG's own DOM
+    // order (not appended at the end) — so it paints behind them, and a
+    // wedge's hover/selected scale-up visually covers the indicator ring
+    // where they overlap, rather than the indicators floating on top of
+    // an enlarging wedge.
+    var svgRoot = wheel.getSvgRoot();
+    svgRoot.insertBefore(dotLayer, svgRoot.querySelector('.ew-wedge'));
+    renderDotRing();
+
+    // Other things you can do with the returned handle:
+    // wheel.select('differentiation');
+    // wheel.deselect();
+    // wheel.getSelected();
+  </script>
+
+</body>
+</html>
