@@ -29,10 +29,13 @@
   align-items: center;
   gap: 18px;
   background: #ffffff;
-  border: 1px solid #e7e8ee;
+  /* Same hard-edge ring + shadow-band language as .theme-card
+     (theme-cards.css) — a solid border plus a matching 2px box-shadow
+     ring, rather than the previous plain 1px hairline. */
+  border: 1px solid #1c1f4f;
   border-radius: 14px;
   padding: 18px 28px;
-  box-shadow: 0 6px 0 0 #000000, 0 14px 28px rgba(0, 0, 0, 0.14);
+  box-shadow: 0 0 0 2px #1c1f4f, 0 6px 0 0 #000000, 0 14px 28px rgba(0, 0, 0, 0.14);
 }
 
 .app-banner-logo {

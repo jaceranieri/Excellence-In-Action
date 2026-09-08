@@ -29,18 +29,20 @@
     // source file (L_CPP_CBR_Vision etc.) — not used by any rendering
     // code, kept for traceability back to the source.
     //
-    // The ONE exception: 'collaborative-planning' → "Collective belief
-    // and responsibility" keeps the worked-example state from earlier
-    // rounds (rubric selections, computed grade, and its two evidence
-    // entries) re-attached after import, so there's still one fully
-    // populated example to demonstrate the feature. Every other Theme
-    // (all 35 of them) is genuinely fresh: 'ungraded', nothing selected,
-    // no evidence — none of that exists in the source file.
+    // Every Theme here is genuinely fresh: 'ungraded', nothing selected,
+    // no evidence — none of that exists in the source file. (An earlier
+    // round kept one hand-populated worked example on 'collaborative-
+    // planning' → "Collective belief and responsibility" to demo the
+    // feature before real persistence existed; now that ratings/evidence
+    // actually load from the backend on login, that hardcoded state was
+    // removed — every school's real data comes from the sheet, not from
+    // a placeholder baked into this file.)
         var ELEMENT_THEMES = {
       "instructional-coaching": {
         themes: [
           {
             title: "Professional Learning Design",
+            id: "L_IC_PLD",
             grade: "ungraded",
             rubric: [
               {
@@ -66,6 +68,7 @@
           },
           {
             title: "Coaching for technical expertise and instructional agility",
+            id: "L_IC_CTE_Decisions",
             grade: "ungraded",
             rubric: [
               {
@@ -91,6 +94,7 @@
           },
           {
             title: "Coaching for collective efficacy",
+            id: "L_IC_CCE",
             grade: "ungraded",
             rubric: [
               {
@@ -125,6 +129,7 @@
           },
           {
             title: "A Culture of Instructional Coaching and Collaboration",
+            id: "L_IC_CICC",
             grade: "ungraded",
             rubric: [
               {
@@ -150,6 +155,7 @@
           },
           {
             title: "Coaching for responsive and reflective thinking",
+            id: "L_IC_CRRT",
             grade: "ungraded",
             rubric: [
               {
@@ -188,6 +194,7 @@
         themes: [
           {
             title: "Data Collection and Analysis",
+            id: "L_DCDM_DCA",
             grade: "ungraded",
             rubric: [
               {
@@ -213,6 +220,7 @@
           },
           {
             title: "Data Practice",
+            id: "L_DCDM_DP",
             grade: "ungraded",
             rubric: [
               {
@@ -238,6 +246,7 @@
           },
           {
             title: "Data Leadership",
+            id: "L_DCDM_DL",
             grade: "ungraded",
             rubric: [
               {
@@ -277,10 +286,11 @@
         themes: [
           {
             title: "Collective belief and responsibility",
-            grade: "delivering",
+            id: "L_CPP_CBR",
+            grade: "ungraded",
             rubric: [
               {
-                selected: "pre-delivering",
+                selected: null,
                 cells: {
                   "pre-delivering": "Improvement planning is mainly the work of school leaders",
                   "delivering": "The school vision references collective efficacy, and school leaders encourage a sense of collective belief and responsibility for improvement. Leaders and teachers participate in planning improvement cycles.",
@@ -289,7 +299,7 @@
                 }
               },  // L_CPP_CBR_Vision
               {
-                selected: "delivering",
+                selected: null,
                 cells: {
                   "pre-delivering": "Leadership development is informal and dependent on individual initiative. Improvement initiatives may be isolated, short‑term, or dependent on individual champions.",
                   "delivering": "Some staff take on leadership roles, but development is not systematic. Improvement initiatives are implemented but not consistently monitored or scaled.",
@@ -298,7 +308,7 @@
                 }
               },  // L_CPP_CBR_Leadership
               {
-                selected: "sustaining",
+                selected: null,
                 cells: {
                   "pre-delivering": "Curriculum materials are developed individually or cooperatively, with limited collaboration or evaluation.",
                   "delivering": "Some collaborative development of curriculum materials occurs, but quality and consistency vary.",
@@ -307,28 +317,11 @@
                 }
               }  // L_CPP_CBR_CurriculumMaterials
             ],
-            evidence: [
-              {
-                number: 1,
-                type: 'note',
-                date: "28.08.27",
-                text: "Teachers conduct observations of students in their classrooms, particularly year 1 students completing an assessment task.",
-                attachments: [
-                  { name: "Observation Notes", kind: "doc" },
-                  { name: "Observation Timetable", kind: "xlsx" }
-                ]
-              },
-              {
-                number: 2,
-                type: 'note',
-                date: "02.09.27",
-                text: "Placeholder second evidence entry — replace with real evidence when available. This one has no attachments, to show that case too.",
-                attachments: []
-              }
-            ]
+            evidence: []
           },
           {
             title: "Shared clarity on goals and expected student progress",
+            id: "L_CPP_SCOG",
             grade: "ungraded",
             rubric: [
               {
@@ -363,6 +356,7 @@
           },
           {
             title: "Collaborative expertise in assessment, differentiation and intervention",
+            id: "L_CPP_CEA",
             grade: "ungraded",
             rubric: [
               {
@@ -392,6 +386,7 @@
         themes: [
           {
             title: "Deep Knowledge",
+            id: "T_HET_DK_Access",
             grade: "ungraded",
             rubric: [
               {
@@ -426,6 +421,7 @@
           },
           {
             title: "Precision of Instruction (Clarity)",
+            id: "T_HET_POI",
             grade: "ungraded",
             rubric: [
               {
@@ -451,6 +447,7 @@
           },
           {
             title: "Learning Design",
+            id: "T_HET_LD",
             grade: "ungraded",
             rubric: [
               {
@@ -485,6 +482,7 @@
           },
           {
             title: "Engagement",
+            id: "T_HET_E",
             grade: "ungraded",
             rubric: [
               {
@@ -532,6 +530,7 @@
         themes: [
           {
             title: "School-wide approach to differentiation",
+            id: "T_DIF_SWD",
             grade: "ungraded",
             rubric: [
               {
@@ -584,6 +583,7 @@
           },
           {
             title: "Evidence collection and evidence-based decision making",
+            id: "T_DIF_E",
             grade: "ungraded",
             rubric: [
               {
@@ -627,6 +627,7 @@
           },
           {
             title: "Strengths-Based Inclusive Culture",
+            id: "T_DIF_IC",
             grade: "ungraded",
             rubric: [
               {
@@ -661,6 +662,7 @@
           },
           {
             title: "High Challenge and High Support",
+            id: "T_DIF_HCS",
             grade: "ungraded",
             rubric: [
               {
@@ -708,6 +710,7 @@
         themes: [
           {
             title: "Data-Informed Practices: Identification, Intervention, Monitoring and Review",
+            id: "T_INT_DIP",
             grade: "ungraded",
             rubric: [
               {
@@ -733,6 +736,7 @@
           },
           {
             title: "Multi-Tiered Systems of Support (MTSS)",
+            id: "T_INT_MTSS",
             grade: "ungraded",
             rubric: [
               {
@@ -758,6 +762,7 @@
           },
           {
             title: "Explicitly Managed Cognitive Load",
+            id: "T_INT_MCL",
             grade: "ungraded",
             rubric: [
               {
@@ -783,6 +788,7 @@
           },
           {
             title: "Early Identification and Proactive Response",
+            id: "T_INT_EI",
             grade: "ungraded",
             rubric: [
               {
@@ -821,6 +827,7 @@
         themes: [
           {
             title: "Formation of the Whole Person",
+            id: "L_KEL_FWP",
             grade: "ungraded",
             rubric: [
               {
@@ -855,6 +862,7 @@
           },
           {
             title: "Knowing the Learner Through Data and Evidence-Informed Practice",
+            id: "L_KEL_KTL",
             grade: "ungraded",
             rubric: [
               {
@@ -889,6 +897,7 @@
           },
           {
             title: "Belonging Through Relationships and Community",
+            id: "L_KEL_B",
             grade: "ungraded",
             rubric: [
               {
@@ -923,6 +932,7 @@
           },
           {
             title: "Aspiration, Agency and Purpose",
+            id: "L_KEL_AAP",
             grade: "ungraded",
             rubric: [
               {
@@ -961,6 +971,7 @@
         themes: [
           {
             title: "Inclusive School Culture",
+            id: "L_SSE_ISC",
             grade: "ungraded",
             rubric: [
               {
@@ -1004,6 +1015,7 @@
           },
           {
             title: "Predictability and consistency",
+            id: "L_SSE_PC",
             grade: "ungraded",
             rubric: [
               {
@@ -1047,6 +1059,7 @@
           },
           {
             title: "Responsiveness",
+            id: "L_SSE_R",
             grade: "ungraded",
             rubric: [
               {
@@ -1103,6 +1116,7 @@
         themes: [
           {
             title: "Feedback",
+            id: "L_AF_F",
             grade: "ungraded",
             rubric: [
               {
@@ -1164,6 +1178,7 @@
           },
           {
             title: "Assessment Design",
+            id: "L_AF_AD",
             grade: "ungraded",
             rubric: [
               {
@@ -1198,6 +1213,7 @@
           },
           {
             title: "Progress Monitoring",
+            id: "L_AF_PM",
             grade: "ungraded",
             rubric: [
               {
@@ -1241,6 +1257,7 @@
           },
           {
             title: "Assessment Practice",
+            id: "L_AF_AP",
             grade: "ungraded",
             rubric: [
               {
@@ -1275,6 +1292,7 @@
           },
           {
             title: "Reporting",
+            id: "L_AF_R_Information",
             grade: "ungraded",
             rubric: [
               {
@@ -1291,6 +1309,7 @@
           },
           {
             title: "Consistent Teacher Judgement",
+            id: "L_AF_CTJ",
             grade: "ungraded",
             rubric: [
               {
@@ -1326,6 +1345,144 @@
         ]
       }
     };
+
+    // =======================================================================
+    // Persistence — Ratings + Evidence (see Code.gs and HANDOFF.md for the
+    // sheet schema/design). ELEMENT_THEMES above is the fresh-install
+    // default; loadSchoolState() below overwrites grade/rubric/evidence
+    // in place, per theme, once we know which school this visitor belongs
+    // to (see enterApp() in Script_LoginGate.html, which calls
+    // window.onAppEntered()).
+    // =======================================================================
+
+    var THEME_BY_ID = {};
+    Object.keys(ELEMENT_THEMES).forEach(function (segId) {
+      (ELEMENT_THEMES[segId].themes || []).forEach(function (theme) {
+        THEME_BY_ID[theme.id] = theme;
+      });
+    });
+
+    var SCHOOL_NAME = '';
+    var USER_EMAIL = '';
+
+    // Applies a school's saved {ratings, evidence} (see Code.gs's
+    // getSchoolState()) onto ELEMENT_THEMES in place. A theme with no
+    // saved rating entry keeps its ELEMENT_THEMES default (ungraded,
+    // nothing selected) — this only overwrites themes the sheet actually
+    // has data for.
+    function applySchoolState(state) {
+      Object.keys(state.ratings || {}).forEach(function (themeId) {
+        var theme = THEME_BY_ID[themeId];
+        if (!theme) return; // stale id from a since-removed theme — ignore, don't throw
+        var saved = state.ratings[themeId];
+        theme.grade = saved.grade || 'ungraded';
+        (saved.rubric || []).forEach(function (selected, i) {
+          if (theme.rubric[i]) theme.rubric[i].selected = selected || null;
+        });
+      });
+      var byTheme = {};
+      (state.evidence || []).forEach(function (entry) {
+        (byTheme[entry.themeId] = byTheme[entry.themeId] || []).push(entry);
+      });
+      Object.keys(byTheme).forEach(function (themeId) {
+        var theme = THEME_BY_ID[themeId];
+        if (theme) theme.evidence = byTheme[themeId];
+      });
+    }
+
+    function loadSchoolState() {
+      if (!SCHOOL_NAME) return;
+      google.script.run
+        .withSuccessHandler(function (state) {
+          applySchoolState(state);
+          updateDotRingColors();
+          var selected = wheel && wheel.getSelected && wheel.getSelected();
+          if (selected) renderElementDetail(selected);
+        })
+        .withFailureHandler(function (err) {
+          console.error('Failed to load saved ratings/evidence:', err);
+        })
+        .getSchoolState(SCHOOL_NAME);
+    }
+
+    // Exposed for Script_LoginGate.html's enterApp() to call once the
+    // visitor's access record (with schoolName/email) is known.
+    window.onAppEntered = function (access) {
+      SCHOOL_NAME = access.schoolName || '';
+      USER_EMAIL = access.email || '';
+      loadSchoolState();
+    };
+
+    // -- Autosave: Ratings -------------------------------------------------
+    // Every rubric click / grade-dropdown change marks state dirty and
+    // schedules a save a couple seconds later; rapid changes (clicking
+    // through several rubric rows) collapse into a single save instead of
+    // firing one per click. Also flushed on tab-hide/unload so a quick
+    // navigation away doesn't lose an in-flight debounce window. Writes
+    // are last-write-wins whole-row overwrites (see Code.gs's saveRatings
+    // doc comment) — acceptable for v1 per HANDOFF.md.
+    var ratingsSaveTimer = null;
+    var ratingsDirty = false;
+    var saveStatusEl = null;
+
+    function ensureSaveStatusEl() {
+      if (saveStatusEl) return saveStatusEl;
+      saveStatusEl = document.createElement('div');
+      saveStatusEl.setAttribute('aria-live', 'polite');
+      saveStatusEl.style.cssText = 'position:fixed;bottom:16px;right:16px;padding:6px 14px;' +
+        'border-radius:999px;font:600 13px/1.4 Figtree,"Segoe UI",sans-serif;color:#fff;' +
+        'background:#5f6368;opacity:0;transition:opacity .25s ease;pointer-events:none;z-index:9999;';
+      document.body.appendChild(saveStatusEl);
+      return saveStatusEl;
+    }
+
+    function showSaveStatus(text, color, autoHide) {
+      var el = ensureSaveStatusEl();
+      el.textContent = text;
+      el.style.background = color;
+      el.style.opacity = '1';
+      if (autoHide) setTimeout(function () { el.style.opacity = '0'; }, 1800);
+    }
+
+    function buildRatingsPayload() {
+      var payload = {};
+      Object.keys(THEME_BY_ID).forEach(function (themeId) {
+        var theme = THEME_BY_ID[themeId];
+        payload[themeId] = {
+          grade: theme.grade,
+          rubric: theme.rubric.map(function (row) { return row.selected || null; })
+        };
+      });
+      return payload;
+    }
+
+    function flushRatingsSave() {
+      if (!ratingsDirty || !SCHOOL_NAME) return;
+      ratingsDirty = false;
+      clearTimeout(ratingsSaveTimer);
+      showSaveStatus('Saving…', '#5f6368', false);
+      google.script.run
+        .withSuccessHandler(function () { showSaveStatus('Saved', '#1E8E4F', true); })
+        .withFailureHandler(function (err) {
+          console.error('Failed to save ratings:', err);
+          showSaveStatus('Save failed — retrying', '#E2574C', false);
+          ratingsDirty = true;
+          ratingsSaveTimer = setTimeout(flushRatingsSave, 4000);
+        })
+        .saveRatings(SCHOOL_NAME, JSON.stringify(buildRatingsPayload()), USER_EMAIL);
+    }
+
+    function scheduleSaveRatings() {
+      if (!SCHOOL_NAME) return;
+      ratingsDirty = true;
+      clearTimeout(ratingsSaveTimer);
+      ratingsSaveTimer = setTimeout(flushRatingsSave, 1500);
+    }
+
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'hidden') flushRatingsSave();
+    });
+    window.addEventListener('beforeunload', flushRatingsSave);
 
     // =======================================================================
     // Helpers
@@ -1376,10 +1533,9 @@
         'stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
     }
 
-    function renderThemeCard(theme, idx, accentHex, accentRgb, delay) {
+    function renderThemeCard(theme, idx, accentHex, accentRgb, shadowHex, delay) {
       var grade = GRADES[theme.grade] || GRADES.ungraded;
       var count = (theme.evidence || []).length;
-      var shadowHex = darkenHex(accentHex, 0.2);
       var gradePillShadow = darkenHex(grade.color, 0.22);
       return '<div class="theme-card" tabindex="0" role="button"' +
           ' data-theme-index="' + idx + '"' +
@@ -1420,8 +1576,15 @@
       var style = ExcellenceWheel.CATEGORY_STYLE[segment.category];
       var accentHex = style.wedge;
       var accentRgb = hexToRgbString(accentHex);
+      // Teaching's wedge colour is a golden yellow (#FDB40F) — darkening
+      // it (the default for every other category) came out a muddy
+      // mustard rather than reading as "Teaching's colour, darker". Use
+      // Teaching's own ring/accent orange (#F3712D, the same orange as
+      // its wheel ring and Element title) as the shadow instead, for
+      // that category only.
+      var shadowHex = segment.category === 'teaching' ? style.accent : darkenHex(accentHex, 0.2);
       var cardsHtml = themes.map(function (t, i) {
-        return renderThemeCard(t, i, accentHex, accentRgb, i * 35);
+        return renderThemeCard(t, i, accentHex, accentRgb, shadowHex, i * 35);
       }).join('');
       detailEl.innerHTML =
         '<div class="element-detail" style="--title-color:' + style.ring + '">' +
@@ -1449,7 +1612,7 @@
         badge.setAttribute('title', count + ' evidence piece' + (count === 1 ? '' : 's'));
         badge.innerHTML = attachmentGlyph() + (count > 0 ? '<span>' + count + '</span>' : '');
       }
-      renderDotRing(); // this Theme's overview dot needs the same colour update
+      updateDotRingColors(); // this Theme's overview dot needs the same colour update
     }
 
     // =======================================================================
@@ -1482,9 +1645,18 @@
     dotLayer.setAttribute('class', 'ew-theme-indicator-layer');
     dotLayer.setAttribute('aria-hidden', 'true'); // decorative only — the same info is reachable, accessibly, via the cards
 
-    var dotRingEntranceDone = false;
-
-    function renderDotRing() {
+    // Built once, structure-only (every slice starts grey/"ungraded") —
+    // updateDotRingColors() below is what actually paints real grades in,
+    // by changing each path's own `fill` in place rather than rebuilding
+    // the layer. That split matters: a CSS `transition: fill` (see
+    // theme-dots.css) only animates a change on the SAME element: it
+    // can't do anything for a freshly-inserted replacement path, which
+    // is exactly what an innerHTML rebuild would produce every time. The
+    // real ratings for each Theme arrive from the backend a moment after
+    // this initial "pop in" entrance already finished (see
+    // loadSchoolState()), so this two-step split is what lets that
+    // arrival read as a smooth 2s colour fade-in rather than a jump-cut.
+    function buildDotRing() {
       var geo = ExcellenceWheel.GEOMETRY;
       var entrance = ExcellenceWheel.ENTRANCE;
       var html = '';
@@ -1500,19 +1672,27 @@
         for (var i = 0; i < n; i++) {
           var a0 = spanStart + i * sliceWidth + INDICATOR_SLICE_GAP / 2;
           var a1 = spanStart + (i + 1) * sliceWidth - INDICATOR_SLICE_GAP / 2;
-          var grade = themes[i].grade;
-          var g = GRADES[grade] || GRADES.ungraded;
-          var color = (!grade || grade === 'ungraded') ? INDICATOR_UNGRADED_COLOR : g.color;
           var d = ExcellenceWheel.sectorPath(geo.R.dotRingInner, geo.R.dotRingOuter, a0, a1);
-          html += '<path class="ew-theme-indicator" d="' + d + '" fill="' + color + '" style="animation-delay:' + delay + 'ms"/>';
+          html += '<path class="ew-theme-indicator" d="' + d + '" fill="' + INDICATOR_UNGRADED_COLOR + '"' +
+            ' style="animation-delay:' + delay + 'ms" data-seg-id="' + seg.id + '" data-theme-idx="' + i + '"/>';
         }
       });
       dotLayer.innerHTML = html;
-      // Entrance only plays once (page load) — toggled off before any
-      // later re-render (e.g. from syncCard() on a grade change) can
-      // apply it again; see the .is-entering scoping in theme-dots.css.
-      dotLayer.classList.toggle('is-entering', !dotRingEntranceDone);
-      dotRingEntranceDone = true;
+      dotLayer.classList.add('is-entering'); // plays once, on this initial build only
+    }
+
+    // Repaints every slice's fill from ELEMENT_THEMES' current grades,
+    // in place — call this (not buildDotRing()) whenever grades change
+    // after the initial build: loading saved state, a rubric click, a
+    // grade-dropdown change.
+    function updateDotRingColors() {
+      dotLayer.querySelectorAll('.ew-theme-indicator').forEach(function (path) {
+        var data = ELEMENT_THEMES[path.getAttribute('data-seg-id')];
+        var theme = data && data.themes && data.themes[parseInt(path.getAttribute('data-theme-idx'), 10)];
+        var grade = theme && theme.grade;
+        var g = GRADES[grade] || GRADES.ungraded;
+        path.setAttribute('fill', (!grade || grade === 'ungraded') ? INDICATOR_UNGRADED_COLOR : g.color);
+      });
     }
 
     // =======================================================================
@@ -1556,7 +1736,6 @@
                 '<div class="evidence-compose" style="display:none">' +
                   '<textarea class="evidence-compose-textarea" placeholder="Describe this evidence\u2026"></textarea>' +
                   '<div class="evidence-compose-attachments"></div>' +
-                  '<input type="file" class="evidence-file-input" multiple style="display:none">' +
                   '<p class="evidence-compose-error" style="display:none"></p>' +
                   '<div class="evidence-compose-actions">' +
                     '<button type="button" class="evidence-attach-btn">Attach Files</button>' +
@@ -1586,7 +1765,6 @@
     var evidenceTextarea = modalOverlay.querySelector('.evidence-compose-textarea');
     var evidenceComposeAttachmentsEl = modalOverlay.querySelector('.evidence-compose-attachments');
     var evidenceComposeErrorEl = modalOverlay.querySelector('.evidence-compose-error');
-    var evidenceFileInput = modalOverlay.querySelector('.evidence-file-input');
     var evidenceAttachBtn = modalOverlay.querySelector('.evidence-attach-btn');
     var evidenceCancelBtn = modalOverlay.querySelector('.evidence-cancel-btn');
     var evidenceSubmitBtn = modalOverlay.querySelector('.evidence-submit-btn');
@@ -1680,7 +1858,10 @@
       var meta = [item.date];
       if (attachments.length) meta.push(attachments.length + ' attachment' + (attachments.length === 1 ? '' : 's'));
       var attachmentsHtml = attachments.map(function (a) {
-        return '<div class="evidence-attachment">' + escapeHtml(a.name) + attachmentIcon(a.kind) + '</div>';
+        var label = escapeHtml(a.name) + attachmentIcon(a.kind);
+        return a.url
+          ? '<a class="evidence-attachment" href="' + escapeHtml(a.url) + '" target="_blank" rel="noopener">' + label + '</a>'
+          : '<div class="evidence-attachment">' + label + '</div>';
       }).join('');
       return '<div class="evidence-accordion-item">' +
         '<div class="evidence-accordion-header" tabindex="0" role="button" aria-expanded="false">' +
@@ -1730,9 +1911,17 @@
       if (pendingDeleteNumber === number) {
         clearTimeout(pendingDeleteTimeout);
         pendingDeleteNumber = null;
+        var removed = findEvidenceByNumber(currentModalTheme, number);
         currentModalTheme.evidence = (currentModalTheme.evidence || []).filter(function (e) { return e.number !== number; });
         renderEvidenceList(currentModalTheme);
         syncCard(currentModalCard, currentModalTheme);
+        // An entry with no entryId was never successfully saved to the
+        // backend in the first place — nothing to delete server-side.
+        if (removed && removed.entryId && SCHOOL_NAME) {
+          google.script.run
+            .withFailureHandler(function (err) { console.error('Failed to delete evidence entry:', err); })
+            .deleteEvidenceEntry(removed.entryId, SCHOOL_NAME);
+        }
         return;
       }
       pendingDeleteNumber = number;
@@ -1778,10 +1967,8 @@
       }).join('');
     }
 
-    function inferAttachmentKind(filename) {
-      var ext = (filename.split('.').pop() || '').toLowerCase();
-      if (ext === 'doc' || ext === 'docx' || ext === 'pdf') return 'doc';
-      if (ext === 'xls' || ext === 'xlsx' || ext === 'csv') return 'xlsx';
+    function inferAttachmentKind(mimeType) {
+      if (mimeType && (mimeType.indexOf('spreadsheet') >= 0 || mimeType.indexOf('csv') >= 0)) return 'xlsx';
       return 'doc';
     }
 
@@ -1835,14 +2022,104 @@
     evidenceAddBtn.addEventListener('click', enterComposeMode);
     evidenceCancelBtn.addEventListener('click', exitComposeMode);
 
-    evidenceAttachBtn.addEventListener('click', function () { evidenceFileInput.click(); });
-    evidenceFileInput.addEventListener('change', function () {
-      Array.prototype.forEach.call(evidenceFileInput.files, function (f) {
-        composeAttachments.push({ name: f.name, kind: inferAttachmentKind(f.name) });
+    // -- Evidence: attach files via Google Picker --------------------------
+    // Deliberately does NOT reuse this app's own "Execute as: Me" identity
+    // — the picker and the resulting Drive access both run as the
+    // *visiting* user, so an upload lands in their own Drive and an
+    // existing file they already own can be picked without moving it
+    // anywhere; sharing the result with the review group also runs under
+    // their token, since they're the one with permission to share it.
+    //
+    // Getting a real per-visitor token needs a full OAuth2 Authorization
+    // Code redirect (Code.gs's getPickerAuth(), backed by the OAuth2
+    // library) rather than Google Identity Services' initTokenClient() —
+    // GIS requires registering this page's exact origin with Google, but
+    // Apps Script always serves this page from a *.googleusercontent.com
+    // sandbox domain, which Google's console permanently forbids
+    // registering as an origin. See Code.gs's getDriveService_() doc
+    // comment and HANDOFF.md for the full story/setup.
+    var gapiPickerLoaded = false;
+
+    function withGapiPicker(cb) {
+      if (gapiPickerLoaded) { cb(); return; }
+      gapi.load('picker', function () { gapiPickerLoaded = true; cb(); });
+    }
+
+    // Resolves with {authorized:true, accessToken, apiKey, reviewGroupEmail}
+    // once the visitor has granted Drive access — opening a consent popup
+    // and polling until it's closed if they haven't (or a prior grant
+    // expired) yet.
+    function withPickerAuth(cb) {
+      google.script.run
+        .withSuccessHandler(function (auth) {
+          if (auth.authorized) { cb(auth); return; }
+          var popup = window.open(auth.authorizationUrl, 'eia-drive-auth', 'width=520,height=650');
+          if (!popup) {
+            showComposeError('Please allow pop-ups for this site, then try Attach Files again.');
+            return;
+          }
+          var poll = setInterval(function () {
+            if (!popup.closed) return;
+            clearInterval(poll);
+            withPickerAuth(cb); // re-check — either granted now, or they just closed it
+          }, 500);
+        })
+        .withFailureHandler(function (err) {
+          console.error('Failed to get Drive authorization:', err);
+          showComposeError('Could not connect to Google Drive — try again.');
+        })
+        .getPickerAuth();
+    }
+
+    function onPickerPicked(auth, data) {
+      if (data.action !== google.picker.Action.PICKED) return;
+      (data.docs || []).forEach(function (doc) {
+        composeAttachments.push({
+          fileId: doc.id,
+          name: doc.name,
+          mimeType: doc.mimeType,
+          url: doc.url,
+          kind: inferAttachmentKind(doc.mimeType)
+        });
+        // Best-effort — runs with the visitor's own token (they own or
+        // already have share rights on this file), so a failure here
+        // (e.g. a file type that can't be shared with a Group) doesn't
+        // block attaching it to the evidence entry.
+        fetch('https://www.googleapis.com/drive/v3/files/' + doc.id + '/permissions', {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + auth.accessToken, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ role: 'reader', type: 'group', emailAddress: auth.reviewGroupEmail })
+        }).catch(function (err) { console.error('Failed to share attachment with review group:', err); });
       });
-      evidenceFileInput.value = ''; // so picking the same file again still fires 'change'
       renderComposeAttachments();
-    });
+    }
+
+    function openDrivePicker() {
+      withPickerAuth(function (auth) {
+        withGapiPicker(function () {
+          new google.picker.PickerBuilder()
+            .addView(google.picker.ViewId.DOCS)
+            .addView(new google.picker.DocsUploadView())
+            .setOAuthToken(auth.accessToken)
+            .setDeveloperKey(auth.apiKey)
+            // Apps Script renders this page inside a hidden iframe whose
+            // real origin is a *.googleusercontent.com sandbox domain —
+            // NOT the script.google.com URL actually shown in the
+            // browser's address bar. Picker's own origin auto-detection
+            // reads the iframe's local origin and gets it wrong (throws
+            // "Incorrect origin value. Expected 'https://script.google.com'
+            // but was '...googleusercontent.com'"); google.script.host.origin
+            // is the client-side property Apps Script provides
+            // specifically to hand Picker the correct top-level origin.
+            .setOrigin(google.script.host.origin)
+            .setCallback(function (data) { onPickerPicked(auth, data); })
+            .build()
+            .setVisible(true);
+        });
+      });
+    }
+
+    evidenceAttachBtn.addEventListener('click', openDrivePicker);
     evidenceComposeAttachmentsEl.addEventListener('click', function (e) {
       var btn = e.target.closest('.evidence-staged-remove');
       if (!btn) return;
@@ -1859,25 +2136,41 @@
       }
       hideComposeError();
       currentModalTheme.evidence = currentModalTheme.evidence || [];
+      var entry;
       if (editingNumber !== null) {
-        var existing = findEvidenceByNumber(currentModalTheme, editingNumber);
-        if (existing) {
-          existing.text = text;
-          existing.attachments = composeAttachments.slice();
+        entry = findEvidenceByNumber(currentModalTheme, editingNumber);
+        if (entry) {
+          entry.text = text;
+          entry.attachments = composeAttachments.slice();
         }
       } else {
         var nextNumber = currentModalTheme.evidence.reduce(function (max, e) { return Math.max(max, e.number || 0); }, 0) + 1;
-        currentModalTheme.evidence.push({
+        entry = {
           type: 'note',
           number: nextNumber,
           date: formatDateDDMMYY(new Date()),
           text: text,
           attachments: composeAttachments.slice()
-        });
+        };
+        currentModalTheme.evidence.push(entry);
       }
       exitComposeMode();
       renderEvidenceList(currentModalTheme);
       syncCard(currentModalCard, currentModalTheme); // grade AND evidence count/icon both stay in sync
+
+      if (entry && SCHOOL_NAME) {
+        google.script.run
+          .withSuccessHandler(function (result) { if (result && result.entryId) entry.entryId = result.entryId; })
+          .withFailureHandler(function (err) { console.error('Failed to save evidence entry:', err); })
+          .saveEvidenceEntry(SCHOOL_NAME, currentModalTheme.id, {
+            entryId: entry.entryId || null,
+            number: entry.number,
+            type: entry.type,
+            date: entry.date,
+            text: entry.text,
+            attachments: entry.attachments
+          }, USER_EMAIL);
+      }
     });
 
     function refreshRubricAndBadge(theme) {
@@ -1933,6 +2226,7 @@
       currentModalTheme.grade = computeAverageGrade(currentModalTheme);
       refreshRubricAndBadge(currentModalTheme);
       syncCard(currentModalCard, currentModalTheme);
+      scheduleSaveRatings();
     });
     rubricGridEl.addEventListener('keydown', function (e) {
       if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
@@ -1954,6 +2248,7 @@
       gradeBadgeWrap.classList.remove('is-open');
       refreshRubricAndBadge(currentModalTheme); // rubric selections untouched; header highlight still needs refreshing
       syncCard(currentModalCard, currentModalTheme);
+      scheduleSaveRatings();
     });
     document.addEventListener('click', function (e) {
       if (gradeBadgeWrap.classList.contains('is-open') && !gradeBadgeWrap.contains(e.target)) {
@@ -2014,7 +2309,7 @@
     // an enlarging wedge.
     var svgRoot = wheel.getSvgRoot();
     svgRoot.insertBefore(dotLayer, svgRoot.querySelector('.ew-wedge'));
-    renderDotRing();
+    buildDotRing();
 
     // Other things you can do with the returned handle:
     // wheel.select('differentiation');

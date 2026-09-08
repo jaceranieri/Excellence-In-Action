@@ -3,6 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <base target="_top">
+<!-- Google Picker widget library, for the evidence "Attach Files" flow —
+     see Script_App.html's Picker section and Code.gs's getDriveService_()
+     doc comment for how the actual per-visitor Drive authorization works
+     (a server-side OAuth2 redirect, not a client-side library). -->
+<script src="https://apis.google.com/js/api.js"></script>
 <?!= include('Stylesheet_ExcellenceWheel'); ?>
 <?!= include('Stylesheet_ThemeCards'); ?>
 <?!= include('Stylesheet_ThemeModal'); ?>

@@ -215,18 +215,20 @@
     // source file (L_CPP_CBR_Vision etc.) — not used by any rendering
     // code, kept for traceability back to the source.
     //
-    // The ONE exception: 'collaborative-planning' → "Collective belief
-    // and responsibility" keeps the worked-example state from earlier
-    // rounds (rubric selections, computed grade, and its two evidence
-    // entries) re-attached after import, so there's still one fully
-    // populated example to demonstrate the feature. Every other Theme
-    // (all 35 of them) is genuinely fresh: 'ungraded', nothing selected,
-    // no evidence — none of that exists in the source file.
+    // Every Theme here is genuinely fresh: 'ungraded', nothing selected,
+    // no evidence — none of that exists in the source file. (An earlier
+    // round kept one hand-populated worked example on 'collaborative-
+    // planning' → "Collective belief and responsibility" to demo the
+    // feature; removed now that the gas/ build actually loads real
+    // ratings/evidence from the backend — this static build has no
+    // backend of its own, so it just stays fully fresh like every other
+    // Theme.)
         var ELEMENT_THEMES = {
       "instructional-coaching": {
         themes: [
           {
             title: "Professional Learning Design",
+            id: "L_IC_PLD",
             grade: "ungraded",
             rubric: [
               {
@@ -252,6 +254,7 @@
           },
           {
             title: "Coaching for technical expertise and instructional agility",
+            id: "L_IC_CTE_Decisions",
             grade: "ungraded",
             rubric: [
               {
@@ -277,6 +280,7 @@
           },
           {
             title: "Coaching for collective efficacy",
+            id: "L_IC_CCE",
             grade: "ungraded",
             rubric: [
               {
@@ -311,6 +315,7 @@
           },
           {
             title: "A Culture of Instructional Coaching and Collaboration",
+            id: "L_IC_CICC",
             grade: "ungraded",
             rubric: [
               {
@@ -336,6 +341,7 @@
           },
           {
             title: "Coaching for responsive and reflective thinking",
+            id: "L_IC_CRRT",
             grade: "ungraded",
             rubric: [
               {
@@ -374,6 +380,7 @@
         themes: [
           {
             title: "Data Collection and Analysis",
+            id: "L_DCDM_DCA",
             grade: "ungraded",
             rubric: [
               {
@@ -399,6 +406,7 @@
           },
           {
             title: "Data Practice",
+            id: "L_DCDM_DP",
             grade: "ungraded",
             rubric: [
               {
@@ -424,6 +432,7 @@
           },
           {
             title: "Data Leadership",
+            id: "L_DCDM_DL",
             grade: "ungraded",
             rubric: [
               {
@@ -463,10 +472,11 @@
         themes: [
           {
             title: "Collective belief and responsibility",
-            grade: "delivering",
+            id: "L_CPP_CBR",
+            grade: "ungraded",
             rubric: [
               {
-                selected: "pre-delivering",
+                selected: null,
                 cells: {
                   "pre-delivering": "Improvement planning is mainly the work of school leaders",
                   "delivering": "The school vision references collective efficacy, and school leaders encourage a sense of collective belief and responsibility for improvement. Leaders and teachers participate in planning improvement cycles.",
@@ -475,7 +485,7 @@
                 }
               },  // L_CPP_CBR_Vision
               {
-                selected: "delivering",
+                selected: null,
                 cells: {
                   "pre-delivering": "Leadership development is informal and dependent on individual initiative. Improvement initiatives may be isolated, short‑term, or dependent on individual champions.",
                   "delivering": "Some staff take on leadership roles, but development is not systematic. Improvement initiatives are implemented but not consistently monitored or scaled.",
@@ -484,7 +494,7 @@
                 }
               },  // L_CPP_CBR_Leadership
               {
-                selected: "sustaining",
+                selected: null,
                 cells: {
                   "pre-delivering": "Curriculum materials are developed individually or cooperatively, with limited collaboration or evaluation.",
                   "delivering": "Some collaborative development of curriculum materials occurs, but quality and consistency vary.",
@@ -493,28 +503,11 @@
                 }
               }  // L_CPP_CBR_CurriculumMaterials
             ],
-            evidence: [
-              {
-                number: 1,
-                type: 'note',
-                date: "28.08.27",
-                text: "Teachers conduct observations of students in their classrooms, particularly year 1 students completing an assessment task.",
-                attachments: [
-                  { name: "Observation Notes", kind: "doc" },
-                  { name: "Observation Timetable", kind: "xlsx" }
-                ]
-              },
-              {
-                number: 2,
-                type: 'note',
-                date: "02.09.27",
-                text: "Placeholder second evidence entry — replace with real evidence when available. This one has no attachments, to show that case too.",
-                attachments: []
-              }
-            ]
+            evidence: []
           },
           {
             title: "Shared clarity on goals and expected student progress",
+            id: "L_CPP_SCOG",
             grade: "ungraded",
             rubric: [
               {
@@ -549,6 +542,7 @@
           },
           {
             title: "Collaborative expertise in assessment, differentiation and intervention",
+            id: "L_CPP_CEA",
             grade: "ungraded",
             rubric: [
               {
@@ -578,6 +572,7 @@
         themes: [
           {
             title: "Deep Knowledge",
+            id: "T_HET_DK_Access",
             grade: "ungraded",
             rubric: [
               {
@@ -612,6 +607,7 @@
           },
           {
             title: "Precision of Instruction (Clarity)",
+            id: "T_HET_POI",
             grade: "ungraded",
             rubric: [
               {
@@ -637,6 +633,7 @@
           },
           {
             title: "Learning Design",
+            id: "T_HET_LD",
             grade: "ungraded",
             rubric: [
               {
@@ -671,6 +668,7 @@
           },
           {
             title: "Engagement",
+            id: "T_HET_E",
             grade: "ungraded",
             rubric: [
               {
@@ -718,6 +716,7 @@
         themes: [
           {
             title: "School-wide approach to differentiation",
+            id: "T_DIF_SWD",
             grade: "ungraded",
             rubric: [
               {
@@ -770,6 +769,7 @@
           },
           {
             title: "Evidence collection and evidence-based decision making",
+            id: "T_DIF_E",
             grade: "ungraded",
             rubric: [
               {
@@ -813,6 +813,7 @@
           },
           {
             title: "Strengths-Based Inclusive Culture",
+            id: "T_DIF_IC",
             grade: "ungraded",
             rubric: [
               {
@@ -847,6 +848,7 @@
           },
           {
             title: "High Challenge and High Support",
+            id: "T_DIF_HCS",
             grade: "ungraded",
             rubric: [
               {
@@ -894,6 +896,7 @@
         themes: [
           {
             title: "Data-Informed Practices: Identification, Intervention, Monitoring and Review",
+            id: "T_INT_DIP",
             grade: "ungraded",
             rubric: [
               {
@@ -919,6 +922,7 @@
           },
           {
             title: "Multi-Tiered Systems of Support (MTSS)",
+            id: "T_INT_MTSS",
             grade: "ungraded",
             rubric: [
               {
@@ -944,6 +948,7 @@
           },
           {
             title: "Explicitly Managed Cognitive Load",
+            id: "T_INT_MCL",
             grade: "ungraded",
             rubric: [
               {
@@ -969,6 +974,7 @@
           },
           {
             title: "Early Identification and Proactive Response",
+            id: "T_INT_EI",
             grade: "ungraded",
             rubric: [
               {
@@ -1007,6 +1013,7 @@
         themes: [
           {
             title: "Formation of the Whole Person",
+            id: "L_KEL_FWP",
             grade: "ungraded",
             rubric: [
               {
@@ -1041,6 +1048,7 @@
           },
           {
             title: "Knowing the Learner Through Data and Evidence-Informed Practice",
+            id: "L_KEL_KTL",
             grade: "ungraded",
             rubric: [
               {
@@ -1075,6 +1083,7 @@
           },
           {
             title: "Belonging Through Relationships and Community",
+            id: "L_KEL_B",
             grade: "ungraded",
             rubric: [
               {
@@ -1109,6 +1118,7 @@
           },
           {
             title: "Aspiration, Agency and Purpose",
+            id: "L_KEL_AAP",
             grade: "ungraded",
             rubric: [
               {
@@ -1147,6 +1157,7 @@
         themes: [
           {
             title: "Inclusive School Culture",
+            id: "L_SSE_ISC",
             grade: "ungraded",
             rubric: [
               {
@@ -1190,6 +1201,7 @@
           },
           {
             title: "Predictability and consistency",
+            id: "L_SSE_PC",
             grade: "ungraded",
             rubric: [
               {
@@ -1233,6 +1245,7 @@
           },
           {
             title: "Responsiveness",
+            id: "L_SSE_R",
             grade: "ungraded",
             rubric: [
               {
@@ -1289,6 +1302,7 @@
         themes: [
           {
             title: "Feedback",
+            id: "L_AF_F",
             grade: "ungraded",
             rubric: [
               {
@@ -1350,6 +1364,7 @@
           },
           {
             title: "Assessment Design",
+            id: "L_AF_AD",
             grade: "ungraded",
             rubric: [
               {
@@ -1384,6 +1399,7 @@
           },
           {
             title: "Progress Monitoring",
+            id: "L_AF_PM",
             grade: "ungraded",
             rubric: [
               {
@@ -1427,6 +1443,7 @@
           },
           {
             title: "Assessment Practice",
+            id: "L_AF_AP",
             grade: "ungraded",
             rubric: [
               {
@@ -1461,6 +1478,7 @@
           },
           {
             title: "Reporting",
+            id: "L_AF_R_Information",
             grade: "ungraded",
             rubric: [
               {
@@ -1477,6 +1495,7 @@
           },
           {
             title: "Consistent Teacher Judgement",
+            id: "L_AF_CTJ",
             grade: "ungraded",
             rubric: [
               {
@@ -1562,10 +1581,9 @@
         'stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
     }
 
-    function renderThemeCard(theme, idx, accentHex, accentRgb, delay) {
+    function renderThemeCard(theme, idx, accentHex, accentRgb, shadowHex, delay) {
       var grade = GRADES[theme.grade] || GRADES.ungraded;
       var count = (theme.evidence || []).length;
-      var shadowHex = darkenHex(accentHex, 0.2);
       var gradePillShadow = darkenHex(grade.color, 0.22);
       return '<div class="theme-card" tabindex="0" role="button"' +
           ' data-theme-index="' + idx + '"' +
@@ -1606,8 +1624,15 @@
       var style = ExcellenceWheel.CATEGORY_STYLE[segment.category];
       var accentHex = style.wedge;
       var accentRgb = hexToRgbString(accentHex);
+      // Teaching's wedge colour is a golden yellow (#FDB40F) — darkening
+      // it (the default for every other category) came out a muddy
+      // mustard rather than reading as "Teaching's colour, darker". Use
+      // Teaching's own ring/accent orange (#F3712D, the same orange as
+      // its wheel ring and Element title) as the shadow instead, for
+      // that category only.
+      var shadowHex = segment.category === 'teaching' ? style.accent : darkenHex(accentHex, 0.2);
       var cardsHtml = themes.map(function (t, i) {
-        return renderThemeCard(t, i, accentHex, accentRgb, i * 35);
+        return renderThemeCard(t, i, accentHex, accentRgb, shadowHex, i * 35);
       }).join('');
       detailEl.innerHTML =
         '<div class="element-detail" style="--title-color:' + style.ring + '">' +
@@ -1635,7 +1660,7 @@
         badge.setAttribute('title', count + ' evidence piece' + (count === 1 ? '' : 's'));
         badge.innerHTML = attachmentGlyph() + (count > 0 ? '<span>' + count + '</span>' : '');
       }
-      renderDotRing(); // this Theme's overview dot needs the same colour update
+      updateDotRingColors(); // this Theme's overview dot needs the same colour update
     }
 
     // =======================================================================
@@ -1668,9 +1693,12 @@
     dotLayer.setAttribute('class', 'ew-theme-indicator-layer');
     dotLayer.setAttribute('aria-hidden', 'true'); // decorative only — the same info is reachable, accessibly, via the cards
 
-    var dotRingEntranceDone = false;
-
-    function renderDotRing() {
+    // Built once, structure-only (every slice starts grey/"ungraded") —
+    // updateDotRingColors() below is what actually paints real grades in,
+    // by changing each path's own `fill` in place rather than rebuilding
+    // the layer, so a CSS `transition: fill` (see theme-dots.css) has
+    // something to animate between.
+    function buildDotRing() {
       var geo = ExcellenceWheel.GEOMETRY;
       var entrance = ExcellenceWheel.ENTRANCE;
       var html = '';
@@ -1686,19 +1714,26 @@
         for (var i = 0; i < n; i++) {
           var a0 = spanStart + i * sliceWidth + INDICATOR_SLICE_GAP / 2;
           var a1 = spanStart + (i + 1) * sliceWidth - INDICATOR_SLICE_GAP / 2;
-          var grade = themes[i].grade;
-          var g = GRADES[grade] || GRADES.ungraded;
-          var color = (!grade || grade === 'ungraded') ? INDICATOR_UNGRADED_COLOR : g.color;
           var d = ExcellenceWheel.sectorPath(geo.R.dotRingInner, geo.R.dotRingOuter, a0, a1);
-          html += '<path class="ew-theme-indicator" d="' + d + '" fill="' + color + '" style="animation-delay:' + delay + 'ms"/>';
+          html += '<path class="ew-theme-indicator" d="' + d + '" fill="' + INDICATOR_UNGRADED_COLOR + '"' +
+            ' style="animation-delay:' + delay + 'ms" data-seg-id="' + seg.id + '" data-theme-idx="' + i + '"/>';
         }
       });
       dotLayer.innerHTML = html;
-      // Entrance only plays once (page load) — toggled off before any
-      // later re-render (e.g. from syncCard() on a grade change) can
-      // apply it again; see the .is-entering scoping in theme-dots.css.
-      dotLayer.classList.toggle('is-entering', !dotRingEntranceDone);
-      dotRingEntranceDone = true;
+      dotLayer.classList.add('is-entering'); // plays once, on this initial build only
+    }
+
+    // Repaints every slice's fill from ELEMENT_THEMES' current grades, in
+    // place — call this (not buildDotRing()) whenever grades change after
+    // the initial build, e.g. from syncCard() on a rubric/grade change.
+    function updateDotRingColors() {
+      dotLayer.querySelectorAll('.ew-theme-indicator').forEach(function (path) {
+        var data = ELEMENT_THEMES[path.getAttribute('data-seg-id')];
+        var theme = data && data.themes && data.themes[parseInt(path.getAttribute('data-theme-idx'), 10)];
+        var grade = theme && theme.grade;
+        var g = GRADES[grade] || GRADES.ungraded;
+        path.setAttribute('fill', (!grade || grade === 'ungraded') ? INDICATOR_UNGRADED_COLOR : g.color);
+      });
     }
 
     // =======================================================================
@@ -2200,7 +2235,7 @@
     // an enlarging wedge.
     var svgRoot = wheel.getSvgRoot();
     svgRoot.insertBefore(dotLayer, svgRoot.querySelector('.ew-wedge'));
-    renderDotRing();
+    buildDotRing();
 
     // Other things you can do with the returned handle:
     // wheel.select('differentiation');
