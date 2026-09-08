@@ -26,31 +26,27 @@
  * anything else shows the "insufficient access" screen client-side.
  */
 
-var CONFIG = {
-  // From https://docs.google.com/spreadsheets/d/1OQXaRVUJopdjr4OWQbOvNLjoq-_bwaiNS3Rfu1-C62I/edit
-  USERS_SHEET_ID: '1OQXaRVUJopdjr4OWQbOvNLjoq-_bwaiNS3Rfu1-C62I',
-  // Ratings + EvidenceLog live in their own spreadsheet, separate from
-  // the Users sheet above.
-  // From https://docs.google.com/spreadsheets/d/15l-HVd1MtjN3uc-jnXDEQSNMDHDN1NTJMSa3v78ptfQ/edit
-  DATA_SHEET_ID: '15l-HVd1MtjN3uc-jnXDEQSNMDHDN1NTJMSa3v78ptfQ',
-  RATINGS_TAB: 'Ratings',
-  EVIDENCE_TAB: 'EvidenceLog',
-  // Placeholder — replace with the real reviewers' Google Group before
-  // going live. Every Drive file attached to evidence is explicitly
-  // shared (Reader) with this address, regardless of whose Drive it
-  // lives in, so reviewers outside the uploading school can open it.
-  REVIEW_GROUP_EMAIL: 'testgroup@syd.catholic.edu.au',
-  // Google Cloud API key restricted to the Google Picker API, used
-  // client-side by google.picker.PickerBuilder — see getPickerConfig().
-  PICKER_API_KEY: 'REPLACE_WITH_PICKER_API_KEY',
-  // OAuth 2.0 "Web application" Client ID (Google Cloud Console ->
-  // Credentials), used client-side by Google Identity Services
-  // (google.accounts.oauth2.initTokenClient) to get a token for the
-  // *visiting* user — deliberately NOT ScriptApp.getOAuthToken(), which
-  // would return the developer's own token since this app executes as
-  // "Me" (see getPickerConfig()'s doc comment for why that matters).
-  PICKER_OAUTH_CLIENT_ID: 'REPLACE_WITH_OAUTH_CLIENT_ID'
-};
+/**
+ * Every ID/secret/email the app needs lives in Script Properties (Project
+ * Settings > Script Properties in the Apps Script editor), never hardcoded
+ * here — this file gets pasted around and eyeballed, Script Properties
+ * don't. See HANDOFF.md for the full list of keys to set and where each
+ * value comes from.
+ */
+function prop_(key) {
+  return PropertiesService.getScriptProperties().getProperty(key);
+}
+function requireProp_(key) {
+  var value = prop_(key);
+  if (!value) {
+    throw new Error('Missing Script Property "' + key + '" — set it under ' +
+      'Project Settings > Script Properties in the Apps Script editor. See HANDOFF.md.');
+  }
+  return value;
+}
+
+// Sheet tab names are just structure, not secrets — fine to hardcode.
+var TABS = { RATINGS: 'Ratings', EVIDENCE: 'EvidenceLog' };
 
 var RATINGS_HEADERS = ['SchoolName', 'RatingsJSON', 'LastUpdatedBy', 'LastUpdatedAt'];
 var EVIDENCE_HEADERS = ['EntryId', 'SchoolName', 'ThemeId', 'EntryNumber', 'Type', 'Date', 'Text', 'Attachments', 'CreatedBy', 'CreatedAt', 'UpdatedAt'];
@@ -86,7 +82,7 @@ function getCurrentUserAccess() {
   var result = { email: email, found: false, active: false, name: '', schoolName: '', crestUrl: '' };
   if (!email) return result;
 
-  var sheet = SpreadsheetApp.openById(CONFIG.USERS_SHEET_ID).getSheets()[0];
+  var sheet = SpreadsheetApp.openById(requireProp_('USERS_SHEET_ID')).getSheets()[0];
   var rows = sheet.getDataRange().getValues();
   // rows[0] is the header row (Email, Name, SchoolName, CrestURL, Active).
   for (var i = 1; i < rows.length; i++) {
@@ -107,8 +103,8 @@ function getCurrentUserAccess() {
 /**
  * Ratings + Evidence persistence.
  *
- * Two tabs in CONFIG.DATA_SHEET_ID (a spreadsheet separate from the Users
- * sheet):
+ * Two tabs in the "DATA_SHEET_ID" Script Property's spreadsheet (separate
+ * from the Users sheet):
  *   - Ratings: one row per school. RatingsJSON holds every Theme's saved
  *     state as {"<themeId>": {"grade": "sustaining", "rubric": [<selected
  *     level per rubric row, in order, or null>]}, ...}.
@@ -123,7 +119,7 @@ function getCurrentUserAccess() {
 
 /** Gets a tab by name, creating it with headers if it doesn't exist yet. */
 function ensureSheet_(tabName, headers) {
-  var ss = SpreadsheetApp.openById(CONFIG.DATA_SHEET_ID);
+  var ss = SpreadsheetApp.openById(requireProp_('DATA_SHEET_ID'));
   var sheet = ss.getSheetByName(tabName);
   if (!sheet) {
     sheet = ss.insertSheet(tabName);
@@ -151,8 +147,8 @@ function findRowByValue_(sheet, colIndex1Based, value) {
  * Returns { ratings: {<themeId>: {grade, rubric}}, evidence: [entries] }.
  */
 function getSchoolState(schoolName) {
-  var ratingsSheet = ensureSheet_(CONFIG.RATINGS_TAB, RATINGS_HEADERS);
-  var evidenceSheet = ensureSheet_(CONFIG.EVIDENCE_TAB, EVIDENCE_HEADERS);
+  var ratingsSheet = ensureSheet_(TABS.RATINGS, RATINGS_HEADERS);
+  var evidenceSheet = ensureSheet_(TABS.EVIDENCE, EVIDENCE_HEADERS);
 
   var ratings = {};
   var rowIdx = findRowByValue_(ratingsSheet, 1, schoolName);
@@ -193,7 +189,7 @@ function saveRatings(schoolName, ratingsJson, userEmail) {
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
-    var sheet = ensureSheet_(CONFIG.RATINGS_TAB, RATINGS_HEADERS);
+    var sheet = ensureSheet_(TABS.RATINGS, RATINGS_HEADERS);
     var rowIdx = findRowByValue_(sheet, 1, schoolName);
     var now = new Date().toISOString();
     if (rowIdx > 0) {
@@ -218,7 +214,7 @@ function saveEvidenceEntry(schoolName, themeId, entry, userEmail) {
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
-    var sheet = ensureSheet_(CONFIG.EVIDENCE_TAB, EVIDENCE_HEADERS);
+    var sheet = ensureSheet_(TABS.EVIDENCE, EVIDENCE_HEADERS);
     var now = new Date().toISOString();
     var attachmentsJson = JSON.stringify(entry.attachments || []);
     var rowIdx = -1;
@@ -249,7 +245,7 @@ function deleteEvidenceEntry(entryId, schoolName) {
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
-    var sheet = ensureSheet_(CONFIG.EVIDENCE_TAB, EVIDENCE_HEADERS);
+    var sheet = ensureSheet_(TABS.EVIDENCE, EVIDENCE_HEADERS);
     var rowIdx = findRowByValue_(sheet, 1, entryId);
     if (rowIdx > 0 && String(sheet.getRange(rowIdx, 2).getValue()) === schoolName) {
       sheet.deleteRow(rowIdx);
@@ -262,24 +258,82 @@ function deleteEvidenceEntry(entryId, schoolName) {
 }
 
 /**
- * Static config the client needs to run the Google Picker + share
- * attached files as the *visiting* user — NOT as this app's own
- * "Execute as: Me" identity. Deliberately does not hand back
- * ScriptApp.getOAuthToken(): since every google.script.run call executes
- * as the developer regardless of who's visiting, that token would
- * authenticate the Picker as the developer, uploading/sharing into the
- * developer's own Drive instead of the visitor's — the opposite of what
- * we want. Instead the client uses Google Identity Services
- * (google.accounts.oauth2.initTokenClient) with the clientId below to get
- * a token tied to the browser's own signed-in Google session, entirely
- * independent of this script's execution identity. See
- * CONFIG.PICKER_OAUTH_CLIENT_ID's comment above for the Cloud Console
- * setup this requires.
+ * Getting the Picker + file-sharing calls to run as the *visiting* user
+ * (not this app's own "Execute as: Me" identity) needs a real per-user
+ * OAuth token. Two approaches were tried/considered and don't work here:
+ *   - ScriptApp.getOAuthToken() always returns the DEVELOPER's token,
+ *     since the whole script (including every google.script.run call)
+ *     executes as "Me" regardless of who's visiting.
+ *   - Google Identity Services' client-side initTokenClient() (tried in
+ *     an earlier round) requires registering the calling page's exact
+ *     origin with Google — but Apps Script always serves a deployed web
+ *     app's actual content from a per-deployment *.googleusercontent.com
+ *     sandbox domain, which Google's OAuth console permanently forbids
+ *     from being registered as an origin ("Invalid origin: Uses a
+ *     forbidden domain"). This can't be worked around by picking a
+ *     different origin — no origin on that domain is ever accepted.
+ *
+ * The actual fix: the "OAuth2 for Apps Script" library
+ * (https://github.com/googleworkspace/apps-script-oauth2, add it via
+ * Project Settings > Libraries using script ID
+ * 1B7FSrk5Zi6L1rSxxTDgDEUsPzlukDsi4KGuTMorsTQHhGBzBkMun4iDF) does a full
+ * OAuth2 Authorization Code redirect through
+ * https://script.google.com/macros/d/{SCRIPT_ID}/usercallback — a URL
+ * Google's console DOES accept as an Authorized redirect URI, unlike a
+ * googleusercontent.com JS origin. It stores each visitor's own token in
+ * PropertiesService.getUserProperties(), which (like
+ * Session.getActiveUser() above) is scoped per browsing visitor
+ * regardless of the script's own execute-as setting. See HANDOFF.md for
+ * the full Cloud Console + Script Properties setup this requires.
  */
-function getPickerConfig() {
+function getDriveService_() {
+  return OAuth2.createService('drive')
+    .setAuthorizationBaseUrl('https://accounts.google.com/o/oauth2/v2/auth')
+    .setTokenUrl('https://oauth2.googleapis.com/token')
+    .setClientId(requireProp_('DRIVE_OAUTH_CLIENT_ID'))
+    .setClientSecret(requireProp_('DRIVE_OAUTH_CLIENT_SECRET'))
+    .setCallbackFunction('driveAuthCallback')
+    .setPropertyStore(PropertiesService.getUserProperties())
+    .setScope('https://www.googleapis.com/auth/drive.file');
+}
+
+/** OAuth2 library's redirect target after the visitor grants/denies access. */
+function driveAuthCallback(request) {
+  var isAuthorized = getDriveService_().handleCallback(request);
+  return HtmlService.createHtmlOutput(
+    isAuthorized
+      ? 'Drive access granted — you can close this tab and go back to Excellence in Action.'
+      : 'Drive access was not granted. You can close this tab and try Attach Files again.'
+  );
+}
+
+/**
+ * Run once from the Apps Script editor (select this function in the
+ * toolbar dropdown, click Run, then check View > Logs) to get the exact
+ * redirect URI to paste into the OAuth Client's "Authorized redirect
+ * URIs" in Cloud Console. See HANDOFF.md.
+ */
+function logDriveRedirectUri() {
+  Logger.log(getDriveService_().getRedirectUri());
+}
+
+/**
+ * Called by the client right before opening the Picker. If the visitor
+ * hasn't granted Drive access yet (or a prior grant expired/was
+ * revoked), returns an authorizationUrl for the client to open in a
+ * popup; once they grant access there, calling this again returns the
+ * real per-visitor access token plus what the client needs to build the
+ * Picker itself.
+ */
+function getPickerAuth() {
+  var service = getDriveService_();
+  if (!service.hasAccess()) {
+    return { authorized: false, authorizationUrl: service.getAuthorizationUrl() };
+  }
   return {
-    apiKey: CONFIG.PICKER_API_KEY,
-    clientId: CONFIG.PICKER_OAUTH_CLIENT_ID,
-    reviewGroupEmail: CONFIG.REVIEW_GROUP_EMAIL
+    authorized: true,
+    accessToken: service.getAccessToken(),
+    apiKey: requireProp_('PICKER_API_KEY'),
+    reviewGroupEmail: requireProp_('REVIEW_GROUP_EMAIL')
   };
 }

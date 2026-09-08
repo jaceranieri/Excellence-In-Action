@@ -2024,49 +2024,54 @@
 
     // -- Evidence: attach files via Google Picker --------------------------
     // Deliberately does NOT reuse this app's own "Execute as: Me" identity
-    // (see Code.gs's getPickerConfig() doc comment) — the picker and the
-    // resulting Drive access both run as the *visiting* user via Google
-    // Identity Services, so an upload lands in their own Drive, and an
+    // — the picker and the resulting Drive access both run as the
+    // *visiting* user, so an upload lands in their own Drive and an
     // existing file they already own can be picked without moving it
-    // anywhere. Sharing the result with the review group also runs under
+    // anywhere; sharing the result with the review group also runs under
     // their token, since they're the one with permission to share it.
-    var pickerConfig = null;
-    var gisTokenClient = null;
-    var pickerAccessToken = null;
+    //
+    // Getting a real per-visitor token needs a full OAuth2 Authorization
+    // Code redirect (Code.gs's getPickerAuth(), backed by the OAuth2
+    // library) rather than Google Identity Services' initTokenClient() —
+    // GIS requires registering this page's exact origin with Google, but
+    // Apps Script always serves this page from a *.googleusercontent.com
+    // sandbox domain, which Google's console permanently forbids
+    // registering as an origin. See Code.gs's getDriveService_() doc
+    // comment and HANDOFF.md for the full story/setup.
     var gapiPickerLoaded = false;
-
-    function withPickerConfig(cb) {
-      if (pickerConfig) { cb(pickerConfig); return; }
-      google.script.run
-        .withSuccessHandler(function (cfg) { pickerConfig = cfg; cb(cfg); })
-        .withFailureHandler(function (err) {
-          console.error('Failed to load Picker config:', err);
-          showComposeError('Could not open Google Drive picker — try again.');
-        })
-        .getPickerConfig();
-    }
 
     function withGapiPicker(cb) {
       if (gapiPickerLoaded) { cb(); return; }
       gapi.load('picker', function () { gapiPickerLoaded = true; cb(); });
     }
 
-    function withAccessToken(clientId, cb) {
-      if (pickerAccessToken) { cb(); return; }
-      if (!gisTokenClient) {
-        gisTokenClient = google.accounts.oauth2.initTokenClient({
-          client_id: clientId,
-          scope: 'https://www.googleapis.com/auth/drive.file',
-          callback: function (resp) {
-            if (resp && resp.access_token) { pickerAccessToken = resp.access_token; cb(); }
-            else showComposeError('Google Drive access was not granted.');
+    // Resolves with {authorized:true, accessToken, apiKey, reviewGroupEmail}
+    // once the visitor has granted Drive access — opening a consent popup
+    // and polling until it's closed if they haven't (or a prior grant
+    // expired) yet.
+    function withPickerAuth(cb) {
+      google.script.run
+        .withSuccessHandler(function (auth) {
+          if (auth.authorized) { cb(auth); return; }
+          var popup = window.open(auth.authorizationUrl, 'eia-drive-auth', 'width=520,height=650');
+          if (!popup) {
+            showComposeError('Please allow pop-ups for this site, then try Attach Files again.');
+            return;
           }
-        });
-      }
-      gisTokenClient.requestAccessToken();
+          var poll = setInterval(function () {
+            if (!popup.closed) return;
+            clearInterval(poll);
+            withPickerAuth(cb); // re-check — either granted now, or they just closed it
+          }, 500);
+        })
+        .withFailureHandler(function (err) {
+          console.error('Failed to get Drive authorization:', err);
+          showComposeError('Could not connect to Google Drive — try again.');
+        })
+        .getPickerAuth();
     }
 
-    function onPickerPicked(data) {
+    function onPickerPicked(auth, data) {
       if (data.action !== google.picker.Action.PICKED) return;
       (data.docs || []).forEach(function (doc) {
         composeAttachments.push({
@@ -2082,26 +2087,24 @@
         // block attaching it to the evidence entry.
         fetch('https://www.googleapis.com/drive/v3/files/' + doc.id + '/permissions', {
           method: 'POST',
-          headers: { 'Authorization': 'Bearer ' + pickerAccessToken, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ role: 'reader', type: 'group', emailAddress: pickerConfig.reviewGroupEmail })
+          headers: { 'Authorization': 'Bearer ' + auth.accessToken, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ role: 'reader', type: 'group', emailAddress: auth.reviewGroupEmail })
         }).catch(function (err) { console.error('Failed to share attachment with review group:', err); });
       });
       renderComposeAttachments();
     }
 
     function openDrivePicker() {
-      withPickerConfig(function (cfg) {
+      withPickerAuth(function (auth) {
         withGapiPicker(function () {
-          withAccessToken(cfg.clientId, function () {
-            new google.picker.PickerBuilder()
-              .addView(google.picker.ViewId.DOCS)
-              .addView(new google.picker.DocsUploadView())
-              .setOAuthToken(pickerAccessToken)
-              .setDeveloperKey(cfg.apiKey)
-              .setCallback(onPickerPicked)
-              .build()
-              .setVisible(true);
-          });
+          new google.picker.PickerBuilder()
+            .addView(google.picker.ViewId.DOCS)
+            .addView(new google.picker.DocsUploadView())
+            .setOAuthToken(auth.accessToken)
+            .setDeveloperKey(auth.apiKey)
+            .setCallback(function (data) { onPickerPicked(auth, data); })
+            .build()
+            .setVisible(true);
         });
       });
     }

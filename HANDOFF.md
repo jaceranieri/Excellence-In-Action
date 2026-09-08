@@ -64,7 +64,8 @@ in `import-eia.py` itself; not run by the app.
 
 - **Users sheet**: `https://docs.google.com/spreadsheets/d/1OQXaRVUJopdjr4OWQbOvNLjoq-_bwaiNS3Rfu1-C62I/`
   — columns `Email, Name, SchoolName, CrestURL, Active`. The sheet ID is
-  hardcoded in `gas/Code.gs`'s `CONFIG.USERS_SHEET_ID`.
+  the `USERS_SHEET_ID` Script Property (Project Settings → Script
+  Properties in the Apps Script editor — not hardcoded in `Code.gs`).
 - `Code.gs`'s `getCurrentUserAccess()` reads `Session.getActiveUser().getEmail()`
   and looks it up (case-insensitive) against the sheet's **first tab**
   (whatever it's named). Returns `{email, found, active, name, schoolName, crestUrl}`.
@@ -94,7 +95,7 @@ in `import-eia.py` itself; not run by the app.
 Every Theme's grade, rubric-cell selections, and evidence entries now
 persist to a **separate** spreadsheet from the Users sheet:
 `https://docs.google.com/spreadsheets/d/15l-HVd1MtjN3uc-jnXDEQSNMDHDN1NTJMSa3v78ptfQ/`
-(`CONFIG.DATA_SHEET_ID` in `Code.gs`). Two tabs, created automatically on
+(the `DATA_SHEET_ID` Script Property). Two tabs, created automatically on
 first write if they don't already exist (`ensureSheet_()`):
 
 - **Ratings** — one row per school: `SchoolName, RatingsJSON,
@@ -152,78 +153,132 @@ to delete server-side.
 compose form's "Attach Files" button opens the Google Picker
 (`openDrivePicker()`), letting the visitor pick an existing Drive file
 they own or upload a new one — into **their own** Drive, not the app's.
-This is deliberately NOT wired through Apps Script's own
-`ScriptApp.getOAuthToken()`: this app runs as "Execute as: Me", so every
-`google.script.run` call (including a hypothetical
-`getPickerConfig()`-returned token) would authenticate as the
-*developer*, not the visitor — see `Code.gs`'s `getPickerConfig()` doc
-comment. Instead the picker and the file-sharing call both run under a
-**separate, client-side OAuth token** obtained via Google Identity
-Services (`google.accounts.oauth2.initTokenClient`, using
-`CONFIG.PICKER_OAUTH_CLIENT_ID`) — entirely independent of the Apps
-Script backend's own execution identity. After a pick, the app calls the
-Drive REST API directly (`fetch(...)`, not `DriveApp`) with that same
-visitor token to grant `CONFIG.REVIEW_GROUP_EMAIL` reader access, since
-the visitor is the one with permission to share their own file — a
-server-side `DriveApp.addViewer()` as the developer would fail, since the
-developer never had access to that file to begin with. Both
-`PICKER_API_KEY` and `PICKER_OAUTH_CLIENT_ID` are placeholder stubs in
-`CONFIG` pending manual Google Cloud Console setup — see the walkthrough
-below.
-
-The Picker dialog already has both "My Drive" (existing files) and
-"Upload" (local computer → their own Drive) as tabs in the same dialog
+The dialog has both "My Drive" (existing files) and "Upload" (local
+computer → their own Drive) as tabs in the same dialog
 (`.addView(google.picker.ViewId.DOCS).addView(new
-google.picker.DocsUploadView())` in `openDrivePicker()`) — this was a
-deliberate choice over two separate buttons, and uploads land wherever
-Picker's Upload view defaults them (no app-managed folder). Both were
-confirmed decisions, not defaults to revisit without asking first.
+google.picker.DocsUploadView())`) — a deliberate choice over two separate
+buttons, confirmed with the project owner, and uploads land wherever
+Picker's Upload view defaults them (no app-managed folder — also
+confirmed, not a default to revisit without asking first).
 
-**Cloud Console setup walkthrough** (all manual, outside this repo):
+Getting this to run as the *visiting* user (not this app's own
+"Execute as: Me" identity) took two wrong turns before landing on what's
+actually implemented now — worth understanding both, since either one
+looks plausible until you actually hit its wall:
 
-1. **Link a standard GCP project to the Apps Script project**, if it
-   isn't already: Apps Script editor → Project Settings (gear icon) →
-   "Google Cloud Platform (GCP) Project" → "Change project" → enter the
-   Project Number of a GCP project you own (create one at
-   console.cloud.google.com first if you don't have one to use).
-2. **Enable the Picker API**: in that GCP project's Console → APIs &
+- `ScriptApp.getOAuthToken()` always returns the **developer's** token: since
+  the whole script (every `google.script.run` call included) executes as
+  "Me" regardless of who's visiting, this can't ever represent the visitor.
+- Google Identity Services' client-side `google.accounts.oauth2.initTokenClient()`
+  (what an earlier round of this project actually shipped) requires
+  registering the *calling page's exact origin* with Google. But Apps
+  Script always serves a deployed web app's real content from a
+  per-deployment `*.googleusercontent.com` sandbox domain — never
+  `script.google.com` itself — and Google's OAuth console permanently
+  **forbids** registering any origin on that domain ("Invalid origin:
+  Uses a forbidden domain"). This isn't fixable by trying a different
+  origin string; no origin on that domain is ever accepted, for any Apps
+  Script project.
+
+**What's actually implemented**: the ["OAuth2 for Apps
+Script"](https://github.com/googleworkspace/apps-script-oauth2) library
+(`Code.gs`'s `getDriveService_()`), which runs a full OAuth2
+Authorization Code redirect through
+`https://script.google.com/macros/d/{SCRIPT_ID}/usercallback` — a URL
+Google's console *does* accept as an Authorized redirect URI, unlike a
+`googleusercontent.com` JS origin. Each visitor's own token is stored in
+`PropertiesService.getUserProperties()`, which — like
+`Session.getActiveUser()` elsewhere in this file — is scoped per browsing
+visitor regardless of the script's own execute-as setting. Flow:
+`Script_App.html`'s `openDrivePicker()` calls `Code.gs`'s
+`getPickerAuth()`; if the visitor hasn't granted Drive access yet (or a
+prior grant expired), it returns an `authorizationUrl` that the client
+opens in a popup and polls (`popup.closed`) until the visitor finishes
+with it, then calls `getPickerAuth()` again. Once authorized, the same
+per-visitor access token is used both to build the Picker
+(`setOAuthToken()`) and, after a pick, to call the Drive REST API
+directly (`fetch(...)`, not `DriveApp`) granting the review group reader
+access — since the visitor is the one with permission to share their own
+file; a server-side `DriveApp.addViewer()` as the developer would fail,
+since the developer never had access to that file to begin with.
+
+**All config now lives in Script Properties, not `Code.gs`** (the
+project owner's preference, and better practice regardless — this file
+gets pasted around and eyeballed, Script Properties don't). `Code.gs` no
+longer has a `CONFIG` object; every ID/secret/email is read via
+`requireProp_('KEY_NAME')`, which throws a clear error naming the
+missing key if it isn't set. Set these under the Apps Script editor's
+**Project Settings → Script Properties** before anything will work:
+
+| Script Property | Value |
+|---|---|
+| `USERS_SHEET_ID` | `1OQXaRVUJopdjr4OWQbOvNLjoq-_bwaiNS3Rfu1-C62I` |
+| `DATA_SHEET_ID` | `15l-HVd1MtjN3uc-jnXDEQSNMDHDN1NTJMSa3v78ptfQ` |
+| `REVIEW_GROUP_EMAIL` | your reviewers' Google Group (currently `testgroup@syd.catholic.edu.au` as a placeholder) |
+| `PICKER_API_KEY` | from Cloud Console setup below |
+| `DRIVE_OAUTH_CLIENT_ID` | from Cloud Console setup below |
+| `DRIVE_OAUTH_CLIENT_SECRET` | from Cloud Console setup below — this one's genuinely a secret; Script Properties is exactly the right place for it, `Code.gs` would not have been |
+
+**Cloud Console + Apps Script setup walkthrough** (replaces the earlier,
+GIS-based version of these steps — if you already created an OAuth
+Client following the old instructions, its "Authorized JavaScript
+origins" attempt will have failed with the forbidden-domain error; you
+can reuse the same Client ID/Secret, you just need to add a redirect URI
+to it instead, per step 5 below):
+
+1. **Add the OAuth2 library** to the Apps Script project: editor → click
+   the **+** next to "Libraries" in the left sidebar → paste script ID
+   `1B7FSrk5Zi6L1rSxxTDgDEUsPzlukDsi4KGuTMorsTQHhGBzBkMun4iDF` → Look up
+   → pick the latest version → Add. (Do this through the editor UI, not
+   by hand-editing `appsscript.json`'s `dependencies` — the UI fills in
+   the correct current version for you.)
+2. **Link a standard GCP project to the Apps Script project**, if it
+   isn't already: Project Settings (gear icon) → "Google Cloud Platform
+   (GCP) Project" → "Change project" → enter the Project Number of a GCP
+   project you own (create one at console.cloud.google.com first if you
+   don't have one to use).
+3. **Enable the Picker API**: in that GCP project's Console → APIs &
    Services → Library → search "Google Picker API" → Enable.
-3. **Create the API key**: APIs & Services → Credentials → Create
+4. **Create the API key**: APIs & Services → Credentials → Create
    Credentials → API key. Click "Restrict key" → under "API
-   restrictions" choose "Restrict key" → select "Google Picker API"
-   only (don't leave it unrestricted). Paste the resulting key into
-   `Code.gs`'s `CONFIG.PICKER_API_KEY`.
-4. **Create the OAuth Client ID**: APIs & Services → Credentials →
-   Create Credentials → OAuth client ID.
-   - If this is the project's first OAuth client, you'll be asked to
-     configure the OAuth consent screen first — set **User type:
-     Internal** (this app is already domain-restricted via
-     `appsscript.json`'s `access: DOMAIN`, so Internal keeps it that
-     way and skips Google's app-verification review entirely, which
-     External would otherwise require for the `drive.file` scope).
+   restrictions" choose "Restrict key" → select "Google Picker API" only
+   (don't leave it unrestricted). This becomes the `PICKER_API_KEY`
+   Script Property above.
+5. **Create (or fix) the OAuth Client ID**: APIs & Services →
+   Credentials → Create Credentials → OAuth client ID (or edit the one
+   from an earlier attempt).
+   - If this is the project's first OAuth client, configure the consent
+     screen first — set **User type: Internal** (this app is already
+     domain-restricted via `appsscript.json`'s `access: DOMAIN`, so
+     Internal keeps it that way and skips Google's app-verification
+     review, which External would otherwise require for the
+     `drive.file` scope).
    - Application type: **Web application**.
-   - **Authorized JavaScript origins** — this is the one genuinely
-     fiddly step: it must be the *exact* origin your deployed web app's
-     content actually renders from, which is a per-deployment
-     `*.googleusercontent.com` sandbox domain Apps Script assigns, not
-     `script.google.com` itself and not predictable in advance. Open
-     your deployed web app in a browser, open DevTools → Console, run
-     `window.location.origin`, and paste that exact value in here. If
-     you ever create a new deployment (not just a new version of an
-     existing one) and get a new URL, re-check this — a new deployment
-     can get a new sandbox origin.
-   - Save, then paste the generated Client ID into `Code.gs`'s
-     `CONFIG.PICKER_OAUTH_CLIENT_ID`.
-5. **Redeploy**: Deploy → Manage deployments → Edit → New version, after
-   pasting both values into `Code.gs`.
-6. **Test**: log in → select an Element → open a Theme → Add Evidence →
-   Attach Files. First time, expect a Google sign-in/consent popup
-   (requesting Drive file access) before the Picker dialog itself opens
-   with its "My Drive" and "Upload" tabs.
-   - An "origin mismatch" / `redirect_uri_mismatch`-style error from the
-     OAuth popup almost always means step 4's Authorized JavaScript
-     origin doesn't exactly match `window.location.origin` on the live
-     page — re-check it there, not from memory.
+   - Leave "Authorized JavaScript origins" **empty** — this flow doesn't
+     use it, and no origin here would be accepted anyway.
+   - Under **Authorized redirect URIs**, add the URI from step 6 below.
+   - Save. The Client ID becomes `DRIVE_OAUTH_CLIENT_ID`, the Client
+     Secret becomes `DRIVE_OAUTH_CLIENT_SECRET`.
+6. **Get the exact redirect URI**: in the Apps Script editor, select
+   `logDriveRedirectUri` in the function dropdown → Run → View → Logs.
+   Copy the logged URL (`https://script.google.com/macros/d/{SCRIPT_ID}/usercallback`)
+   into step 5's Authorized redirect URIs. (This will fail with a
+   `requireProp_` error the *first* time, before `DRIVE_OAUTH_CLIENT_ID`/
+   `SECRET` are set — that's fine, `getRedirectUri()` doesn't actually
+   need them to compute the URI; if it does error before you have real
+   values, temporarily set both Script Properties to any placeholder
+   string, run this, then replace them with the real values from step 5.)
+7. **Set all six Script Properties** from the table above.
+8. **Redeploy**: Deploy → Manage deployments → Edit → New version.
+9. **Test**: log in → select an Element → open a Theme → Add Evidence →
+   Attach Files. First time, expect a popup asking you to sign in/consent
+   to Drive access — close it once it says "Drive access granted", then
+   click Attach Files again and the actual Picker dialog should open with
+   its "My Drive" and "Upload" tabs.
+   - If the popup shows a Google error page instead of your consent
+     screen, the redirect URI in step 5 doesn't exactly match what
+     `logDriveRedirectUri()` logged — re-run that and re-check, rather
+     than re-typing it from memory.
 
 **Not yet done / worth knowing**:
 - None of this has been exercised against a live deployment or real
@@ -322,19 +377,18 @@ computed margins directly.
 ## Known limitations / explicitly deferred (not oversights)
 
 - **Ratings/Evidence persistence is now built (`gas/` only) — see
-  "Ratings + Evidence persistence" below.** Three placeholder values in
-  `gas/Code.gs`'s `CONFIG` still need real values before this actually
-  works end-to-end: `DATA_SHEET_ID` is filled in (the separate Ratings/
-  EvidenceLog spreadsheet), but `REVIEW_GROUP_EMAIL` is a placeholder
+  "Ratings + Evidence persistence" below.** All config is read from
+  Script Properties, not hardcoded in `Code.gs` — `USERS_SHEET_ID` and
+  `DATA_SHEET_ID` are known values (see the table in "Ratings + Evidence
+  persistence"), `REVIEW_GROUP_EMAIL` is currently a placeholder
   (`testgroup@syd.catholic.edu.au`), and `PICKER_API_KEY` /
-  `PICKER_OAUTH_CLIENT_ID` are unset stubs pending Google Cloud Console
-  setup (enable the Picker API, create an API key restricted to it, and
-  create an OAuth 2.0 "Web application" Client ID with the deployed web
-  app's URL as an authorized JavaScript origin). None of this has been
+  `DRIVE_OAUTH_CLIENT_ID` / `DRIVE_OAUTH_CLIENT_SECRET` need real values
+  from the Cloud Console walkthrough in that same section — none of the
+  six Script Properties exist until you set them. None of this has been
   tested against a real deployment yet — only syntax-checked locally,
-  since Picker/GIS and real Sheets writes can't be exercised from this
-  sandboxed dev environment (no live Apps Script execution, no network
-  egress to Google's OAuth/Picker endpoints).
+  since the OAuth2 library's redirect flow and real Sheets writes can't
+  be exercised from this sandboxed dev environment (no live Apps Script
+  execution, no network egress to Google's OAuth/Picker endpoints).
   `example.html` (the static build) intentionally has NO persistence —
   it has no backend to persist to. Its `ELEMENT_THEMES` got the same
   `id` field added (for parity/future use) but nothing else; it stays a
