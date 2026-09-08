@@ -1468,7 +1468,7 @@
       var count = (theme.evidence || []).length;
       var shadowHex = darkenHex(accentHex, 0.2);
       var gradePillShadow = darkenHex(grade.color, 0.22);
-      return '<div class="theme-card" tabindex="0" role="button" aria-pressed="false"' +
+      return '<div class="theme-card" tabindex="0" role="button"' +
           ' data-theme-index="' + idx + '"' +
           ' style="--card-accent:' + accentHex + ';--card-accent-rgb:' + accentRgb +
           ';--card-shadow:' + shadowHex + ';animation-delay:' + delay + 'ms">' +
@@ -1803,19 +1803,38 @@
       }
     }
 
-    function deleteEvidence(number) {
+    // window.confirm() is silently blocked inside a sandboxed iframe
+    // without allow-modals (e.g. the Artifact preview) \u2014 the call returns
+    // false immediately with no dialog ever shown, which made Delete look
+    // like it did nothing. Two-click in-app confirm instead: first click
+    // arms it (button relabels to "Confirm?", reverts after a timeout);
+    // a second click while armed actually deletes.
+    var pendingDeleteNumber = null;
+    var pendingDeleteTimeout = null;
+
+    function deleteEvidence(number, btnEl) {
       if (!currentModalTheme) return;
-      if (!window.confirm('Delete this evidence entry? This can\u2019t be undone.')) return;
-      currentModalTheme.evidence = (currentModalTheme.evidence || []).filter(function (e) { return e.number !== number; });
-      renderEvidenceList(currentModalTheme);
-      syncCard(currentModalCard, currentModalTheme);
+      if (pendingDeleteNumber === number) {
+        clearTimeout(pendingDeleteTimeout);
+        pendingDeleteNumber = null;
+        currentModalTheme.evidence = (currentModalTheme.evidence || []).filter(function (e) { return e.number !== number; });
+        renderEvidenceList(currentModalTheme);
+        syncCard(currentModalCard, currentModalTheme);
+        return;
+      }
+      pendingDeleteNumber = number;
+      if (btnEl) btnEl.textContent = 'Confirm?';
+      pendingDeleteTimeout = setTimeout(function () {
+        pendingDeleteNumber = null;
+        if (btnEl && btnEl.isConnected) btnEl.textContent = 'Delete';
+      }, 2500);
     }
 
     evidenceListScrollEl.addEventListener('click', function (e) {
       var editBtn = e.target.closest('.evidence-edit-btn');
       if (editBtn) { startEditEvidence(parseInt(editBtn.getAttribute('data-number'), 10)); return; }
       var delBtn = e.target.closest('.evidence-delete-btn');
-      if (delBtn) { deleteEvidence(parseInt(delBtn.getAttribute('data-number'), 10)); return; }
+      if (delBtn) { deleteEvidence(parseInt(delBtn.getAttribute('data-number'), 10), delBtn); return; }
       var header = e.target.closest('.evidence-accordion-header');
       if (header) toggleAccordionItem(header);
     });
@@ -2042,12 +2061,6 @@
 
     // -- Opening a Theme card ---------------------------------------------
     function handleCardActivate(card) {
-      detailEl.querySelectorAll('.theme-card.is-selected').forEach(function (c) {
-        c.classList.remove('is-selected');
-        c.setAttribute('aria-pressed', 'false');
-      });
-      card.classList.add('is-selected');
-      card.setAttribute('aria-pressed', 'true');
       var idx = parseInt(card.getAttribute('data-theme-index'), 10);
       var theme = currentThemes && currentThemes[idx];
       if (theme) openThemeModal(theme, card);

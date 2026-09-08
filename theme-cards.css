@@ -73,10 +73,12 @@
   flex-direction: column;
   min-height: 172px;
   background: #ffffff;
-  border: 1px solid #d5d7e0;
+  border: 1px solid var(--card-accent, #1c1f4f);
   border-radius: 10px;
   padding: 16px 18px;
-  box-shadow: 0 5px 0 0 var(--card-shadow, #9a9cab);
+  box-shadow:
+    0 0 0 2px var(--card-accent, #1c1f4f),
+    0 5px 0 0 var(--card-shadow, #9a9cab);
   box-sizing: border-box;
   cursor: pointer;
   outline: none;
@@ -88,23 +90,17 @@
 .theme-card:hover,
 .theme-card:focus-visible {
   transform: translateY(-3px);
-  border-color: var(--card-accent, #c9cbd4);
   box-shadow:
+    0 0 0 2px var(--card-accent, #1c1f4f),
     0 8px 0 0 var(--card-shadow, #9a9cab),
     0 16px 26px rgba(var(--card-accent-rgb, 30, 32, 38), 0.16);
 }
 
 .theme-card:active {
   transform: translateY(2px);
-  box-shadow: 0 2px 0 0 var(--card-shadow, #9a9cab);
-}
-
-.theme-card.is-selected {
-  border-color: var(--card-accent, #1c1f4f);
   box-shadow:
     0 0 0 2px var(--card-accent, #1c1f4f),
-    0 8px 0 0 var(--card-shadow, #9a9cab),
-    0 16px 26px rgba(var(--card-accent-rgb, 30, 32, 38), 0.16);
+    0 2px 0 0 var(--card-shadow, #9a9cab);
 }
 
 .theme-card-title {
@@ -116,7 +112,7 @@
   padding: 4px 2px 16px;
   font-family: 'Figtree', 'Segoe UI', sans-serif;
   font-weight: 400;
-  font-size: 14px;
+  font-size: 17px;
   line-height: 1.4;
   color: #111318;
   text-align: center;
