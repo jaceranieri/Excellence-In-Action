@@ -279,6 +279,23 @@ to it instead, per step 5 below):
      screen, the redirect URI in step 5 doesn't exactly match what
      `logDriveRedirectUri()` logged — re-run that and re-check, rather
      than re-typing it from memory.
+   - If authorization succeeds but the Picker dialog itself then opens
+     **blank**, with a console error `Uncaught Error: Incorrect origin
+     value. Expected 'https://script.google.com' but was
+     '...googleusercontent.com'` — this is a separate, well-known Apps
+     Script + Picker quirk, unrelated to the OAuth setup above: Apps
+     Script renders the page inside a hidden iframe whose real origin is
+     a `*.googleusercontent.com` sandbox domain, not the
+     `script.google.com` URL actually shown in the browser's address
+     bar, and Picker's own origin auto-detection gets confused by that.
+     Already fixed in `openDrivePicker()` via
+     `.setOrigin(google.script.host.origin)` — if you see this error
+     anyway, you're probably running an older pasted-in copy of
+     `Script_App.html`. A `Framing 'https://docs.google.com/' violates
+     ... Content-Security-Policy ... report-only` console message around
+     the same time is harmless noise (a report-only CSP on Google's own
+     infrastructure, "logged, but no further action taken") — not the
+     actual error, ignore it.
 
 **Not yet done / worth knowing**:
 - None of this has been exercised against a live deployment or real

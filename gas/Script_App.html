@@ -2102,6 +2102,16 @@
             .addView(new google.picker.DocsUploadView())
             .setOAuthToken(auth.accessToken)
             .setDeveloperKey(auth.apiKey)
+            // Apps Script renders this page inside a hidden iframe whose
+            // real origin is a *.googleusercontent.com sandbox domain —
+            // NOT the script.google.com URL actually shown in the
+            // browser's address bar. Picker's own origin auto-detection
+            // reads the iframe's local origin and gets it wrong (throws
+            // "Incorrect origin value. Expected 'https://script.google.com'
+            // but was '...googleusercontent.com'"); google.script.host.origin
+            // is the client-side property Apps Script provides
+            // specifically to hand Picker the correct top-level origin.
+            .setOrigin(google.script.host.origin)
             .setCallback(function (data) { onPickerPicked(auth, data); })
             .build()
             .setVisible(true);
