@@ -10,7 +10,15 @@
 <?!= include('Stylesheet_AppBanner'); ?>
 <?!= include('Stylesheet_LoginGate'); ?>
 <style>
-  :root { color-scheme: light; }
+  :root {
+    color-scheme: light;
+    /* Shared cap for the banner and the wheel+cards row, so both stay
+       the same width as each other — referenced from app-banner.css's
+       .app-banner rule too. Growing the window keeps growing this
+       (and the wheel/cards inside it) up to this point; past it, extra
+       space just becomes outer margin instead of an ever-larger app. */
+    --stage-max-width: 1320px;
+  }
   /* Different Elements have different numbers of Theme cards, so the
      page's total height changes on every selection — right around the
      point where that height crosses the viewport's own height, the
@@ -36,31 +44,50 @@
      target layout wants this tight, so that extra margin is dropped;
      body's gap below is the only spacing between banner and stage now. */
 
-  /* Wheel + Theme cards side by side, both fixed sizes (not percentage
-     or flex-grow based) so the wheel and the overall stage stay the
-     same size no matter which Element is selected, or how many Theme
-     cards that Element has — only the cards column's own height grows
-     or shrinks below the fixed-size row. Stacks (cards below) only
-     once the viewport is too narrow for both fixed columns side by
-     side — see the media query below. */
+  /* Wheel + Theme cards sit flush side by side (no gap between them —
+     any breathing room comes from the stage's own outer edges, not a
+     gap here) on a typical laptop screen, and stack with a real gap
+     only once the viewport is too narrow for both — see the media
+     query below. */
   .main-layout {
     display: flex;
-    gap: 44px;
+    gap: 0;
     align-items: flex-start;
     justify-content: center;
     width: 100%;
-    max-width: 640px; /* matches .app-banner's own max-width, so banner and stage share one fixed width */
+    max-width: var(--stage-max-width);
   }
-  #wheel-host { flex: 0 0 300px; width: 300px; max-width: 300px; }
+  #wheel-host {
+    /* Sized from the viewport width alone (clamp + vw), never from
+       #detail or its own content — that's what actually guarantees
+       the wheel can't change size depending on which Element (and so
+       how many Theme cards) is selected. A flex-basis percentage or
+       flex-grow ratio both resolve relative to the sibling/container
+       instead, which is what caused it to visibly change size before.
+       Capped at 620px so a large monitor gets more margin, not a
+       bigger wheel (floor of 380px keeps it usable right up to the
+       stacking breakpoint below). */
+    flex: 0 0 auto;
+    width: clamp(380px, 46vw, 620px);
+    max-width: 620px;
+  }
   #detail {
-    flex: 0 0 296px;
-    width: 296px;
-    max-width: 296px;
-    min-width: 0;
+    flex: 1 1 0;
+    min-width: 340px;
+    max-width: 760px;
     min-height: 90px;
     box-sizing: border-box;
   }
   #detail .placeholder { color: #999; font-style: italic; margin: 0; text-align: center; }
+
+  @media (max-width: 860px) {
+    .main-layout {
+      flex-direction: column;
+      align-items: center;
+      gap: 32px; /* the no-gap rule above is specifically for side-by-side; stacked needs real spacing */
+    }
+    #detail { width: 100%; max-width: 620px; }
+  }
 
   @media (max-width: 760px) {
     .main-layout { flex-direction: column; align-items: center; }

@@ -18,7 +18,10 @@
 
 .app-banner {
   width: 100%;
-  max-width: 640px;
+  /* Shares the page's --stage-max-width (defined in the host page's own
+     <style>, e.g. Index.html/example.html) so the banner is always the
+     same width as the wheel+cards row below it, whatever that cap is. */
+  max-width: var(--stage-max-width, 1320px);
   box-sizing: border-box;
   display: flex;
   align-items: center;
