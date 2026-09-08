@@ -10,15 +10,8 @@
 <?!= include('Stylesheet_AppBanner'); ?>
 <?!= include('Stylesheet_LoginGate'); ?>
 <style>
-  :root {
-    color-scheme: light;
-    /* Shared cap for the banner and the wheel+cards row, so both stay
-       the same width as each other — referenced from app-banner.css's
-       .app-banner rule too. Growing the window keeps growing this
-       (and the wheel/cards inside it) up to this point; past it, extra
-       space just becomes outer margin instead of an ever-larger app. */
-    --stage-max-width: 1320px;
-  }
+  :root { color-scheme: light; }
+
   /* Different Elements have different numbers of Theme cards, so the
      page's total height changes on every selection — right around the
      point where that height crosses the viewport's own height, the
@@ -31,66 +24,71 @@
   }
   body {
     margin: 0;
-    padding: 48px 24px;
+    padding: 48px 32px;
     background: #f4f5f7;
     font-family: 'Figtree', 'Segoe UI', sans-serif;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 32px;
+    gap: 48px; /* ample, deliberate space between the banner and the wheel+cards row */
   }
-  /* Was margin-bottom: 72px, stacked on top of body's own 32px gap
-     (a ~104px total gap) from an earlier round's spacing pass — the
-     target layout wants this tight, so that extra margin is dropped;
-     body's gap below is the only spacing between banner and stage now. */
 
-  /* Wheel + Theme cards sit flush side by side (no gap between them —
-     any breathing room comes from the stage's own outer edges, not a
-     gap here) on a typical laptop screen, and stack with a real gap
-     only once the viewport is too narrow for both — see the media
-     query below. */
+  /* Banner's own width (independent of the wheel+cards row below) is
+     set in app-banner.css itself, not here. */
+
+  /* Wheel + Theme cards, side by side, with real breathing room between
+     them (44-56px depending on tier below) — not literally zero as in
+     a previous pass, which read as cramped; the earlier "no padding on
+     the right of the wheel" note meant not to ALSO add box-level
+     padding on top of this gap, not to remove the gap entirely.
+     Every size below is a fixed pixel value per tier, not a percentage,
+     vw, or flex-grow ratio — nothing here is ever computed from the
+     sibling or from how many Theme cards are showing, which is what
+     actually stops both the wheel and the cards from changing size
+     depending on which Element is selected. It's also deliberately NOT
+     continuously fluid: rather than smoothly resizing on every pixel
+     of window width (which made Theme cards subtly different widths
+     at almost every screen size), the layout snaps between a small
+     number of fully fixed, designed sizes at the breakpoints below. */
   .main-layout {
     display: flex;
-    gap: 0;
     align-items: flex-start;
     justify-content: center;
+    gap: 56px;
+    /* Explicit, not left to shrink-to-fit: without this, the stacked
+       tier's min(…, 100%) widths below have no definite container to
+       resolve their 100% against (.main-layout would otherwise size
+       itself from its own children, which is exactly the same
+       content-dependent circularity that caused the wheel to change
+       size before, just relocated to a different tier). */
     width: 100%;
-    max-width: var(--stage-max-width);
   }
-  #wheel-host {
-    /* Sized from the viewport width alone (clamp + vw), never from
-       #detail or its own content — that's what actually guarantees
-       the wheel can't change size depending on which Element (and so
-       how many Theme cards) is selected. A flex-basis percentage or
-       flex-grow ratio both resolve relative to the sibling/container
-       instead, which is what caused it to visibly change size before.
-       Capped at 620px so a large monitor gets more margin, not a
-       bigger wheel (floor of 380px keeps it usable right up to the
-       stacking breakpoint below). */
-    flex: 0 0 auto;
-    width: clamp(380px, 46vw, 620px);
-    max-width: 620px;
-  }
+  #wheel-host { flex: none; width: 580px; }
   #detail {
-    flex: 1 1 0;
-    min-width: 340px;
-    max-width: 760px;
+    flex: none;
+    width: 580px;
     min-height: 90px;
     box-sizing: border-box;
   }
   #detail .placeholder { color: #999; font-style: italic; margin: 0; text-align: center; }
 
-  @media (max-width: 860px) {
-    .main-layout {
-      flex-direction: column;
-      align-items: center;
-      gap: 32px; /* the no-gap rule above is specifically for side-by-side; stacked needs real spacing */
-    }
-    #detail { width: 100%; max-width: 620px; }
+  /* Compact tier: smaller laptops / tablets in landscape. Still fully
+     fixed, still side by side — just a smaller designed size, not a
+     scaled-down version of the desktop numbers above. */
+  @media (max-width: 1279.98px) {
+    .main-layout { gap: 32px; }
+    #wheel-host { width: 380px; }
+    #detail { width: 380px; }
   }
 
-  @media (max-width: 760px) {
-    .main-layout { flex-direction: column; align-items: center; }
+  /* Stacked tier: too narrow for both fixed columns side by side.
+     min(…, 100%) on both is the one deliberate exception to "always
+     fixed" in this layout — a safety net against horizontal overflow
+     on genuinely small phone screens, not a return to fluid scaling. */
+  @media (max-width: 899.98px) {
+    .main-layout { flex-direction: column; align-items: center; gap: 32px; }
+    #wheel-host { width: min(360px, 100%); }
+    #detail { width: min(420px, 100%); }
   }
 </style>
 </head>

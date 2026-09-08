@@ -17,11 +17,13 @@
  */
 
 .app-banner {
-  width: 100%;
-  /* Shares the page's --stage-max-width (defined in the host page's own
-     <style>, e.g. Index.html/example.html) so the banner is always the
-     same width as the wheel+cards row below it, whatever that cap is. */
-  max-width: var(--stage-max-width, 1320px);
+  /* A fixed width of its own — independent of the wheel+cards row
+     below it (which has its own fixed sizes per breakpoint, see the
+     host page's <style>). The banner never stretches to match that
+     row, and never determines the page's overall width either way.
+     min() is only a safety net against overflow under 960px, not a
+     return to fluid/proportional sizing. */
+  width: min(960px, 100%);
   box-sizing: border-box;
   display: flex;
   align-items: center;
