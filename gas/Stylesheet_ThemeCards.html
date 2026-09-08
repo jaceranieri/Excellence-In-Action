@@ -54,9 +54,20 @@
 
 .theme-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  grid-template-columns: repeat(2, 1fr);
   gap: 22px; /* extra room for the shadow band on the row below */
   align-items: stretch;
+}
+
+/* auto-fit's minmax(190px, 1fr) previously collapsed to a single column
+   at realistic #detail widths (~340-400px, since 2 x 190px + the 22px
+   gap doesn't fit) — a fixed 2-column grid is what's actually wanted
+   here, with a single-column fallback only once the panel is
+   genuinely too narrow for two 190px-ish cards side by side. */
+@media (max-width: 420px) {
+  .theme-cards {
+    grid-template-columns: 1fr;
+  }
 }
 
 @keyframes tc-fade-in {

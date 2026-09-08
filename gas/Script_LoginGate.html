@@ -12,12 +12,17 @@
 
   function renderLoginGateFound(access) {
     var card = document.getElementById('login-gate-card');
+    var schoolLabel = access.schoolName || 'your school';
+    // The crest image itself carries the school's name (per the actual
+    // crest artwork), so the button shows only the crest — no redundant
+    // text label — but keeps an aria-label/alt for screen readers.
     card.innerHTML =
       '<h2 class="login-gate-card-heading">Welcome, ' + escapeHtml(access.name || 'there') + '!</h2>' +
       '<p class="login-gate-card-sub">Your School’s EIA Tool has been found.<br>Click the button below to get started!</p>' +
-      '<button type="button" class="login-gate-continue" id="login-gate-continue-btn">' +
-        (access.crestUrl ? '<img class="login-gate-continue-crest" src="' + escapeHtml(access.crestUrl) + '" alt="">' : '') +
-        '<span class="login-gate-continue-school">' + escapeHtml(access.schoolName || 'Continue') + '</span>' +
+      '<button type="button" class="login-gate-continue" id="login-gate-continue-btn" aria-label="Continue to ' + escapeHtml(schoolLabel) + '">' +
+        (access.crestUrl
+          ? '<img class="login-gate-continue-crest" src="' + escapeHtml(access.crestUrl) + '" alt="' + escapeHtml(schoolLabel) + '">'
+          : '<span class="login-gate-continue-school">' + escapeHtml(schoolLabel) + '</span>') +
       '</button>';
     document.getElementById('login-gate-continue-btn').addEventListener('click', enterApp);
   }

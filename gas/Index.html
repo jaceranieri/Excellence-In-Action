@@ -11,6 +11,16 @@
 <?!= include('Stylesheet_LoginGate'); ?>
 <style>
   :root { color-scheme: light; }
+  /* Different Elements have different numbers of Theme cards, so the
+     page's total height changes on every selection — right around the
+     point where that height crosses the viewport's own height, the
+     browser's vertical scrollbar appears/disappears, which shifts the
+     horizontal centring of the whole body (banner included) by half a
+     scrollbar-width. Reserving that space permanently stops the jump. */
+  html {
+    overflow-y: scroll;
+    scrollbar-gutter: stable;
+  }
   body {
     margin: 0;
     padding: 48px 24px;
