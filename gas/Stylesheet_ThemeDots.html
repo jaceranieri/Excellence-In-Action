@@ -1,0 +1,53 @@
+<style>
+/*!
+ * Theme indicator ring — the ring the wheel reserves between its wedges
+ * and its outer dark ring (see GEOMETRY in excellence-wheel.js), split
+ * by the app into one arc slice per Theme, filling each Element's full
+ * angular width evenly regardless of how many Themes it has. This is an
+ * app-level overlay, not part of the wheel component itself: the wheel
+ * has no idea Themes or grades exist, it just exposes its centre point,
+ * radii, and its own annular-sector path builder (`sectorPath`), plus a
+ * handle to its own <svg> so this layer can be drawn in true alignment
+ * with it (see renderDotRing() in the demo script).
+ *
+ * Purely visual — no hover, click, or keyboard interaction (`pointer-
+ * events: none`, and the layer is `aria-hidden`); reaching a specific
+ * Theme is only ever done via the Element wedge + its Theme card, same
+ * as before this existed. Always visible, coloured only by that Theme's
+ * grade — deliberately NOT affected by the wheel's own hover/selected
+ * dimming, since the point is a same-glance comparison across every
+ * Element regardless of what's selected. Inserted BEHIND the wedges in
+ * the SVG's paint order (not appended on top), so a wedge's own hover/
+ * selected scale-up visually covers the indicator ring where they
+ * overlap.
+ *
+ * Entrance animation: reuses `@keyframes ew-pop-in`, defined in
+ * excellence-wheel.css, not redeclared here — both stylesheets are
+ * always loaded together on the same page, and CSS keyframes are
+ * global, so this is a real dependency on that file, not a copy of it.
+ * Staggered per Element using `ExcellenceWheel.ENTRANCE.indicatorStart`/
+ * `indicatorStagger` (see renderDotRing), which slots it into the same
+ * inside-out sequence right after the wedges finish appearing.
+ */
+
+.ew-theme-indicator-layer {
+  pointer-events: none;
+}
+
+/* Entrance only plays the first time this layer renders (page load) —
+   scoped under .is-entering rather than being an unconditional property
+   on .ew-theme-indicator, since renderDotRing() also re-renders on every
+   grade change (a full innerHTML rebuild), and without this scoping the
+   pop-in would replay every time, not just once. See renderDotRing() in
+   the demo script for how the class is added once then removed. */
+.ew-theme-indicator-layer.is-entering .ew-theme-indicator {
+  animation: ew-pop-in 320ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+  /* animation-delay set per Element inline — see renderDotRing() */
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ew-theme-indicator-layer.is-entering .ew-theme-indicator {
+    animation: none;
+  }
+}
+</style>

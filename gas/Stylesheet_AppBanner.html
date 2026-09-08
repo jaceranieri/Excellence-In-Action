@@ -1,0 +1,124 @@
+<style>
+/*!
+ * App banner — the page header: a placeholder logo, "Excellence in
+ * Action" as the fixed title, a school-name subtitle (placeholder text
+ * for now — swap it for the real school name, ideally from the same
+ * roster/session data that will eventually drive login), and a
+ * placeholder avatar.
+ *
+ * Part of the same hard-edge "colour shadow" visual language as
+ * theme-cards.css / theme-modal.css — this one's shadow is a fixed
+ * dark colour rather than a domain colour, since the banner isn't
+ * scoped to any one Element/category the way the wheel's own UI is.
+ *
+ * The logo and avatar circles are deliberately NOT given the shadow
+ * treatment — a bottom-edge band looks like a stray growth on a full
+ * circle rather than a shadow, the same reasoning the close (×) button
+ * and attachment-remove (×) buttons were excluded elsewhere.
+ */
+
+.app-banner {
+  width: 100%;
+  max-width: 640px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: #f7f8fa;
+  border: 1px solid #e7e8ee;
+  border-radius: 14px;
+  padding: 10px 20px;
+  box-shadow: 0 6px 0 0 #000000, 0 14px 28px rgba(0, 0, 0, 0.14);
+}
+
+.app-banner-logo {
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 2px solid #1c1f4f;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.app-banner-logo svg {
+  width: 20px;
+  height: 20px;
+}
+
+.app-banner-titles {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: center;
+}
+
+.app-banner-title {
+  margin: 0;
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+  font-weight: 800;
+  font-size: 16px;
+  color: #1c1f4f;
+}
+
+.app-banner-subtitle {
+  margin: 2px 0 0;
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+  font-weight: 600;
+  font-size: 11.5px;
+  color: #2f8fd1;
+}
+
+.app-banner-avatar {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #1c1f4f;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.app-banner-avatar svg {
+  width: 15px;
+  height: 15px;
+}
+
+@media (max-width: 560px) {
+  .app-banner { padding: 9px 14px; gap: 10px; }
+  .app-banner-title { font-size: 14px; }
+  .app-banner-subtitle { font-size: 10.5px; }
+  .app-banner-logo { width: 32px; height: 32px; }
+  .app-banner-avatar { width: 28px; height: 28px; }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .app-banner {
+    background: #1e2030;
+    border-color: #2c2e42;
+    box-shadow: 0 6px 0 0 #05060c, 0 14px 28px rgba(0, 0, 0, 0.4);
+  }
+  :root:not([data-theme="light"]) .app-banner-logo {
+    background: #262838;
+    border-color: #4a4d66;
+  }
+  :root:not([data-theme="light"]) .app-banner-title {
+    color: #eef0ff;
+  }
+}
+:root[data-theme="dark"] .app-banner {
+  background: #1e2030;
+  border-color: #2c2e42;
+  box-shadow: 0 6px 0 0 #05060c, 0 14px 28px rgba(0, 0, 0, 0.4);
+}
+:root[data-theme="dark"] .app-banner-logo {
+  background: #262838;
+  border-color: #4a4d66;
+}
+:root[data-theme="dark"] .app-banner-title {
+  color: #eef0ff;
+}
+</style>

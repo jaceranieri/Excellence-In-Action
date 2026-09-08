@@ -1,0 +1,900 @@
+<style>
+/*!
+ * Theme modal — opened when a Theme card is clicked. Two columns:
+ * a rubric grid (criteria rows x 4 fixed levels) on the left, and a
+ * Grade badge + Evidence container on the right.
+ *
+ * Structure note: `.theme-modal` (the fixed-size box) is NOT itself the
+ * scrolling element — `.theme-modal-scroll` inside it is. That split
+ * exists so the header (sticky, with the close button in it) stays put
+ * at the top of the modal's visible area regardless of how far the
+ * content inside has scrolled, rather than scrolling away with it.
+ *
+ * The Evidence container (`.evidence-container`) has two mutually
+ * exclusive views, toggled in the demo script: the accordion list
+ * (`.evidence-accordion-item`, one open at a time) and the compose form
+ * (`.evidence-compose`, shown while adding new evidence — a textarea,
+ * staged attachment chips, and Attach/Cancel/Submit). Its height
+ * matches the rubric column's via `align-items: stretch` on
+ * `.theme-modal-body` plus `flex: 1` on the container itself, so it's
+ * never fighting the rubric's own natural height; the narrow-screen
+ * breakpoint (where the layout stacks and there's no rubric column
+ * beside it to match) gives it an explicit default height instead.
+ *
+ * Rubric cells show selection via border colour + a light background
+ * tint only — no separate checkbox/tick element.
+ *
+ * One accent colour — the selected Element's own wheel colour,
+ * --modal-accent / --modal-accent-rgb, set inline by openThemeModal()
+ * in the demo script — runs through the rubric (current-grade column
+ * header, selected cells) and the Evidence container's buttons (Add
+ * Evidence, Submit). The Grade badge is the one exception: it's
+ * coloured by the GRADE itself (--grade-color, one of the GRADES
+ * colours), not the Element, per your "Pre-Delivering = red"
+ * instruction, and fades between colours when the grade changes. The
+ * grade dropdown's items are centred and also hover to their own
+ * grade's colour (--item-color, set per item), not a flat neutral hover.
+ *
+ * Depends on nothing but its own rules below; safe to drop next to
+ * excellence-wheel.css / theme-cards.css in any page that renders them.
+ */
+
+.theme-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 9, 20, 0.5);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 1000;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+.theme-modal-overlay.is-open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.theme-modal {
+  position: relative;
+  width: 100%;
+  max-width: 1180px;
+  max-height: calc(100vh - 48px);
+  box-sizing: border-box;
+  background: #ffffff;
+  border-radius: 18px;
+  box-shadow: 0 10px 0 0 var(--modal-shadow, #1c1f4f), 0 22px 48px rgba(0, 0, 0, 0.22);
+  transform: translateY(14px) scale(0.98);
+  transition: transform 0.22s ease;
+  overflow: hidden; /* clips .theme-modal-scroll's corners to match */
+}
+
+.theme-modal-overlay.is-open .theme-modal {
+  transform: translateY(0) scale(1);
+}
+
+.theme-modal-scroll {
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  border-radius: 18px; /* explicit, not just inherited via the parent's overflow:hidden — keeps the corners round even where a scrollbar sits right at the edge */
+}
+
+.theme-modal-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 22px 22px 20px 32px;
+  border-bottom: 1px solid #eef0f5;
+  background: #ffffff;
+}
+
+.theme-modal-title {
+  margin: 0;
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+  font-weight: 800;
+  font-size: 19px;
+  line-height: 1.3;
+  color: #1c1f4f;
+}
+
+.theme-modal-close {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: #f1f2f6;
+  color: #3a3c47;
+  font-size: 21px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  flex: none;
+}
+
+.theme-modal-close:hover,
+.theme-modal-close:focus-visible {
+  background: #e3e5ee;
+}
+
+.theme-modal-body {
+  display: flex;
+  flex-wrap: wrap; /* NEW — if the sidebar genuinely can't fit beside the rubric, it drops below automatically, instead of the fixed old breakpoint leaving a broken zone in between */
+  gap: 32px;
+  padding: 26px 32px 32px;
+  align-items: stretch; /* sidebar column stretches to match the rubric column's height, when they're on the same line */
+}
+
+/* Rubric ---------------------------------------------------------------- */
+
+.rubric-col {
+  flex: 1 1 480px;
+  min-width: 340px; /* was 0 — that's the actual bug: it let this column shrink smaller than its grid's own 4x160px+gaps content size, so the grid overflowed sideways under the sidebar instead of the column just refusing to shrink further */
+}
+
+.rubric-header,
+.rubric-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(130px, 1fr));
+  gap: 20px; /* wider than a plain grid needs — leaves room for the selected cell's shadow band to actually show against the row below it, not be covered by it */
+}
+
+.rubric-header {
+  margin-bottom: 10px;
+}
+
+.rubric-header-cell {
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+  font-size: clamp(10.5px, 1.05vw, 12px);
+  font-weight: 600;
+  color: #90939e;
+  padding: 0 2px;
+}
+
+.rubric-header-cell.is-current {
+  color: var(--modal-accent, #1c1f4f);
+  font-weight: 700;
+}
+
+.rubric-cell {
+  position: relative;
+  border: 1.5px solid #e5e7ee;
+  border-radius: 10px;
+  background: #ffffff;
+  padding: 12px;
+  min-height: 92px;
+  box-sizing: border-box;
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+  font-size: clamp(10.5px, 1.05vw, 12px); /* gently shrinks as the viewport (and so the rubric column) narrows, rather than a hard jump at one breakpoint */
+  line-height: 1.55;
+  color: #6a6d7a;
+  cursor: pointer;
+  outline: none;
+  box-shadow: 0 3px 0 0 #e5e7ee;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
+}
+
+.rubric-cell:hover,
+.rubric-cell:focus-visible {
+  border-color: var(--modal-accent, #1c1f4f);
+}
+
+.rubric-cell.is-selected {
+  border-color: var(--modal-accent, #1c1f4f);
+  background: rgba(var(--modal-accent-rgb, 28, 31, 79), 0.05);
+  color: #2a2c38;
+  box-shadow: 0 3px 0 0 var(--modal-shadow, #1c1f4f);
+}
+
+.rubric-cell:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 0 #e5e7ee;
+}
+
+.rubric-cell.is-selected:active {
+  box-shadow: 0 1px 0 0 var(--modal-shadow, #1c1f4f);
+}
+
+.rubric-cell.is-blank {
+  background: #f7f7fa;
+  border-color: #f7f7fa;
+  cursor: default;
+  pointer-events: none;
+  box-shadow: none;
+}
+
+/* Mobile-only level label inside each cell — hidden on the grid layout,
+   shown once the rubric collapses to a single stacked column (below). */
+.rubric-cell-level {
+  display: none;
+}
+
+/* Sidebar: Grade + Evidence ---------------------------------------------- */
+
+.modal-sidebar-col {
+  flex: 1 1 260px;
+  max-width: 300px;
+  min-width: 220px;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-label {
+  margin: 0 0 8px;
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  color: #90939e;
+  flex: none;
+}
+
+.grade-badge-wrap {
+  position: relative;
+  margin-bottom: 26px;
+  flex: none;
+}
+
+.grade-badge {
+  width: 100%;
+  border: none;
+  border-radius: 10px;
+  padding: 14px 16px;
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  color: #ffffff;
+  background: var(--grade-color, #9aa0a6);
+  box-shadow: 0 4px 0 0 var(--grade-shadow, #6d7278);
+  transition: background-color 0.35s ease, box-shadow 0.35s ease, transform 0.1s ease;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-sizing: border-box;
+}
+
+.grade-badge:active {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 0 var(--grade-shadow, #6d7278);
+}
+
+.grade-badge-arrow {
+  width: 10px;
+  height: 10px;
+  flex: none;
+  transition: transform 0.15s ease;
+}
+
+.grade-badge-wrap.is-open .grade-badge-arrow {
+  transform: rotate(180deg);
+}
+
+.grade-dropdown {
+  position: absolute;
+  top: calc(100% + 10px); /* was 6px — a little extra room now the badge above it has its own shadow band */
+  left: 0;
+  right: 0;
+  background: #ffffff;
+  border: 1px solid #e5e7ee;
+  border-radius: 10px;
+  box-shadow: 0 4px 0 0 #d8dae2, 0 12px 28px rgba(0, 0, 0, 0.14);
+  overflow: hidden;
+  z-index: 5;
+  display: none;
+}
+
+.grade-badge-wrap.is-open .grade-dropdown {
+  display: block;
+}
+
+.grade-dropdown-item {
+  padding: 10px 14px;
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: #2a2c38;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.grade-dropdown-item:hover {
+  background: var(--item-color, #f4f5f9);
+  color: #ffffff;
+}
+
+.grade-dropdown-item.is-current {
+  background: #f0f1f7;
+}
+
+/* Evidence container -------------------------------------------------------
+   Everything under the Grade badge is one container with two mutually
+   exclusive views: the accordion list (default) and the compose form
+   (while adding new evidence). It grows to fill whatever height
+   .modal-sidebar-col stretched to (matching the rubric column) via
+   flex: 1 — see the narrow-screen fallback height at the bottom of this
+   file for when there's no rubric column beside it to match. */
+
+.evidence-container {
+  flex: 1 1 auto;
+  min-height: 0; /* required for the child scroll area to actually scroll instead of overflowing */
+  display: flex;
+  flex-direction: column;
+}
+
+.evidence-list-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  margin-bottom: 12px;
+}
+
+.evidence-empty {
+  margin: 0;
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+  font-size: 12.5px;
+  font-style: italic;
+  color: #a3a6b0;
+}
+
+.evidence-add-btn {
+  flex: none;
+  width: 100%;
+  border: none;
+  border-radius: 10px;
+  padding: 13px;
+  background: var(--modal-accent, #1c1f4f);
+  color: #ffffff;
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+  font-weight: 700;
+  font-size: 13.5px;
+  cursor: pointer;
+  box-sizing: border-box;
+  box-shadow: 0 4px 0 0 var(--modal-shadow, #10132e);
+  transition: box-shadow 0.15s ease, transform 0.1s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.evidence-add-btn:active {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 0 var(--modal-shadow, #10132e);
+}
+
+.evidence-add-btn svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+
+/* Accordion --------------------------------------------------------------*/
+
+.evidence-accordion-item {
+  border: 1px solid #e5e7ee;
+  border-radius: 10px;
+  margin-bottom: 16px; /* was 10px — extra room for the shadow band below */
+  overflow: hidden;
+  box-shadow: 0 3px 0 0 #e5e7ee;
+}
+
+.evidence-accordion-item:last-child {
+  margin-bottom: 0;
+}
+
+.evidence-accordion-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  cursor: pointer;
+  outline: none;
+}
+
+.evidence-accordion-header:hover,
+.evidence-accordion-header:focus-visible {
+  background: #f8f8fb;
+}
+
+.evidence-accordion-title {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  min-width: 0;
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+}
+
+.evidence-accordion-number {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #2a2c38;
+  flex: none;
+}
+
+.evidence-accordion-meta {
+  font-size: 11px;
+  color: #a3a6b0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.evidence-accordion-chevron {
+  width: 10px;
+  height: 10px;
+  flex: none;
+  transition: transform 0.15s ease;
+  color: #a3a6b0;
+}
+
+.evidence-accordion-item.is-open .evidence-accordion-chevron {
+  transform: rotate(180deg);
+}
+
+.evidence-accordion-body {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.25s ease;
+}
+
+.evidence-accordion-item.is-open .evidence-accordion-body {
+  max-height: 480px; /* generous cap — real content is far shorter, this just enables the transition */
+}
+
+.evidence-accordion-body-inner {
+  padding: 0 14px 14px;
+}
+
+.evidence-item-text {
+  margin: 0 0 12px;
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: #3d3f4a;
+}
+
+.evidence-attachments-label {
+  margin: 0 0 8px;
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #a3a6b0;
+}
+
+.evidence-item-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 16px;
+  margin-top: 10px;
+}
+
+.evidence-edit-btn,
+.evidence-delete-btn {
+  border: none;
+  background: none;
+  padding: 0;
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.evidence-edit-btn {
+  color: #6a6d7a;
+}
+
+.evidence-edit-btn:hover,
+.evidence-edit-btn:focus-visible {
+  color: #2a2c38;
+  text-decoration: underline;
+}
+
+.evidence-delete-btn {
+  color: #c94f4f;
+}
+
+.evidence-delete-btn:hover,
+.evidence-delete-btn:focus-visible {
+  text-decoration: underline;
+}
+
+.evidence-attachment {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 1px solid #e9eaf0;
+  border-radius: 8px;
+  padding: 8px 8px 8px 12px;
+  margin-bottom: 10px;
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+  font-size: 11.5px;
+  color: #9a9da6;
+  box-shadow: 0 2px 0 0 #e9eaf0;
+}
+
+.evidence-attachment:last-child {
+  margin-bottom: 0;
+}
+
+.evidence-attachment-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+
+.evidence-attachment-icon svg {
+  width: 13px;
+  height: 13px;
+}
+
+/* Compose (add evidence) --------------------------------------------------*/
+
+.evidence-compose {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.evidence-compose-textarea {
+  flex: 1 1 auto;
+  min-height: 90px;
+  resize: none;
+  border: 1.5px solid #e5e7ee;
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #2a2c38;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.15s ease;
+}
+
+.evidence-compose-textarea:focus {
+  border-color: var(--modal-accent, #1c1f4f);
+}
+
+.evidence-compose-attachments {
+  flex: none;
+  max-height: 140px;
+  overflow-y: auto;
+  margin-top: 10px;
+}
+
+.evidence-compose-attachments:empty {
+  margin-top: 0;
+}
+
+.evidence-compose-error {
+  flex: none;
+  margin: 8px 0 0;
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+  font-size: 11.5px;
+  color: #c94f4f;
+}
+
+.evidence-staged-attachment {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 1px solid #e9eaf0;
+  border-radius: 8px;
+  padding: 7px 7px 7px 12px;
+  margin-top: 10px;
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+  font-size: 11.5px;
+  color: #6a6d7a;
+  box-shadow: 0 2px 0 0 #e9eaf0;
+}
+
+.evidence-staged-remove {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: none;
+  background: #eceef3;
+  color: #6a6d7a;
+  font-size: 13px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex: none;
+}
+
+.evidence-staged-remove:hover {
+  background: #dfe1e8;
+}
+
+.evidence-compose-actions {
+  flex: none;
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.evidence-compose-actions button {
+  flex: 1 1 0;
+  border: none;
+  border-radius: 10px;
+  padding: 11px 8px;
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+  font-weight: 700;
+  font-size: 12px;
+  cursor: pointer;
+  box-sizing: border-box;
+  box-shadow: 0 3px 0 0 #d8dae2; /* neutral by default — Submit overrides to the domain colour below */
+  transition: box-shadow 0.15s ease, transform 0.1s ease, background 0.15s ease;
+}
+
+.evidence-compose-actions button:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 0 #d8dae2;
+}
+
+.evidence-attach-btn {
+  background: #eceef3;
+  color: #2a2c38;
+}
+
+.evidence-attach-btn:hover {
+  background: #e1e3eb;
+}
+
+.evidence-cancel-btn {
+  background: #eceef3;
+  color: #2a2c38;
+}
+
+.evidence-cancel-btn:hover {
+  background: #e1e3eb;
+}
+
+.evidence-submit-btn {
+  background: var(--modal-accent, #1c1f4f);
+  color: #ffffff;
+  box-shadow: 0 3px 0 0 var(--modal-shadow, #10132e);
+}
+
+.evidence-submit-btn:active {
+  box-shadow: 0 1px 0 0 var(--modal-shadow, #10132e);
+}
+
+
+/* Responsive -------------------------------------------------------------*/
+
+@media (max-width: 760px) {
+  .theme-modal-body {
+    flex-direction: column;
+  }
+  .modal-sidebar-col {
+    max-width: none;
+  }
+  /* Stretch (in .theme-modal-body) only matches heights of side-by-side
+     flex siblings — once the layout stacks, there's no rubric column
+     beside it to match, so the evidence container needs its own
+     explicit default height instead of relying on flex:1. */
+  .evidence-container {
+    flex: none;
+    height: 320px;
+  }
+
+  /* Grouped vertical rubric: one column, each row's 4 levels stacked and
+     visually grouped, with the level name shown inside each cell since
+     the header row (which normally carries that) is hidden here. */
+  .rubric-header {
+    display: none;
+  }
+  .rubric-grid {
+    grid-template-columns: 1fr;
+  }
+  .rubric-cell-level {
+    display: block;
+    margin: 0 0 4px;
+    font-weight: 700;
+    color: var(--modal-accent, #1c1f4f);
+  }
+  .rubric-cell {
+    min-height: 0;
+  }
+  /* Start-of-row spacing/divider, since rows are always exactly 4 cells */
+  .rubric-cell:nth-child(4n+1):not(:first-child) {
+    margin-top: 18px;
+    padding-top: 22px;
+    border-top: 2px solid #eef0f5;
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+    border-bottom: 1.5px solid #e5e7ee;
+  }
+  .rubric-cell:nth-child(4n+1):not(:first-child).is-selected {
+    border-top-color: #eef0f5;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-modal-overlay,
+  .theme-modal,
+  .rubric-cell,
+  .grade-badge,
+  .grade-badge-arrow,
+  .evidence-accordion-body,
+  .evidence-accordion-chevron {
+    transition: none;
+  }
+}
+
+/* Dark theme (optional) ---------------------------------------------------*/
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .theme-modal,
+  :root:not([data-theme="light"]) .theme-modal-header,
+  :root:not([data-theme="light"]) .grade-dropdown {
+    background: #1e2030;
+  }
+  :root:not([data-theme="light"]) .theme-modal-title,
+  :root:not([data-theme="light"]) .grade-dropdown-item {
+    color: #eef0ff;
+  }
+  :root:not([data-theme="light"]) .theme-modal-header {
+    border-bottom-color: #2c2e42;
+  }
+  :root:not([data-theme="light"]) .theme-modal-close {
+    background: #2c2e42;
+    color: #d7d9ea;
+  }
+  :root:not([data-theme="light"]) .rubric-cell,
+  :root:not([data-theme="light"]) .evidence-accordion-item,
+  :root:not([data-theme="light"]) .evidence-attachment,
+  :root:not([data-theme="light"]) .evidence-staged-attachment,
+  :root:not([data-theme="light"]) .evidence-compose-textarea {
+    background: #262838;
+    border-color: #34364a;
+    color: #c7c9db;
+  }
+  :root:not([data-theme="light"]) .rubric-cell,
+  :root:not([data-theme="light"]) .evidence-accordion-item {
+    box-shadow: 0 3px 0 0 #34364a;
+  }
+  :root:not([data-theme="light"]) .rubric-cell.is-blank {
+    box-shadow: none;
+  }
+  :root:not([data-theme="light"]) .evidence-attachment,
+  :root:not([data-theme="light"]) .evidence-staged-attachment {
+    box-shadow: 0 2px 0 0 #34364a;
+  }
+  :root:not([data-theme="light"]) .evidence-compose-actions button {
+    box-shadow: 0 3px 0 0 #171825;
+  }
+  :root:not([data-theme="light"]) .grade-dropdown {
+    box-shadow: 0 4px 0 0 #171825, 0 12px 28px rgba(0, 0, 0, 0.4);
+  }
+  :root:not([data-theme="light"]) .evidence-item-text {
+    color: #d7d9ea;
+  }
+  :root:not([data-theme="light"]) .evidence-accordion-header:hover,
+  :root:not([data-theme="light"]) .evidence-accordion-header:focus-visible {
+    background: #2c2e42;
+  }
+  :root:not([data-theme="light"]) .evidence-accordion-number {
+    color: #eef0ff;
+  }
+  :root:not([data-theme="light"]) .evidence-attach-btn,
+  :root:not([data-theme="light"]) .evidence-cancel-btn,
+  :root:not([data-theme="light"]) .evidence-staged-remove {
+    background: #2c2e42;
+    color: #d7d9ea;
+  }
+  :root:not([data-theme="light"]) .evidence-edit-btn {
+    color: #a3a6b0;
+  }
+  :root:not([data-theme="light"]) .evidence-edit-btn:hover,
+  :root:not([data-theme="light"]) .evidence-edit-btn:focus-visible {
+    color: #eef0ff;
+  }
+  :root:not([data-theme="light"]) .rubric-cell.is-blank {
+    background: #20212f;
+    border-color: #20212f;
+  }
+  :root:not([data-theme="light"]) .rubric-cell:nth-child(4n+1):not(:first-child) {
+    border-top-color: #34364a;
+    border-bottom-color: #34364a;
+  }
+}
+:root[data-theme="dark"] .theme-modal,
+:root[data-theme="dark"] .theme-modal-header,
+:root[data-theme="dark"] .grade-dropdown {
+  background: #1e2030;
+}
+:root[data-theme="dark"] .theme-modal-title,
+:root[data-theme="dark"] .grade-dropdown-item {
+  color: #eef0ff;
+}
+:root[data-theme="dark"] .theme-modal-header {
+  border-bottom-color: #2c2e42;
+}
+:root[data-theme="dark"] .theme-modal-close {
+  background: #2c2e42;
+  color: #d7d9ea;
+}
+:root[data-theme="dark"] .rubric-cell,
+:root[data-theme="dark"] .evidence-accordion-item,
+:root[data-theme="dark"] .evidence-attachment,
+:root[data-theme="dark"] .evidence-staged-attachment,
+:root[data-theme="dark"] .evidence-compose-textarea {
+  background: #262838;
+  border-color: #34364a;
+  color: #c7c9db;
+}
+:root[data-theme="dark"] .rubric-cell,
+:root[data-theme="dark"] .evidence-accordion-item {
+  box-shadow: 0 3px 0 0 #34364a;
+}
+:root[data-theme="dark"] .evidence-attachment,
+:root[data-theme="dark"] .evidence-staged-attachment {
+  box-shadow: 0 2px 0 0 #34364a;
+}
+:root[data-theme="dark"] .evidence-compose-actions button {
+  box-shadow: 0 3px 0 0 #171825;
+}
+:root[data-theme="dark"] .grade-dropdown {
+  box-shadow: 0 4px 0 0 #171825, 0 12px 28px rgba(0, 0, 0, 0.4);
+}
+:root[data-theme="dark"] .evidence-item-text {
+  color: #d7d9ea;
+}
+:root[data-theme="dark"] .evidence-accordion-header:hover,
+:root[data-theme="dark"] .evidence-accordion-header:focus-visible {
+  background: #2c2e42;
+}
+:root[data-theme="dark"] .evidence-accordion-number {
+  color: #eef0ff;
+}
+:root[data-theme="dark"] .evidence-attach-btn,
+:root[data-theme="dark"] .evidence-cancel-btn,
+:root[data-theme="dark"] .evidence-staged-remove {
+  background: #2c2e42;
+  color: #d7d9ea;
+}
+:root[data-theme="dark"] .evidence-edit-btn {
+  color: #a3a6b0;
+}
+:root[data-theme="dark"] .evidence-edit-btn:hover,
+:root[data-theme="dark"] .evidence-edit-btn:focus-visible {
+  color: #eef0ff;
+}
+:root[data-theme="dark"] .rubric-cell.is-blank {
+  background: #20212f;
+  border-color: #20212f;
+  box-shadow: none;
+}
+:root[data-theme="dark"] .rubric-cell:nth-child(4n+1):not(:first-child) {
+  border-top-color: #34364a;
+  border-bottom-color: #34364a;
+}
+</style>

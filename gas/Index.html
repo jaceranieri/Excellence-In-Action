@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<base target="_top">
+<?!= include('Stylesheet_ExcellenceWheel'); ?>
+<?!= include('Stylesheet_ThemeCards'); ?>
+<?!= include('Stylesheet_ThemeModal'); ?>
+<?!= include('Stylesheet_ThemeDots'); ?>
+<?!= include('Stylesheet_AppBanner'); ?>
+<style>
+  :root { color-scheme: light; }
+  body {
+    margin: 0;
+    padding: 48px 24px;
+    background: #f4f5f7;
+    font-family: 'Figtree', 'Segoe UI', sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 32px;
+  }
+  .app-banner { margin-bottom: 72px; }
+
+  /* Wheel + Theme cards side by side on wide screens (cards to the
+     right), stacking (cards below) once there's not enough room for
+     both comfortably — see the media query below for the threshold. */
+  .main-layout {
+    display: flex;
+    gap: 32px;
+    align-items: flex-start;
+    justify-content: center;
+    width: 100%;
+    max-width: 1280px;
+  }
+  #wheel-host { flex: 0 0 auto; width: 100%; max-width: 700px; }
+  #detail {
+    flex: 1 1 380px;
+    max-width: 560px;
+    min-width: 300px;
+    min-height: 90px;
+    box-sizing: border-box;
+  }
+  #detail .placeholder { color: #999; font-style: italic; margin: 0; text-align: center; }
+
+  @media (max-width: 1150px) {
+    .main-layout { flex-direction: column; align-items: center; }
+    #detail { max-width: 720px; width: 100%; }
+  }
+</style>
+</head>
+<body>
+
+  <header class="app-banner">
+    <div class="app-banner-logo" aria-hidden="true">
+      <!-- Placeholder logo — swap for the real school/org mark -->
+      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="12" cy="12" r="9.5" stroke="#1c1f4f" stroke-width="1.4"/>
+        <path d="M12 3.5 14 9 20 9 15 12.5 17 18.5 12 15 7 18.5 9 12.5 4 9 10 9Z" stroke="#1c1f4f" stroke-width="1.2" stroke-linejoin="round"/>
+      </svg>
+    </div>
+    <div class="app-banner-titles">
+      <p class="app-banner-title">Excellence in Action</p>
+      <p class="app-banner-subtitle">Placeholder School Name</p>
+    </div>
+    <div class="app-banner-avatar" aria-hidden="true" title="Placeholder avatar">
+      <!-- Placeholder avatar — swap for the signed-in user's real photo/initials -->
+      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="12" cy="8.5" r="3.5" fill="#fff"/>
+        <path d="M4.5 20c1.4-4 4.2-6 7.5-6s6.1 2 7.5 6" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/>
+      </svg>
+    </div>
+  </header>
+
+  <div class="main-layout">
+    <div id="wheel-host"></div>
+
+    <!-- This is where the app renders the selected Element's title and its
+         Theme cards. The wheel component itself only ever emits an id/segment
+         object; it never renders this panel for you. -->
+    <div id="detail">
+    <p class="placeholder">Select an Element to see its Themes here.</p>
+    </div>
+  </div>
+
+  <?!= include('Script_ExcellenceWheel'); ?>
+  <?!= include('Script_App'); ?>
+
+</body>
+</html>
