@@ -8,6 +8,7 @@
 <?!= include('Stylesheet_ThemeModal'); ?>
 <?!= include('Stylesheet_ThemeDots'); ?>
 <?!= include('Stylesheet_AppBanner'); ?>
+<?!= include('Stylesheet_LoginGate'); ?>
 <style>
   :root { color-scheme: light; }
   body {
@@ -51,38 +52,74 @@
 </head>
 <body>
 
-  <header class="app-banner">
-    <div class="app-banner-logo" aria-hidden="true">
-      <!-- Placeholder logo — swap for the real school/org mark -->
-      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <circle cx="12" cy="12" r="9.5" stroke="#1c1f4f" stroke-width="1.4"/>
-        <path d="M12 3.5 14 9 20 9 15 12.5 17 18.5 12 15 7 18.5 9 12.5 4 9 10 9Z" stroke="#1c1f4f" stroke-width="1.2" stroke-linejoin="round"/>
+  <!-- Login gate: shown first, always (see Script_LoginGate.html). This
+       markup is the "Opening Screen" / loading state itself — the
+       server-resolved access check (see Code.gs's getCurrentUserAccess,
+       embedded below as window.__ACCESS__) swaps this card's content to
+       either the "found" or "insufficient access" state on load. -->
+  <div class="login-gate" id="login-gate">
+    <div class="login-gate-brand">
+      <svg class="login-gate-logo" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <circle cx="32" cy="32" r="29" stroke="#17458f" stroke-width="2"/>
+        <g stroke="#17458f" stroke-width="1.3">
+          <circle cx="32" cy="32" r="10"/>
+          <path d="M32 6v12M32 46v12M6 32h12M46 32h12M13.5 13.5l8.5 8.5M42 42l8.5 8.5M50.5 13.5 42 22M22 42l-8.5 8.5"/>
+        </g>
       </svg>
+      <h1 class="login-gate-title">Excellence in
+        <span class="login-gate-title-script">Action</span>
+      </h1>
     </div>
-    <div class="app-banner-titles">
-      <p class="app-banner-title">Excellence in Action</p>
-      <p class="app-banner-subtitle">Placeholder School Name</p>
+    <div class="login-gate-card" id="login-gate-card">
+      <div class="login-gate-spinner" aria-hidden="true">
+        <div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div>
+      </div>
+      <p class="login-gate-card-heading" style="margin-top:6px;">Logging you in</p>
     </div>
-    <div class="app-banner-avatar" aria-hidden="true" title="Placeholder avatar">
-      <!-- Placeholder avatar — swap for the signed-in user's real photo/initials -->
-      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <circle cx="12" cy="8.5" r="3.5" fill="#fff"/>
-        <path d="M4.5 20c1.4-4 4.2-6 7.5-6s6.1 2 7.5 6" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/>
-      </svg>
-    </div>
-  </header>
+    <p class="login-gate-footer">A Sydney Catholic Schools Curriculum Tool - 2026</p>
+  </div>
 
-  <div class="main-layout">
-    <div id="wheel-host"></div>
+  <div id="app-root" hidden>
+    <header class="app-banner">
+      <div class="app-banner-logo" aria-hidden="true">
+        <!-- Placeholder logo — replaced with the signed-in user's school
+             crest on entering the app, see enterApp() in Script_LoginGate.html -->
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="12" cy="12" r="9.5" stroke="#1c1f4f" stroke-width="1.4"/>
+          <path d="M12 3.5 14 9 20 9 15 12.5 17 18.5 12 15 7 18.5 9 12.5 4 9 10 9Z" stroke="#1c1f4f" stroke-width="1.2" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <div class="app-banner-titles">
+        <p class="app-banner-title">Excellence in Action</p>
+        <p class="app-banner-subtitle">Placeholder School Name</p>
+      </div>
+      <div class="app-banner-avatar" aria-hidden="true" title="Placeholder avatar">
+        <!-- Placeholder avatar — swap for the signed-in user's real photo/initials -->
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="12" cy="8.5" r="3.5" fill="#fff"/>
+          <path d="M4.5 20c1.4-4 4.2-6 7.5-6s6.1 2 7.5 6" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>
+      </div>
+    </header>
 
-    <!-- This is where the app renders the selected Element's title and its
-         Theme cards. The wheel component itself only ever emits an id/segment
-         object; it never renders this panel for you. -->
-    <div id="detail">
-    <p class="placeholder">Select an Element to see its Themes here.</p>
+    <div class="main-layout">
+      <div id="wheel-host"></div>
+
+      <!-- This is where the app renders the selected Element's title and its
+           Theme cards. The wheel component itself only ever emits an id/segment
+           object; it never renders this panel for you. -->
+      <div id="detail">
+      <p class="placeholder">Select an Element to see its Themes here.</p>
+      </div>
     </div>
   </div>
 
+  <script>
+    // Resolved server-side in doGet() (see Code.gs's getCurrentUserAccess) —
+    // no round trip needed before the login gate can render its result.
+    window.__ACCESS__ = <?!= JSON.stringify(access).replace(/</g, '\\u003c') ?>;
+  </script>
+  <?!= include('Script_LoginGate'); ?>
   <?!= include('Script_ExcellenceWheel'); ?>
   <?!= include('Script_App'); ?>
 

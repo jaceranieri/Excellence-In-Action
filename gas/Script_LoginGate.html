@@ -1,0 +1,70 @@
+<script>
+  // ACCESS is embedded by Index.html from the server-side
+  // getCurrentUserAccess() lookup (see Code.gs) — already resolved
+  // before this script runs, so no round trip is needed here.
+  //   { email, found, active, name, schoolName, crestUrl }
+
+  function escapeHtml(str) {
+    return String(str == null ? '' : str).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  function renderLoginGateFound(access) {
+    var card = document.getElementById('login-gate-card');
+    card.innerHTML =
+      '<h2 class="login-gate-card-heading">Welcome, ' + escapeHtml(access.name || 'there') + '!</h2>' +
+      '<p class="login-gate-card-sub">Your School’s EIA Tool has been found.<br>Click the button below to get started!</p>' +
+      '<button type="button" class="login-gate-continue" id="login-gate-continue-btn">' +
+        (access.crestUrl ? '<img class="login-gate-continue-crest" src="' + escapeHtml(access.crestUrl) + '" alt="">' : '') +
+        '<span class="login-gate-continue-school">' + escapeHtml(access.schoolName || 'Continue') + '</span>' +
+      '</button>';
+    document.getElementById('login-gate-continue-btn').addEventListener('click', enterApp);
+  }
+
+  function renderLoginGateInsufficient(access) {
+    var card = document.getElementById('login-gate-card');
+    var greeting = access.name ? 'Welcome, ' + escapeHtml(access.name) + '!' : 'Welcome!';
+    var schoolLine = access.schoolName
+      ? '<p class="login-gate-school-plain">' + escapeHtml(access.schoolName) + '</p>'
+      : '';
+    card.innerHTML =
+      '<h2 class="login-gate-card-heading">' + greeting + '</h2>' +
+      schoolLine +
+      '<div class="login-gate-insufficient" role="note" aria-disabled="true">' +
+        '<span class="login-gate-insufficient-title">Insufficient Access</span>' +
+        '<span class="login-gate-insufficient-sub">Request Access from your Principal</span>' +
+      '</div>';
+  }
+
+  // Swap the login gate for the real app: this is also where the
+  // banner picks up the signed-in user's real school/crest/name,
+  // replacing the placeholders documented in app-banner.css/README as
+  // "will come from the roster/session lookup once auth is wired up" —
+  // that lookup is exactly what getCurrentUserAccess() now is.
+  function enterApp() {
+    var access = window.__ACCESS__;
+    var subtitleEl = document.querySelector('.app-banner-subtitle');
+    if (subtitleEl && access.schoolName) subtitleEl.textContent = access.schoolName;
+
+    var logoEl = document.querySelector('.app-banner-logo');
+    if (logoEl && access.crestUrl) {
+      logoEl.innerHTML = '<img src="' + escapeHtml(access.crestUrl) + '" alt="" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">';
+    }
+
+    var avatarEl = document.querySelector('.app-banner-avatar');
+    if (avatarEl && access.name) avatarEl.setAttribute('title', access.name);
+
+    document.getElementById('login-gate').hidden = true;
+    document.getElementById('app-root').hidden = false;
+  }
+
+  (function initLoginGate() {
+    var access = window.__ACCESS__ || { email: '', found: false, active: false };
+    if (access.found && access.active) {
+      renderLoginGateFound(access);
+    } else {
+      renderLoginGateInsufficient(access);
+    }
+  })();
+</script>

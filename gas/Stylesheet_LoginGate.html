@@ -1,0 +1,229 @@
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Pacifico&display=swap');
+/*!
+ * Login gate — the full-screen overlay shown before the wheel/cards app
+ * is revealed. Three states, all rendered into the same #login-gate-card
+ * by Script_LoginGate.html (never all three markups present at once):
+ *
+ *   loading      — spinner, shown as the page's actual initial HTML so
+ *                  there's no blank flash before the login script runs.
+ *   found        — "Welcome, {name}!" + a school-branded Continue
+ *                  button (crest + school name) that reveals #app-root.
+ *   insufficient — "Welcome, {name}!" + the plain school name + a
+ *                  static (non-interactive) red "request access" button.
+ *
+ * Deliberately its own small design language, not the hard-edge
+ * colour-shadow system the rest of the app uses (theme-cards.css /
+ * theme-modal.css) — this screen has its own reference mockup with a
+ * plainer flat-card look, so it isn't forced into that system.
+ */
+
+.login-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  background: #f4f5f5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  padding: 24px;
+  box-sizing: border-box;
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+}
+
+/* .login-gate's own `display: flex` above is an author rule, so it
+   would otherwise win the cascade over the browser's default
+   `[hidden] { display: none }` (author rules beat UA rules at equal
+   specificity, regardless of source order) — this makes the [hidden]
+   attribute (set by enterApp() in Script_LoginGate.html) actually hide
+   it once toggled. */
+.login-gate[hidden] {
+  display: none;
+}
+
+.login-gate-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.login-gate-logo {
+  width: 64px;
+  height: 64px;
+}
+
+.login-gate-title {
+  margin: 0;
+  text-align: center;
+  font-size: 26px;
+  line-height: 1.15;
+  font-weight: 800;
+  color: #17458f;
+}
+
+.login-gate-title .login-gate-title-script {
+  display: block;
+  font-family: 'Pacifico', 'Segoe UI', cursive;
+  font-weight: 400;
+  font-size: 34px;
+  line-height: 1.3;
+  color: #f5b400;
+}
+
+.login-gate-card {
+  width: 100%;
+  max-width: 420px;
+  min-height: 190px;
+  box-sizing: border-box;
+  background: #f4f5f5;
+  border: 2px solid #16181d;
+  border-radius: 16px;
+  padding: 28px 26px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  text-align: center;
+}
+
+.login-gate-card-heading {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 800;
+  color: #14151d;
+}
+
+.login-gate-card-sub {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #7d8090;
+}
+
+.login-gate-footer {
+  margin: 0;
+  font-size: 12.5px;
+  color: #6a6d7a;
+}
+
+/* Spinner (loading state) ------------------------------------------- */
+
+.login-gate-spinner {
+  width: 34px;
+  height: 34px;
+  position: relative;
+}
+
+.login-gate-spinner div {
+  position: absolute;
+  top: 44%;
+  left: 46%;
+  width: 3px;
+  height: 10px;
+  border-radius: 2px;
+  background: #14151d;
+  transform-origin: 1.5px 8px;
+  animation: login-gate-spin 1s linear infinite;
+}
+
+.login-gate-spinner div:nth-child(1)  { transform: rotate(0deg);   animation-delay: -0.875s; }
+.login-gate-spinner div:nth-child(2)  { transform: rotate(45deg);  animation-delay: -0.75s; }
+.login-gate-spinner div:nth-child(3)  { transform: rotate(90deg);  animation-delay: -0.625s; }
+.login-gate-spinner div:nth-child(4)  { transform: rotate(135deg); animation-delay: -0.5s; }
+.login-gate-spinner div:nth-child(5)  { transform: rotate(180deg); animation-delay: -0.375s; }
+.login-gate-spinner div:nth-child(6)  { transform: rotate(225deg); animation-delay: -0.25s; }
+.login-gate-spinner div:nth-child(7)  { transform: rotate(270deg); animation-delay: -0.125s; }
+.login-gate-spinner div:nth-child(8)  { transform: rotate(315deg); animation-delay: 0s; }
+
+@keyframes login-gate-spin {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.15; }
+}
+
+/* Continue button (found + active state) ------------------------------ */
+
+.login-gate-continue {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 14px 18px;
+  border: 2px solid #14151d;
+  border-radius: 10px;
+  background: #ffffff;
+  cursor: pointer;
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+
+.login-gate-continue:hover,
+.login-gate-continue:focus-visible {
+  background: #f0f1f4;
+}
+
+.login-gate-continue:active {
+  transform: translateY(1px);
+}
+
+.login-gate-continue-crest {
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.login-gate-continue-school {
+  font-weight: 800;
+  font-size: 15px;
+  letter-spacing: 0.3px;
+  color: #17458f;
+  text-transform: uppercase;
+}
+
+/* Insufficient-access state -------------------------------------------- */
+
+.login-gate-school-plain {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #2a2c38;
+}
+
+.login-gate-insufficient {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px 18px;
+  border: 1.5px solid #c94f4f;
+  border-radius: 10px;
+  background: #ffffff;
+  cursor: default;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.login-gate-insufficient-title {
+  font-weight: 800;
+  font-size: 13.5px;
+  color: #c94f4f;
+}
+
+.login-gate-insufficient-sub {
+  font-weight: 600;
+  font-size: 12px;
+  color: #c94f4f;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-gate-spinner div {
+    animation: none;
+    opacity: 1;
+  }
+}
+</style>
