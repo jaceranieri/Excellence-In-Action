@@ -31,32 +31,39 @@
     align-items: center;
     gap: 32px;
   }
-  .app-banner { margin-bottom: 72px; }
+  /* Was margin-bottom: 72px, stacked on top of body's own 32px gap
+     (a ~104px total gap) from an earlier round's spacing pass — the
+     target layout wants this tight, so that extra margin is dropped;
+     body's gap below is the only spacing between banner and stage now. */
 
-  /* Wheel + Theme cards side by side on wide screens (cards to the
-     right), stacking (cards below) once there's not enough room for
-     both comfortably — see the media query below for the threshold. */
+  /* Wheel + Theme cards side by side, both fixed sizes (not percentage
+     or flex-grow based) so the wheel and the overall stage stay the
+     same size no matter which Element is selected, or how many Theme
+     cards that Element has — only the cards column's own height grows
+     or shrinks below the fixed-size row. Stacks (cards below) only
+     once the viewport is too narrow for both fixed columns side by
+     side — see the media query below. */
   .main-layout {
     display: flex;
-    gap: 32px;
+    gap: 44px;
     align-items: flex-start;
     justify-content: center;
     width: 100%;
-    max-width: 1280px;
+    max-width: 640px; /* matches .app-banner's own max-width, so banner and stage share one fixed width */
   }
-  #wheel-host { flex: 0 0 auto; width: 100%; max-width: 700px; }
+  #wheel-host { flex: 0 0 300px; width: 300px; max-width: 300px; }
   #detail {
-    flex: 1 1 380px;
-    max-width: 560px;
-    min-width: 300px;
+    flex: 0 0 296px;
+    width: 296px;
+    max-width: 296px;
+    min-width: 0;
     min-height: 90px;
     box-sizing: border-box;
   }
   #detail .placeholder { color: #999; font-style: italic; margin: 0; text-align: center; }
 
-  @media (max-width: 1150px) {
+  @media (max-width: 760px) {
     .main-layout { flex-direction: column; align-items: center; }
-    #detail { max-width: 720px; width: 100%; }
   }
 </style>
 </head>

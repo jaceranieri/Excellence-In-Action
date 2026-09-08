@@ -54,7 +54,9 @@
 
     var logoEl = document.querySelector('.app-banner-logo');
     if (logoEl && access.crestUrl) {
-      logoEl.innerHTML = '<img src="' + escapeHtml(access.crestUrl) + '" alt="" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">';
+      // Unmasked, uncropped — sizing/fit comes from .app-banner-logo img
+      // in app-banner.css (object-fit: contain), not inline here.
+      logoEl.innerHTML = '<img src="' + escapeHtml(access.crestUrl) + '" alt="">';
     }
 
     var avatarEl = document.querySelector('.app-banner-avatar');

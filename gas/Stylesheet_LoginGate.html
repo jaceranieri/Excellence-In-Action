@@ -183,11 +183,15 @@
 }
 
 .login-gate-continue-crest {
-  width: 44px;
-  height: 44px;
-  flex: none;
-  border-radius: 50%;
-  object-fit: cover;
+  /* Real crests run ~300x80 (landscape) — shown at natural aspect
+     ratio, unmasked and uncropped (object-fit: contain, no
+     border-radius/cover), just capped so an oversized image doesn't
+     blow out the button. */
+  max-width: 240px;
+  max-height: 64px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
 }
 
 .login-gate-continue-school {

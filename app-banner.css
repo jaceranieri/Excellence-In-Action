@@ -32,19 +32,30 @@
 
 .app-banner-logo {
   flex: none;
-  width: 38px;
+  width: 110px;
   height: 38px;
-  border-radius: 50%;
+  border-radius: 8px;
   background: #ffffff;
   border: 2px solid #1c1f4f;
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
 }
 
 .app-banner-logo svg {
   width: 20px;
   height: 20px;
+}
+
+/* A real school crest (typically ~300x80, landscape) shown unmasked and
+   uncropped — see enterApp() in Script_LoginGate.html, which swaps the
+   placeholder svg above for one of these once the user's school is
+   known. object-fit: contain (not cover) so nothing gets cropped. */
+.app-banner-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .app-banner-titles {
