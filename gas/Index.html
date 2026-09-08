@@ -24,17 +24,54 @@
   }
   body {
     margin: 0;
-    padding: 48px 32px;
+    min-height: 100vh;
+    box-sizing: border-box;
+    padding: 32px;
     background: #f4f5f7;
     font-family: 'Figtree', 'Segoe UI', sans-serif;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 48px; /* ample, deliberate space between the banner and the wheel+cards row */
   }
 
-  /* Banner's own width (independent of the wheel+cards row below) is
-     set in app-banner.css itself, not here. */
+  /* #app-root wraps the banner + wheel/cards row (see Script_LoginGate's
+     enterApp(), which un-hides it). It MUST be a flex column itself,
+     not a plain block: a plain block's children (the banner especially,
+     which has no margin:auto of its own) just left-align inside it
+     instead of centering — that was a real bug, not a hypothetical one,
+     causing the banner to visibly sit off-centre relative to the row
+     below it. Also fills the rest of the viewport's height (flex: 1 1
+     auto, body being the only other flex item besides the position:
+     fixed login gate) so .stage-area below has real room to vertically
+     centre the wheel+cards row within. */
+  #app-root {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    flex: 1 1 auto;
+    gap: 40px; /* guaranteed minimum space between the banner and the centred row below, however that row is vertically positioned */
+  }
+  /* #app-root's own `display: flex` above is an author rule and would
+     otherwise beat the browser's default `[hidden] { display: none }`
+     at equal specificity — same fix as .login-gate needed earlier. */
+  #app-root[hidden] {
+    display: none;
+  }
+
+  /* Vertically centres the wheel+cards row within whatever space is
+     left below the banner (not the whole page — the banner stays put
+     at its natural size via #app-root's own flex column above). The
+     40px gap on #app-root is still respected as a floor even when
+     there's plenty of room to centre within. */
+  .stage-area {
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
 
   /* Wheel + Theme cards, side by side, with real breathing room between
      them (44-56px depending on tier below) — not literally zero as in
@@ -144,14 +181,16 @@
       </div>
     </header>
 
-    <div class="main-layout">
-      <div id="wheel-host"></div>
+    <div class="stage-area">
+      <div class="main-layout">
+        <div id="wheel-host"></div>
 
-      <!-- This is where the app renders the selected Element's title and its
-           Theme cards. The wheel component itself only ever emits an id/segment
-           object; it never renders this panel for you. -->
-      <div id="detail">
-      <p class="placeholder">Select an Element to see its Themes here.</p>
+        <!-- This is where the app renders the selected Element's title and its
+             Theme cards. The wheel component itself only ever emits an id/segment
+             object; it never renders this panel for you. -->
+        <div id="detail">
+        <p class="placeholder">Select an Element to see its Themes here.</p>
+        </div>
       </div>
     </div>
   </div>

@@ -42,6 +42,16 @@
       '</div>';
   }
 
+  // "Jason Ranieri" -> "JR"; a single-word name just uses its first
+  // letter. Falls back to an empty string (leaving the avatar's
+  // existing placeholder icon in place) if there's nothing to work with.
+  function initialsFor(name) {
+    var parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+    if (!parts.length) return '';
+    if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
+    return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
+  }
+
   // Swap the login gate for the real app: this is also where the
   // banner picks up the signed-in user's real school/crest/name,
   // replacing the placeholders documented in app-banner.css/README as
@@ -60,7 +70,14 @@
     }
 
     var avatarEl = document.querySelector('.app-banner-avatar');
-    if (avatarEl && access.name) avatarEl.setAttribute('title', access.name);
+    var initials = initialsFor(access.name);
+    if (avatarEl && initials) {
+      avatarEl.textContent = initials;
+      avatarEl.setAttribute('title', access.name);
+      avatarEl.removeAttribute('aria-hidden');
+      avatarEl.setAttribute('role', 'img');
+      avatarEl.setAttribute('aria-label', access.name);
+    }
 
     document.getElementById('login-gate').hidden = true;
     document.getElementById('app-root').hidden = false;
