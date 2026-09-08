@@ -290,11 +290,14 @@ computed margins directly.
 - **"Request Access from your Principal" button is intentionally
   static** — no email/notification wired up, per an explicit decision
   during the login-gate round.
-- **Winter Day font (login gate's "Action" text)** loads from
-  `fonts.cdnfonts.com`, which could not be verified from this
-  environment (network egress to font CDNs is blocked in the sandboxed
-  dev environment) — falls back to Pacifico → generic cursive if it
-  fails. Confirm it actually renders in a real deployment.
+- **Winter Day font (login gate's "Action" text)** is now embedded
+  directly in `gas/Stylesheet_LoginGate.html` as a base64 `@font-face`
+  (the real `.otf`, source kept at `fonts/WinterDayScript.otf` in the
+  repo root) — no longer loaded from `fonts.cdnfonts.com`, which served
+  a different version of the face than intended and couldn't be
+  verified from this sandboxed dev environment anyway (no network
+  egress to font CDNs here). Still worth a visual confirm on a real
+  deployment, but there's no longer a CDN dependency to fail.
 - Icons throughout are still the generic placeholder glyph
   (`placeholderIcon()` in `excellence-wheel.js`) — the original
   hand-built per-segment `ICONS` set is still in the file, unused,
