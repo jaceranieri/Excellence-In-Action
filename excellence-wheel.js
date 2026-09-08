@@ -1,0 +1,598 @@
+/*!
+ * Excellence in Action Wheel — interactive SVG menu component
+ * Framework-agnostic vanilla JS. No dependencies.
+ *
+ * Usage:
+ *   const wheel = ExcellenceWheel.create(document.getElementById('wheel-host'), {
+ *     onSelect: (segment) => { console.log(segment); } // segment is null on deselect
+ *   });
+ *
+ *   wheel.select('differentiation');
+ *   wheel.deselect();
+ *   wheel.getSelected();
+ *   wheel.destroy();
+ *
+ * Colours and copy are pulled from the Sydney Catholic Schools
+ * "Excellence in Action" wheel graphic. Swap COLOURS / SEGMENTS below
+ * to reskin or relabel.
+ */
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) {
+    module.exports = factory();
+  } else {
+    root.ExcellenceWheel = factory();
+  }
+})(typeof self !== 'undefined' ? self : this, function () {
+  'use strict';
+
+  // ---------------------------------------------------------------------
+  // 1. DATA — colours, categories, segments, icons
+  // ---------------------------------------------------------------------
+
+  var CATEGORY_STYLE = {
+    leading: { label: 'Leading', ring: '#1C1F4F', wedge: '#003278', accent: '#14A1DE' },
+    teaching: { label: 'Teaching', ring: '#F3712D', wedge: '#FDB40F', accent: '#F3712D' },
+    learning: { label: 'Learning', ring: '#05562E', wedge: '#016C36', accent: '#C1D82F' }
+  };
+
+  var DARK_RING = '#050420';
+  var TEXT_NAVY = '#1C1F4F';
+
+  // --- colour helpers, used to derive a muted "resting" tone for each
+  // wedge from its full-saturation colour above. A plain CSS filter
+  // turned out to be too subtle on these dark, saturated hues (and
+  // filter+transform together is flaky in some browsers), so instead we
+  // compute an actual muted hex colour and swap `fill` directly.
+  function hexToRgb(hex) {
+    var n = parseInt(hex.replace('#', ''), 16);
+    return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+  }
+  function rgbToHex(r, g, b) {
+    function h(v) { return Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0'); }
+    return '#' + h(r) + h(g) + h(b);
+  }
+  function rgbToHsl(r, g, b) {
+    r /= 255; g /= 255; b /= 255;
+    var max = Math.max(r, g, b), min = Math.min(r, g, b);
+    var h, s, l = (max + min) / 2;
+    if (max === min) { h = s = 0; }
+    else {
+      var d = max - min;
+      s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+      switch (max) {
+        case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+        case g: h = (b - r) / d + 2; break;
+        default: h = (r - g) / d + 4;
+      }
+      h /= 6;
+    }
+    return { h: h, s: s, l: l };
+  }
+  function hslToRgb(h, s, l) {
+    var r, g, b;
+    if (s === 0) { r = g = b = l; }
+    else {
+      var q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+      var p = 2 * l - q;
+      function hue2rgb(p, q, t) {
+        if (t < 0) t += 1;
+        if (t > 1) t -= 1;
+        if (t < 1 / 6) return p + (q - p) * 6 * t;
+        if (t < 1 / 2) return q;
+        if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+        return p;
+      }
+      r = hue2rgb(p, q, h + 1 / 3);
+      g = hue2rgb(p, q, h);
+      b = hue2rgb(p, q, h - 1 / 3);
+    }
+    return { r: r * 255, g: g * 255, b: b * 255 };
+  }
+  // Desaturate + lighten a hex colour toward a soft, washed-out resting tone.
+  function muteColor(hex, satMultiplier, lightBoost) {
+    var rgb = hexToRgb(hex);
+    var hsl = rgbToHsl(rgb.r, rgb.g, rgb.b);
+    hsl.s = hsl.s * satMultiplier;
+    hsl.l = Math.min(0.92, hsl.l + lightBoost);
+    var out = hslToRgb(hsl.h, hsl.s, hsl.l);
+    return rgbToHex(out.r, out.g, out.b);
+  }
+
+  Object.keys(CATEGORY_STYLE).forEach(function (key) {
+    var style = CATEGORY_STYLE[key];
+    style.wedgeMuted = muteColor(style.wedge, 0.14, 0.1);
+    style.ringMuted = muteColor(style.ring, 0.16, 0.08);
+  });
+
+  // Order here is the clockwise draw order around the wheel, starting at 210deg.
+  // `contentR` (icon+label anchor radius) was solved numerically per segment —
+  // not a fixed constant — so that neither the icon nor any label line ever
+  // crosses the wedge's inner/outer/side boundaries, given that angle, that
+  // label's line count, and an upright (non-rotated) icon+text block. If you
+  // edit a label's wording enough to change its wrapped line count, re-run
+  // the fit (see README) rather than guessing a new radius.
+  // `nudge` is a small manual on-screen offset {x,y} in viewBox units, on
+  // top of contentR, for fine visual placement within the wedge — re-checked
+  // against the same containment fit so it doesn't reopen the overflow bug.
+  var SEGMENTS = [
+    { id: 'instructional-coaching', category: 'leading', icon: 'instructionalCoaching',
+      lines: ['Instructional', 'Coaching'], contentR: 290, nudge: { x: -10, y: -10 } },
+    { id: 'data-analysis', category: 'leading', icon: 'dataAnalysis',
+      lines: ['Data Analysis', 'and Decision', 'Making'], contentR: 331, nudge: { x: 0, y: 10 } },
+    { id: 'collaborative-planning', category: 'leading', icon: 'collaborativePlanning',
+      lines: ['Collaborative', 'Planning and', 'Programming:', 'Reflect, Review', 'and Refine'], italicFrom: 2, contentR: 348, nudge: { x: -18, y: 0 } },
+    { id: 'highly-effective-teaching', category: 'teaching', icon: 'highlyEffectiveTeaching',
+      lines: ['Highly', 'Effective', 'Teaching'], contentR: 287, nudge: { x: 10, y: -18 } },
+    { id: 'differentiation', category: 'teaching', icon: 'differentiation',
+      lines: ['Differentiation'], contentR: 292, nudge: { x: 0, y: 0 } },
+    { id: 'intervention', category: 'teaching', icon: 'intervention',
+      lines: ['Intervention'], contentR: 280, nudge: { x: 10, y: 10 } },
+    { id: 'know-engage-learner', category: 'learning', icon: 'knowEngageLearner',
+      lines: ['Know and', 'Engage the', 'Learner'], contentR: 280, nudge: { x: 0, y: 0 } },
+    { id: 'safe-supportive-environment', category: 'learning', icon: 'safeSupportive',
+      lines: ['Safe and', 'Supportive', 'Environment'], contentR: 299, nudge: { x: 0, y: -18 } },
+    { id: 'assessment-feedback', category: 'learning', icon: 'assessmentFeedback',
+      lines: ['Assessment', 'and', 'Feedback'], contentR: 290, nudge: { x: 0, y: -10 } }
+  ];
+
+  // Label type scales with how many lines it wraps to, so a 5-line label
+  // doesn't need as much vertical room per line as a 1-line one.
+  var FONT_BY_LINES = { 1: 23, 2: 23, 3: 23, 4: 20, 5: 17 };
+  var LINE_HEIGHT_BY_LINES = { 1: 0, 2: 26, 3: 26, 4: 22, 5: 19 };
+  var ICON_UP = 28;   // anchor -> icon centre, straight up
+  var TEXT_GAP = 26;  // anchor -> first label line, straight down
+
+  var START_ANGLE = 210; // degrees; 0 = 3 o'clock, 90 = 6 o'clock (clockwise, SVG y-down)
+  var SEGMENT_SWEEP = 40; // 9 segments * 40 = 360
+  var GAP = 0.6; // degrees inset on each side of a wedge, for the white divider lines
+
+  SEGMENTS.forEach(function (seg, i) {
+    seg.startAngle = START_ANGLE + i * SEGMENT_SWEEP;
+    seg.endAngle = seg.startAngle + SEGMENT_SWEEP;
+    seg.midAngle = seg.startAngle + SEGMENT_SWEEP / 2;
+  });
+
+  // Category arcs derived from their member segments (min start / max end).
+  var CATEGORIES = {};
+  SEGMENTS.forEach(function (seg) {
+    var cat = CATEGORIES[seg.category] || (CATEGORIES[seg.category] = {
+      key: seg.category,
+      startAngle: seg.startAngle,
+      endAngle: seg.endAngle
+    });
+    cat.startAngle = Math.min(cat.startAngle, seg.startAngle);
+    cat.endAngle = Math.max(cat.endAngle, seg.endAngle);
+  });
+
+  // ---------------------------------------------------------------------
+  // 2. GEOMETRY HELPERS
+  // ---------------------------------------------------------------------
+
+  var CX = 546, CY = 546; // wheel centre — see R.darkOuter below; viewBox is 0 0 1092 1092
+
+  function toRad(deg) { return (deg * Math.PI) / 180; }
+
+  function polar(r, deg) {
+    var rad = toRad(deg);
+    return { x: CX + r * Math.cos(rad), y: CY + r * Math.sin(rad) };
+  }
+
+  // Donut-slice ("annular sector") path between two radii and two angles.
+  function sectorPath(rInner, rOuter, startDeg, endDeg) {
+    var so = polar(rOuter, startDeg), eo = polar(rOuter, endDeg);
+    var si = polar(rInner, startDeg), ei = polar(rInner, endDeg);
+    var large = (endDeg - startDeg) % 360 > 180 ? 1 : 0;
+    return [
+      'M', so.x, so.y,
+      'A', rOuter, rOuter, 0, large, 1, eo.x, eo.y,
+      'L', ei.x, ei.y,
+      'A', rInner, rInner, 0, large, 0, si.x, si.y,
+      'Z'
+    ].join(' ');
+  }
+
+  // Open arc path (for textPath curved labels), always drawn so text reads
+  // upright regardless of which side of the wheel it's on: left-to-right
+  // across the top half, right-to-left (reversed) across the bottom half.
+  // The boundary is inclusive of the bottom pole (90deg) and exclusive of
+  // the top pole (270deg) — those two points are where the direction must
+  // actually flip, so getting the inequality open/closed the wrong way
+  // around renders one of the two curved labels upside down.
+  function arcPath(r, startDeg, endDeg, id) {
+    var mid = ((startDeg + endDeg) / 2) % 360;
+    if (mid < 0) mid += 360;
+    var flipped = mid >= 90 && mid < 270;
+    var a1 = flipped ? endDeg : startDeg;
+    var a2 = flipped ? startDeg : endDeg;
+    var p1 = polar(r, a1), p2 = polar(r, a2);
+    var large = Math.abs(a2 - a1) % 360 > 180 ? 1 : 0;
+    var sweep = flipped ? 0 : 1;
+    return '<path id="' + id + '" d="M ' + p1.x + ' ' + p1.y +
+      ' A ' + r + ' ' + r + ' 0 ' + large + ' ' + sweep + ' ' + p2.x + ' ' + p2.y + '" />';
+  }
+
+  // ---------------------------------------------------------------------
+  // 3. ICONS — simple, self-contained SVG groups, ~44 units across,
+  //    drawn around local origin (0,0). Two-tone: white base + a category
+  //    accent colour, matching the source graphic's icon style.
+  // ---------------------------------------------------------------------
+
+  function person(cx, cy, s, color) {
+    s = s || 1;
+    return '<g transform="translate(' + cx + ',' + cy + ') scale(' + s + ')">' +
+      '<circle cx="0" cy="-13" r="7.5" fill="' + color + '"/>' +
+      '<path d="M-11,17 C-11,1 11,1 11,17 Z" fill="' + color + '"/>' +
+      '</g>';
+  }
+
+  function speechBubble(cx, cy, s, color) {
+    s = s || 1;
+    return '<g transform="translate(' + cx + ',' + cy + ') scale(' + s + ')">' +
+      '<path d="M-13,-16 a5,5 0 0 1 5,-5 h16 a5,5 0 0 1 5,5 v9 a5,5 0 0 1 -5,5 h-9 l-7,7 v-7 a5,5 0 0 1 -5,-5 z" fill="' + color + '"/>' +
+      '<circle cx="-3" cy="-12" r="1.4" fill="#fff"/><circle cx="1.5" cy="-12" r="1.4" fill="#fff"/><circle cx="6" cy="-12" r="1.4" fill="#fff"/>' +
+      '</g>';
+  }
+
+  var ICONS = {
+    instructionalCoaching: function (accent) {
+      return speechBubble(-6, -22, 0.85, accent) +
+        person(-14, 8, 1) +
+        person(15, 12, 1) +
+        '<path d="M-4,4 L10,0 L22,6" stroke="#fff" stroke-width="3.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>';
+    },
+    dataAnalysis: function (accent) {
+      return person(-16, 6, 1.05) +
+        '<g transform="translate(14,-4)">' +
+        '<circle cx="0" cy="0" r="17" fill="none" stroke="#fff" stroke-width="3.5"/>' +
+        '<path d="M0,0 L0,-17 A17,17 0 0 1 14.7,8.5 Z" fill="' + accent + '"/>' +
+        '</g>';
+    },
+    collaborativePlanning: function (accent) {
+      return '<rect x="-16" y="-20" width="24" height="30" rx="2.5" fill="#fff" opacity="0.55"/>' +
+        '<rect x="-11" y="-15" width="24" height="30" rx="2.5" fill="#fff"/>' +
+        '<line x1="-6" y1="-6" x2="9" y2="-6" stroke="' + accent + '" stroke-width="2.4"/>' +
+        '<line x1="-6" y1="0" x2="12" y2="0" stroke="' + accent + '" stroke-width="2.4"/>' +
+        '<path d="M-6,7 L2,7 L2,16 L6,10.5 L10,16 L10,7" fill="none" stroke="' + accent + '" stroke-width="2" stroke-linejoin="round"/>' +
+        '<path d="M8,-19 L18,-19 L18,-15 L11,-8 L7,-8 L7,-12 Z" fill="' + accent + '"/>';
+    },
+    highlyEffectiveTeaching: function (accent) {
+      return person(-16, 6, 1.05, '#fff') +
+        speechBubble(-2, -20, 0.85, accent) +
+        person(11, 14, 0.6, accent) +
+        person(19, 16, 0.6, accent) +
+        person(27, 14, 0.6, accent);
+    },
+    differentiation: function (accent) {
+      return '<rect x="-15" y="-19" width="11" height="11" fill="none" stroke="' + accent + '" stroke-width="2.4" transform="rotate(45 -9.5 -13.5)"/>' +
+        '<rect x="-12.2" y="-16.2" width="5.4" height="5.4" fill="' + accent + '" transform="rotate(45 -9.5 -13.5)"/>' +
+        '<circle cx="10" cy="-13.5" r="7.5" fill="none" stroke="' + accent + '" stroke-width="2.4"/>' +
+        '<circle cx="10" cy="-13.5" r="4" fill="#fff"/>' +
+        '<circle cx="-9.5" cy="9" r="7.5" fill="none" stroke="' + accent + '" stroke-width="2.4"/>' +
+        '<circle cx="-9.5" cy="9" r="4" fill="#fff"/>' +
+        '<path d="M10,2.5 l2.4,5 5.5,0.8 -4,3.9 0.9,5.5 -4.8,-2.6 -4.8,2.6 0.9,-5.5 -4,-3.9 5.5,-0.8 Z" fill="none" stroke="' + accent + '" stroke-width="2"/>';
+    },
+    intervention: function (accent) {
+      return '<path d="M-17,4 C-17,-2 -12,-4 -8,-1 L4,-6 C8,-8 12,-5 9,-1 L1,4 L11,4 C15,4 15,9 10,9 L-6,9 C-11,9 -15,7 -17,4 Z" fill="none" stroke="#fff" stroke-width="3.2" stroke-linejoin="round"/>' +
+        '<path d="M0,-22 C4,-27 12,-24 12,-17 C12,-11 4,-6 0,-2 C-4,-6 -12,-11 -12,-17 C-12,-24 -4,-27 0,-22 Z" fill="' + accent + '"/>';
+    },
+    knowEngageLearner: function (accent) {
+      return person(-17, 4, 1) +
+        '<rect x="0" y="-16" width="26" height="18" rx="1.5" fill="#fff"/>' +
+        '<line x1="4" y1="-11" x2="22" y2="-11" stroke="' + accent + '" stroke-width="2"/>' +
+        '<line x1="4" y1="-6" x2="18" y2="-6" stroke="' + accent + '" stroke-width="2"/>' +
+        person(3, 17, 0.55, accent) + person(10, 18, 0.55, accent) + person(17, 17, 0.55, accent);
+    },
+    safeSupportive: function (accent) {
+      return person(-9, 12, 1.05) +
+        person(15, 15, 0.65, accent) +
+        '<path d="M-24,-8 C-24,-12 -20,-12 -18,-10 C-16,-12 -12,-12 -12,-8 L-12,4 C-16,2 -20,2 -24,4 Z" fill="#fff"/>' +
+        '<line x1="-18" y1="-10" x2="-18" y2="3" stroke="' + accent + '" stroke-width="1.6"/>';
+    },
+    assessmentFeedback: function (accent) {
+      return '<rect x="-24" y="8" width="18" height="3" fill="#fff"/>' +
+        '<path d="M-19,8 L-19,-8 L-9,-8 L-9,8" fill="none" stroke="#fff" stroke-width="3"/>' +
+        '<circle cx="-14" cy="-17" r="6" fill="#fff"/>' +
+        '<path d="M-20,-19 L-14,-22 L-8,-19" fill="none" stroke="' + accent + '" stroke-width="2" stroke-linejoin="round"/>' +
+        '<line x1="-2" y1="-6" x2="10" y2="-6" stroke="' + accent + '" stroke-width="2"/>' +
+        '<line x1="-2" y1="-1" x2="10" y2="-1" stroke="' + accent + '" stroke-width="2"/>' +
+        person(16, 10, 0.95, '#fff');
+    }
+  };
+
+  // Icons are parked for now — the hand-built ones weren't reading well at
+  // this size, and you said you'd rather redo them separately. This
+  // placeholder (a generic "image" glyph) marks the slot so the layout,
+  // spacing and hover/selected states are all still real and working; the
+  // ICONS set above is left in place, untouched, for when you pick this
+  // back up — swap PLACEHOLDER_ICON for ICONS[seg.icon](style.accent)
+  // in buildSVG() below to restore them.
+  function placeholderIcon() {
+    return '<g class="ew-icon-placeholder">' +
+      '<rect x="-19" y="-19" width="38" height="38" rx="6" fill="none" stroke="#fff" stroke-width="2.5"/>' +
+      '<circle cx="-8" cy="-7" r="4" fill="none" stroke="#fff" stroke-width="2.5"/>' +
+      '<path d="M-19,9 L-6,-3 L3,6 L11,-1 L19,7" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>' +
+      '</g>';
+  }
+
+  // ---------------------------------------------------------------------
+  // 4. RADII (1092x1092 viewBox)
+  // ---------------------------------------------------------------------
+  // wedgeOuter is UNCHANGED from the original 1000x1000 design (410) —
+  // every wedge's icon/label placement (contentR/nudge) was numerically
+  // fit against that radius, so it's deliberately left alone. The theme
+  // "overview" dot ring (drawn by the app, not this file — see
+  // GEOMETRY below) needed room, so instead of shrinking the wedges to
+  // make space, the whole wheel grew: a new ring was inserted between
+  // the wedges and the outer dark ring, and the dark ring + canvas
+  // pushed outward to fit it. If you add a container max-width for this
+  // component, ~700px (was ~640px) keeps the wedges the same on-screen
+  // size as before.
+  var R = {
+    centerOuter: 100,
+    ringInner: 100, ringOuter: 178,
+    wedgeInner: 184, wedgeOuter: 410,
+    dotRingInner: 416, dotRingOuter: 456,
+    darkInner: 462, darkOuter: 546
+  };
+
+  // Entrance animation timing (see excellence-wheel.css for the actual
+  // keyframes): a staggered pop-in that runs inside-out — centre hub,
+  // then the 3 category rings (clockwise), then the 9 wedges
+  // (clockwise), then the app's theme-indicator ring (drawn on top by
+  // the app, staggered to match the wedges — see theme-dots.css), and
+  // the outer dark ring + curved brand text last of all, since it's
+  // the outermost/final layer. All delays in ms.
+  var ENTRANCE = {
+    centerStart: 0,
+    ringStart: 90, ringStagger: 40,
+    wedgeStart: 230, wedgeStagger: 60,
+    indicatorStart: 780, indicatorStagger: 25,
+    outerStart: 1060, brandTextStart: 1120
+  };
+
+  // ---------------------------------------------------------------------
+  // 5. RENDER
+  // ---------------------------------------------------------------------
+
+  function buildSVG(opts) {
+    var centerLabel = opts.centerLabel || 'Student Excellence';
+    var svg = [];
+    svg.push('<svg viewBox="0 0 1092 1092" xmlns="http://www.w3.org/2000/svg" class="ew-svg" role="img" aria-label="' +
+      escapeAttr(opts.wheelLabel || 'Excellence in Action framework wheel') + '">');
+
+    // textPath glyphs only extend to ONE side of their baseline, never
+    // both — which side depends on whether that particular arc needed to
+    // be direction-flipped (see arcPath) to read upright. So "centre the
+    // baseline on the band" does NOT centre the visible text: an unflipped
+    // arc's glyphs sit outward of the baseline (so the baseline needs to
+    // sit inward of the band's middle to compensate), while a flipped
+    // arc's glyphs sit inward of the baseline (so the baseline needs to
+    // sit outward of the middle instead).
+    function isFlipped(startDeg, endDeg) {
+      var mid = ((startDeg + endDeg) / 2) % 360;
+      if (mid < 0) mid += 360;
+      return mid >= 90 && mid < 270;
+    }
+    function bandTextRadius(inner, outer, fontSize, startDeg, endDeg) {
+      var mid = (inner + outer) / 2;
+      var offset = 0.36 * fontSize;
+      return isFlipped(startDeg, endDeg) ? mid + offset : mid - offset;
+    }
+
+    svg.push('<defs>');
+    svg.push(arcPath(bandTextRadius(R.darkInner, R.darkOuter, 28, 205, 335), 205, 335, 'ew-arc-top'));
+    svg.push(arcPath(bandTextRadius(R.darkInner, R.darkOuter, 28, 25, 155), 25, 155, 'ew-arc-bottom'));
+    Object.keys(CATEGORIES).forEach(function (key) {
+      var c = CATEGORIES[key];
+      var s = c.startAngle + 6, e = c.endAngle - 6;
+      svg.push(arcPath(bandTextRadius(R.ringInner, R.ringOuter, 27, s, e), s, e, 'ew-arc-' + key));
+    });
+    svg.push('</defs>');
+
+    // Outer dark ring + curved brand text — plus a plain white band just
+    // inside it, reserving/painting the ring where the app draws its
+    // theme-overview dots (see GEOMETRY in the module's return value).
+    // Animates in LAST (outermost layer) — see ENTRANCE.outerStart.
+    svg.push('<circle cx="' + CX + '" cy="' + CY + '" r="' + ((R.dotRingInner + R.dotRingOuter) / 2) +
+      '" fill="none" stroke="#ffffff" stroke-width="' + (R.dotRingOuter - R.dotRingInner) + '"/>');
+    svg.push('<circle class="ew-outer-ring" cx="' + CX + '" cy="' + CY + '" r="' + ((R.darkInner + R.darkOuter) / 2) + '" fill="none" stroke="' + DARK_RING +
+      '" stroke-width="' + (R.darkOuter - R.darkInner) + '" style="animation-delay:' + ENTRANCE.outerStart + 'ms"/>');
+    svg.push('<text class="ew-brand-text" style="animation-delay:' + ENTRANCE.brandTextStart + 'ms"><textPath href="#ew-arc-top" startOffset="50%" text-anchor="middle">' +
+      escapeXML(opts.topText || 'Sydney Catholic Schools') + '</textPath></text>');
+    svg.push('<text class="ew-brand-text" style="animation-delay:' + ENTRANCE.brandTextStart + 'ms"><textPath href="#ew-arc-bottom" startOffset="50%" text-anchor="middle">' +
+      escapeXML(opts.bottomText || 'Excellence in Action') + '</textPath></text>');
+
+    // Category ring arcs + labels — staggered clockwise (leading -> teaching -> learning,
+    // matching CATEGORIES' own insertion order, which follows the wheel round).
+    Object.keys(CATEGORIES).forEach(function (key, idx) {
+      var c = CATEGORIES[key];
+      var style = CATEGORY_STYLE[key];
+      var ringDelay = ENTRANCE.ringStart + idx * ENTRANCE.ringStagger;
+      svg.push('<path class="ew-ring" data-category="' + key + '" style="--ring-muted:' + style.ringMuted +
+        ';--ring-full:' + style.ring + ';animation-delay:' + ringDelay + 'ms" d="' +
+        sectorPath(R.ringInner, R.ringOuter, c.startAngle + GAP, c.endAngle - GAP) + '"/>');
+      svg.push('<text class="ew-ring-label" style="animation-delay:' + ringDelay + 'ms"><textPath href="#ew-arc-' + key +
+        '" startOffset="50%" text-anchor="middle">' + escapeXML(style.label.toUpperCase()) + '</textPath></text>');
+    });
+
+    // Wedges — staggered clockwise in draw order (SEGMENTS is already clockwise from 210deg).
+    SEGMENTS.forEach(function (seg, idx) {
+      var style = CATEGORY_STYLE[seg.category];
+      var n = seg.lines.length;
+      var fontSize = FONT_BY_LINES[n] || 22;
+      var lh = LINE_HEIGHT_BY_LINES[n] || 25;
+      var anchor = polar(seg.contentR, seg.midAngle);
+      anchor = { x: anchor.x + (seg.nudge ? seg.nudge.x : 0), y: anchor.y + (seg.nudge ? seg.nudge.y : 0) };
+      var iconPt = { x: anchor.x, y: anchor.y - ICON_UP };
+      var textTop = { x: anchor.x, y: anchor.y + TEXT_GAP };
+      var wedgeDelay = ENTRANCE.wedgeStart + idx * ENTRANCE.wedgeStagger;
+
+      svg.push('<g class="ew-wedge" tabindex="0" role="button" data-id="' + seg.id + '" data-category="' + seg.category +
+        '" aria-label="' + escapeAttr(seg.lines.join(' ')) + '" aria-pressed="false" style="--wedge-muted:' +
+        style.wedgeMuted + ';--wedge-full:' + style.wedge + ';animation-delay:' + wedgeDelay + 'ms">');
+      svg.push('<path class="ew-wedge-fill" d="' +
+        sectorPath(R.wedgeInner, R.wedgeOuter, seg.startAngle + GAP, seg.endAngle - GAP) + '"/>');
+      svg.push('<g class="ew-icon" transform="translate(' + iconPt.x + ',' + iconPt.y + ')">' +
+        placeholderIcon() + '</g>');
+      svg.push('<text class="ew-label" x="' + textTop.x + '" y="' + textTop.y + '" font-size="' + fontSize + '">');
+      seg.lines.forEach(function (line, i) {
+        var cls = seg.italicFrom !== undefined && i >= seg.italicFrom ? ' class="ew-italic"' : '';
+        svg.push('<tspan x="' + textTop.x + '" dy="' + (i === 0 ? 0 : lh) + '"' + cls + '>' + escapeXML(line) + '</tspan>');
+      });
+      svg.push('</text>');
+      svg.push('</g>');
+    });
+
+    // Centre hub
+    svg.push('<g class="ew-center" tabindex="0" role="button" aria-label="Clear selection" style="animation-delay:' +
+      ENTRANCE.centerStart + 'ms">');
+    svg.push('<circle cx="' + CX + '" cy="' + CY + '" r="' + R.centerOuter + '" fill="#fff"/>');
+    var words = centerLabel.split(' ');
+    var mid2 = Math.ceil(words.length / 2);
+    var l1 = words.slice(0, mid2).join(' '), l2 = words.slice(mid2).join(' ');
+    svg.push('<text class="ew-center-label" x="' + CX + '" y="' + CY + '" text-anchor="middle">');
+    svg.push('<tspan x="' + CX + '" dy="-7">' + escapeXML(l1) + '</tspan>');
+    if (l2) svg.push('<tspan x="' + CX + '" dy="22">' + escapeXML(l2) + '</tspan>');
+    svg.push('</text>');
+    svg.push('</g>');
+
+    svg.push('</svg>');
+    return svg.join('');
+  }
+
+  function escapeXML(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  function escapeAttr(s) {
+    return escapeXML(s).replace(/"/g, '&quot;');
+  }
+
+  // ---------------------------------------------------------------------
+  // 6. COMPONENT
+  // ---------------------------------------------------------------------
+
+  function create(container, options) {
+    options = options || {};
+    if (!container) throw new Error('ExcellenceWheel.create: container element is required');
+
+    container.classList.add('ew-host');
+    container.innerHTML = buildSVG(options);
+
+    var svg = container.querySelector('.ew-svg');
+    var wedges = Array.prototype.slice.call(container.querySelectorAll('.ew-wedge'));
+    var rings = Array.prototype.slice.call(container.querySelectorAll('.ew-ring'));
+    var centerHub = container.querySelector('.ew-center');
+    var selectedId = null;
+    var hoveredId = null;
+    var onSelectCb = typeof options.onSelect === 'function' ? options.onSelect : null;
+
+    function segmentById(id) {
+      for (var i = 0; i < SEGMENTS.length; i++) if (SEGMENTS[i].id === id) return SEGMENTS[i];
+      return null;
+    }
+
+    function updateRingHighlights() {
+      var hoveredCategory = hoveredId ? segmentById(hoveredId).category : null;
+      var selectedCategory = selectedId ? segmentById(selectedId).category : null;
+      var anyActive = hoveredCategory !== null || selectedCategory !== null;
+      rings.forEach(function (ring) {
+        var cat = ring.getAttribute('data-category');
+        var isActive = cat === hoveredCategory || cat === selectedCategory;
+        ring.classList.toggle('is-dimmed', anyActive && !isActive);
+      });
+    }
+
+    // Resting state is full colour for every wedge. As soon as any one
+    // wedge is hovered/focused, every OTHER wedge dims — except one that's
+    // selected, which always stays full colour regardless of what's being
+    // hovered elsewhere.
+    function updateWedgeDimming() {
+      var anyActive = hoveredId !== null || selectedId !== null;
+      wedges.forEach(function (el) {
+        var id = el.getAttribute('data-id');
+        var isActive = id === hoveredId || id === selectedId;
+        el.classList.toggle('is-dimmed', anyActive && !isActive);
+      });
+    }
+
+    wedges.forEach(function (el) {
+      var id = el.getAttribute('data-id');
+      el.addEventListener('pointerenter', function () { hoveredId = id; updateRingHighlights(); updateWedgeDimming(); });
+      el.addEventListener('pointerleave', function () { if (hoveredId === id) hoveredId = null; updateRingHighlights(); updateWedgeDimming(); });
+      el.addEventListener('focus', function () { hoveredId = id; updateRingHighlights(); updateWedgeDimming(); });
+      el.addEventListener('blur', function () { if (hoveredId === id) hoveredId = null; updateRingHighlights(); updateWedgeDimming(); });
+    });
+
+    function applySelection() {
+      wedges.forEach(function (el) {
+        var isSel = el.getAttribute('data-id') === selectedId;
+        el.classList.toggle('is-selected', isSel);
+        el.setAttribute('aria-pressed', isSel ? 'true' : 'false');
+      });
+    }
+
+    function setSelected(id, fromInteraction) {
+      var next = id === selectedId ? null : id; // clicking the same wedge again deselects
+      if (id === null) next = null;
+      selectedId = next;
+      applySelection();
+      updateRingHighlights();
+      updateWedgeDimming();
+      if (fromInteraction && onSelectCb) onSelectCb(selectedId ? segmentById(selectedId) : null);
+    }
+
+    function handleActivate(target) {
+      var wedgeEl = target.closest ? target.closest('.ew-wedge') : null;
+      if (wedgeEl) {
+        setSelected(wedgeEl.getAttribute('data-id'), true);
+        return;
+      }
+      if (target.closest && target.closest('.ew-center')) {
+        setSelected(null, true);
+      }
+    }
+
+    svg.addEventListener('click', function (e) { handleActivate(e.target); });
+    svg.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+        var active = e.target.closest ? e.target.closest('.ew-wedge, .ew-center') : null;
+        if (active) { e.preventDefault(); handleActivate(active); }
+      }
+    });
+
+    if (options.initialSelected) setSelected(options.initialSelected, false);
+
+    return {
+      select: function (id) { setSelected(id, false); },
+      deselect: function () { setSelected(null, false); },
+      getSelected: function () { return selectedId ? segmentById(selectedId) : null; },
+      getSvgRoot: function () { return svg; },
+      set onSelect(fn) { onSelectCb = typeof fn === 'function' ? fn : null; },
+      get onSelect() { return onSelectCb; },
+      destroy: function () {
+        container.innerHTML = '';
+        container.classList.remove('ew-host');
+      }
+    };
+  }
+
+  return {
+    create: create,
+    SEGMENTS: SEGMENTS,
+    CATEGORY_STYLE: CATEGORY_STYLE,
+    // For anything drawn externally that needs to align with the wheel's
+    // own coordinate space (e.g. an overview layer of dots per Theme,
+    // drawn by the app onto the SVG returned by wheel.getSvgRoot()) —
+    // the wheel deliberately has no idea Themes exist, so this is as far
+    // as it goes: centre point + every named radius, plus the same
+    // annular-sector path builder the wedges/rings themselves use.
+    GEOMETRY: { cx: CX, cy: CY, R: R },
+    sectorPath: sectorPath,
+    // Only the piece of ENTRANCE the app actually needs — when to start
+    // staggering in the theme-indicator ring, so it can slot into the
+    // same inside-out sequence right after the wedges finish appearing,
+    // without the app needing to know or duplicate the wheel's own
+    // internal wedge/ring/centre timings.
+    ENTRANCE: { indicatorStart: ENTRANCE.indicatorStart, indicatorStagger: ENTRANCE.indicatorStagger }
+  };
+});
