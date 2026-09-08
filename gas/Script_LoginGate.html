@@ -81,6 +81,11 @@
 
     document.getElementById('login-gate').hidden = true;
     document.getElementById('app-root').hidden = false;
+
+    // Defined in Script_App.html — loads this school's saved
+    // ratings/evidence from the backend and merges them into
+    // ELEMENT_THEMES now that we know which school this visitor is.
+    if (typeof window.onAppEntered === 'function') window.onAppEntered(access);
   }
 
   (function initLoginGate() {

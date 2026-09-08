@@ -3,6 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <base target="_top">
+<!-- Google Picker (gapi) + Identity Services (GIS), for the evidence
+     "Attach from Drive" flow — see Script_App.html's Picker section and
+     Code.gs's getPickerConfig() doc comment for why this runs under the
+     visitor's own Google identity, entirely separate from this app's own
+     "Execute as: Me" execution. -->
+<script src="https://apis.google.com/js/api.js"></script>
+<script src="https://accounts.google.com/gsi/client"></script>
 <?!= include('Stylesheet_ExcellenceWheel'); ?>
 <?!= include('Stylesheet_ThemeCards'); ?>
 <?!= include('Stylesheet_ThemeModal'); ?>

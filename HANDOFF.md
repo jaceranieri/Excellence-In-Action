@@ -45,6 +45,15 @@ real GAS deployment.
 | `example.html`'s `<style>`/inline `<script>` | `gas/Index.html`'s `<style>` / `gas/Script_App.html` |
 | — (no static equivalent) | `gas/Script_LoginGate.html`, `gas/Stylesheet_LoginGate.html`, `gas/Code.gs`, `gas/appsscript.json` |
 
+**One deliberate exception to "mirror every shared edit":** the Ratings/
+Evidence persistence code added to `gas/Script_App.html` (autosave,
+`applySchoolState`, the Picker attach flow, the `google.script.run` calls)
+has **no** counterpart in `example.html` — there's no backend for a
+static page to persist to. Only the `id` field added to every
+`ELEMENT_THEMES` theme was backfilled into both files; everything else
+persistence-related is `gas/`-only. Shared *rendering* logic (rubric
+grid, cards, modal markup) still needs mirroring as before.
+
 `excellence-wheel-preview.html` is a **stale, hand-generated single-file
 bundle** from an early round (before the GAS build existed) — do not
 trust it as current, it hasn't been regenerated since. `EIA.json` +
@@ -76,7 +85,105 @@ in `import-eia.py` itself; not run by the app.
   by design** (a deliberate decision, not an oversight — see git log
   "Add Users-sheet login gate").
 - On Continue, `enterApp()` fills in the real banner (crest image,
-  school name, user's initials in the avatar) and reveals `#app-root`.
+  school name, user's initials in the avatar) and reveals `#app-root`,
+  then calls `window.onAppEntered(access)` (defined in `Script_App.html`)
+  — this is what kicks off loading the school's saved ratings/evidence.
+
+## Ratings + Evidence persistence (`gas/` only)
+
+Every Theme's grade, rubric-cell selections, and evidence entries now
+persist to a **separate** spreadsheet from the Users sheet:
+`https://docs.google.com/spreadsheets/d/15l-HVd1MtjN3uc-jnXDEQSNMDHDN1NTJMSa3v78ptfQ/`
+(`CONFIG.DATA_SHEET_ID` in `Code.gs`). Two tabs, created automatically on
+first write if they don't already exist (`ensureSheet_()`):
+
+- **Ratings** — one row per school: `SchoolName, RatingsJSON,
+  LastUpdatedBy, LastUpdatedAt`. `RatingsJSON` is
+  `{"<themeId>": {"grade": "sustaining", "rubric": [<selected level per
+  rubric row, in array order, or null>, ...]}, ...}` for every theme.
+  Saved as one whole-row overwrite per save (last-write-wins — see below).
+- **EvidenceLog** — one row per evidence entry (not per school):
+  `EntryId, SchoolName, ThemeId, EntryNumber, Type, Date, Text,
+  Attachments, CreatedBy, CreatedAt, UpdatedAt`. `Attachments` is a JSON
+  array of `{fileId, name, mimeType, url, kind}`. `EntryId` (a UUID,
+  generated server-side in `saveEvidenceEntry()`) is the real identity for
+  edits/deletes — `EntryNumber` is only the theme-scoped display number
+  the UI has always shown ("Evidence 1", "Evidence 2", ...).
+
+**Theme ids**: every theme in `ELEMENT_THEMES` now carries a stable `id`
+field (e.g. `"L_CPP_CBR"`), derived from the common `_`-joined prefix of
+its rubric rows' own ids in `EIA.json` (see `theme_id()` in
+`import-eia.py`, and the same logic re-run manually to backfill the field
+into `gas/Script_App.html` and `example.html`'s already-hand-edited
+`ELEMENT_THEMES`). This is the persistent key into both sheets above —
+it's what survives a future rubric wording edit or theme reorder, unlike
+array position or title text.
+
+**Load flow**: `Script_App.html`'s `window.onAppEntered(access)` calls
+`Code.gs`'s `getSchoolState(schoolName)`, which returns
+`{ratings, evidence}` for that school; `applySchoolState()` merges it
+onto `ELEMENT_THEMES` in place (a theme with no saved row keeps its
+built-in "ungraded, nothing selected" default). Runs once, right after
+the login gate's Continue click.
+
+**Save flow — Ratings**: any rubric-cell click or grade-dropdown change
+calls `scheduleSaveRatings()`, which debounces ~1.5s (so clicking through
+several rubric rows collapses into one save) before calling `Code.gs`'s
+`saveRatings()` with the *entire* ratings blob for every theme, not just
+what changed. Also flushed on tab-hide/`beforeunload`. A small
+bottom-right "Saving…/Saved/Save failed — retrying" badge
+(`showSaveStatus()`) reflects this. **This is last-write-wins, not a
+field-level merge** — two staff at the same school saving within the same
+debounce window can clobber each other's change to a *different* theme.
+Accepted tradeoff for v1 (see the original planning conversation); if
+concurrent same-school editing turns out to be common in practice, the
+fix is a read-modify-write per-theme-key merge inside `saveRatings()`
+rather than a whole-row overwrite.
+
+**Save flow — Evidence**: submitting the compose form calls `Code.gs`'s
+`saveEvidenceEntry()` (append if new, update-in-place by `EntryId` if
+editing); the returned `entryId` is stored back onto the client-side
+entry object. Deleting calls `deleteEvidenceEntry()` — entries that were
+never successfully saved (no `entryId` yet, e.g. a save that's still
+in-flight or failed) are only removed client-side, since there's nothing
+to delete server-side.
+
+**Attachments — Google Picker, not a real file input.** The evidence
+compose form's "Attach Files" button opens the Google Picker
+(`openDrivePicker()`), letting the visitor pick an existing Drive file
+they own or upload a new one — into **their own** Drive, not the app's.
+This is deliberately NOT wired through Apps Script's own
+`ScriptApp.getOAuthToken()`: this app runs as "Execute as: Me", so every
+`google.script.run` call (including a hypothetical
+`getPickerConfig()`-returned token) would authenticate as the
+*developer*, not the visitor — see `Code.gs`'s `getPickerConfig()` doc
+comment. Instead the picker and the file-sharing call both run under a
+**separate, client-side OAuth token** obtained via Google Identity
+Services (`google.accounts.oauth2.initTokenClient`, using
+`CONFIG.PICKER_OAUTH_CLIENT_ID`) — entirely independent of the Apps
+Script backend's own execution identity. After a pick, the app calls the
+Drive REST API directly (`fetch(...)`, not `DriveApp`) with that same
+visitor token to grant `CONFIG.REVIEW_GROUP_EMAIL` reader access, since
+the visitor is the one with permission to share their own file — a
+server-side `DriveApp.addViewer()` as the developer would fail, since the
+developer never had access to that file to begin with. Both
+`PICKER_API_KEY` and `PICKER_OAUTH_CLIENT_ID` are placeholder stubs in
+`CONFIG` pending manual Google Cloud Console setup (enable the Picker
+API + create an API key restricted to it; create an OAuth 2.0 "Web
+application" Client ID with the deployed web app's URL as an authorized
+JavaScript origin).
+
+**Not yet done / worth knowing**:
+- None of this has been exercised against a live deployment or real
+  Sheets — only syntax-checked locally (no live Apps Script execution or
+  network egress to Google's OAuth/Picker endpoints from this sandboxed
+  dev environment). Test the full loop (rubric click → autosave →
+  reload → state restored; evidence + Picker attach → reload → still
+  there) against the real deployment before trusting it.
+- `RATINGS_HEADERS`/`EVIDENCE_HEADERS` in `Code.gs` are the source of
+  truth for both tabs' column order — if you ever reorder columns by
+  hand in the sheet, update these too (`ensureSheet_()` only writes
+  headers on first creation, it doesn't reconcile an existing tab).
 
 ## Layout system — read this before touching sizing
 
@@ -162,13 +269,24 @@ computed margins directly.
 
 ## Known limitations / explicitly deferred (not oversights)
 
-- **No Ratings/Evidence persistence yet.** Grades and evidence are still
-  client-side, in-memory `ELEMENT_THEMES` state that resets on reload —
-  same as the original static build. The decision from the "wire up the
-  backend" round was: **one shared spreadsheet for all schools**
-  (Ratings + EvidenceLog sheets, each row tagged with `SchoolName`), not
-  one spreadsheet per school. Nothing has been built for this yet beyond
-  that decision — it's the natural next step.
+- **Ratings/Evidence persistence is now built (`gas/` only) — see
+  "Ratings + Evidence persistence" below.** Three placeholder values in
+  `gas/Code.gs`'s `CONFIG` still need real values before this actually
+  works end-to-end: `DATA_SHEET_ID` is filled in (the separate Ratings/
+  EvidenceLog spreadsheet), but `REVIEW_GROUP_EMAIL` is a placeholder
+  (`testgroup@syd.catholic.edu.au`), and `PICKER_API_KEY` /
+  `PICKER_OAUTH_CLIENT_ID` are unset stubs pending Google Cloud Console
+  setup (enable the Picker API, create an API key restricted to it, and
+  create an OAuth 2.0 "Web application" Client ID with the deployed web
+  app's URL as an authorized JavaScript origin). None of this has been
+  tested against a real deployment yet — only syntax-checked locally,
+  since Picker/GIS and real Sheets writes can't be exercised from this
+  sandboxed dev environment (no live Apps Script execution, no network
+  egress to Google's OAuth/Picker endpoints).
+  `example.html` (the static build) intentionally has NO persistence —
+  it has no backend to persist to. Its `ELEMENT_THEMES` got the same
+  `id` field added (for parity/future use) but nothing else; it stays a
+  demo of default state only.
 - **"Request Access from your Principal" button is intentionally
   static** — no email/notification wired up, per an explicit decision
   during the login-gate round.

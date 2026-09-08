@@ -45,6 +45,22 @@ NAME_TO_ID = {
 LEVEL_MAP = {'pre_delivering': 'pre-delivering'}
 LEVEL_ORDER = ['pre-delivering', 'delivering', 'sustaining', 'excelling']
 
+
+# A Theme's stable id (used as the key into saved Ratings/EvidenceLog rows)
+# is the longest common '_'-joined prefix of its rubric rows' own ids, e.g.
+# ["L_CPP_CBR_Vision", "L_CPP_CBR_Leadership"] -> "L_CPP_CBR". Verified
+# unique and non-trivial (>=2 segments) across all 36 themes in EIA.json.
+def theme_id(rubric_ids):
+    parts_list = [i.split('_') for i in rubric_ids]
+    minlen = min(len(p) for p in parts_list)
+    common = []
+    for idx in range(minlen):
+        vals = set(p[idx] for p in parts_list)
+        if len(vals) != 1:
+            break
+        common.append(parts_list[0][idx])
+    return '_'.join(common)
+
 # Draw order must match excellence-wheel.js's SEGMENTS (clockwise from
 # the top) so a rendered dot-ring / card order matches the wheel.
 ORDER = [
@@ -76,6 +92,7 @@ def transform(source):
                     rubric_rows.append({'key': r.get('id'), 'selected': None, 'cells': cells})
                 themes.append({
                     'title': th['theme_name'],
+                    'id': theme_id([r['id'] for r in th['rubrics']]),
                     'grade': 'ungraded',
                     'rubric': rubric_rows,
                     'evidence': []
@@ -105,6 +122,7 @@ def render(out):
         for j, th in enumerate(themes):
             lines.append('      {')
             lines.append('        title: ' + js_str(th['title']) + ',')
+            lines.append('        id: ' + js_str(th['id']) + ',')
             lines.append('        grade: ' + js_str(th['grade']) + ',')
             lines.append('        rubric: [')
             for k, row in enumerate(th['rubric']):
