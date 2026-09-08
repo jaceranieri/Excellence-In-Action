@@ -168,10 +168,62 @@ the visitor is the one with permission to share their own file — a
 server-side `DriveApp.addViewer()` as the developer would fail, since the
 developer never had access to that file to begin with. Both
 `PICKER_API_KEY` and `PICKER_OAUTH_CLIENT_ID` are placeholder stubs in
-`CONFIG` pending manual Google Cloud Console setup (enable the Picker
-API + create an API key restricted to it; create an OAuth 2.0 "Web
-application" Client ID with the deployed web app's URL as an authorized
-JavaScript origin).
+`CONFIG` pending manual Google Cloud Console setup — see the walkthrough
+below.
+
+The Picker dialog already has both "My Drive" (existing files) and
+"Upload" (local computer → their own Drive) as tabs in the same dialog
+(`.addView(google.picker.ViewId.DOCS).addView(new
+google.picker.DocsUploadView())` in `openDrivePicker()`) — this was a
+deliberate choice over two separate buttons, and uploads land wherever
+Picker's Upload view defaults them (no app-managed folder). Both were
+confirmed decisions, not defaults to revisit without asking first.
+
+**Cloud Console setup walkthrough** (all manual, outside this repo):
+
+1. **Link a standard GCP project to the Apps Script project**, if it
+   isn't already: Apps Script editor → Project Settings (gear icon) →
+   "Google Cloud Platform (GCP) Project" → "Change project" → enter the
+   Project Number of a GCP project you own (create one at
+   console.cloud.google.com first if you don't have one to use).
+2. **Enable the Picker API**: in that GCP project's Console → APIs &
+   Services → Library → search "Google Picker API" → Enable.
+3. **Create the API key**: APIs & Services → Credentials → Create
+   Credentials → API key. Click "Restrict key" → under "API
+   restrictions" choose "Restrict key" → select "Google Picker API"
+   only (don't leave it unrestricted). Paste the resulting key into
+   `Code.gs`'s `CONFIG.PICKER_API_KEY`.
+4. **Create the OAuth Client ID**: APIs & Services → Credentials →
+   Create Credentials → OAuth client ID.
+   - If this is the project's first OAuth client, you'll be asked to
+     configure the OAuth consent screen first — set **User type:
+     Internal** (this app is already domain-restricted via
+     `appsscript.json`'s `access: DOMAIN`, so Internal keeps it that
+     way and skips Google's app-verification review entirely, which
+     External would otherwise require for the `drive.file` scope).
+   - Application type: **Web application**.
+   - **Authorized JavaScript origins** — this is the one genuinely
+     fiddly step: it must be the *exact* origin your deployed web app's
+     content actually renders from, which is a per-deployment
+     `*.googleusercontent.com` sandbox domain Apps Script assigns, not
+     `script.google.com` itself and not predictable in advance. Open
+     your deployed web app in a browser, open DevTools → Console, run
+     `window.location.origin`, and paste that exact value in here. If
+     you ever create a new deployment (not just a new version of an
+     existing one) and get a new URL, re-check this — a new deployment
+     can get a new sandbox origin.
+   - Save, then paste the generated Client ID into `Code.gs`'s
+     `CONFIG.PICKER_OAUTH_CLIENT_ID`.
+5. **Redeploy**: Deploy → Manage deployments → Edit → New version, after
+   pasting both values into `Code.gs`.
+6. **Test**: log in → select an Element → open a Theme → Add Evidence →
+   Attach Files. First time, expect a Google sign-in/consent popup
+   (requesting Drive file access) before the Picker dialog itself opens
+   with its "My Drive" and "Upload" tabs.
+   - An "origin mismatch" / `redirect_uri_mismatch`-style error from the
+     OAuth popup almost always means step 4's Authorized JavaScript
+     origin doesn't exactly match `window.location.origin` on the live
+     page — re-check it there, not from memory.
 
 **Not yet done / worth knowing**:
 - None of this has been exercised against a live deployment or real
