@@ -1998,6 +1998,11 @@
           detailEl.innerHTML = '<p class="placeholder">Select an Element to see its Themes here.</p>';
           return;
         }
+        // Permanently expands the cards column from its collapsed,
+        // wheel-centred starting state — see .main-layout.is-empty in
+        // Index.html's <style>. Never re-added, even on later
+        // deselection, so the layout stays put once expanded.
+        document.querySelector('.main-layout').classList.remove('is-empty');
         renderElementDetail(segment);
       }
     });

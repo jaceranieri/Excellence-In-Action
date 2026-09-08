@@ -99,21 +99,61 @@
        content-dependent circularity that caused the wheel to change
        size before, just relocated to a different tier). */
     width: 100%;
+    /* Fixed to #wheel-host's own height, not left to auto (which would
+       resolve to whichever child is tallest). #detail's height varies
+       with how many Theme-card rows an Element has — left auto, that
+       made .stage-area's vertical centring (based on .main-layout's
+       own box) shift the WHEEL up and down every time a different
+       Element's card count crossed a row boundary, even though the
+       wheel's own size never changed. Pinning this to the wheel's
+       height, with overflow left visible (the default), decouples
+       that: taller card content just extends past the box's bottom
+       uneventfully instead of resizing the box centring is based on. */
+    height: 580px;
+    transition: gap 0.4s ease;
   }
-  #wheel-host { flex: none; width: 580px; }
+  #wheel-host {
+    flex: none;
+    width: 580px;
+    /* Overrides excellence-wheel.css's own .ew-host { margin: 0 auto }
+       (added by the component itself via the ew-host class) — auto
+       margins on a flex item absorb ALL the row's leftover space into
+       themselves rather than letting .main-layout's justify-content:
+       center centre the wheel+cards pair as a group. That's what was
+       actually pushing the cards far to the right on a wide screen:
+       the wheel was quietly consuming the entire leftover width as its
+       own left+right margin instead of sharing it symmetrically. */
+    margin: 0;
+  }
   #detail {
     flex: none;
     width: 580px;
     min-height: 90px;
     box-sizing: border-box;
+    overflow: hidden; /* only actually clips anything during the collapsed (.is-empty) state below — #detail's own height is otherwise auto/content-driven, so nothing here is ever cut off */
+    transition: width 0.4s ease, opacity 0.3s ease, min-height 0.4s ease;
   }
   #detail .placeholder { color: #999; font-style: italic; margin: 0; text-align: center; }
+
+  /* Before the first Element is ever selected, the wheel sits alone,
+     centred on the whole row (#detail collapsed to nothing) — once
+     Script_App.html's onSelect removes this class on the first real
+     selection, #detail expands and the transitions above animate the
+     wheel sliding left into its permanent side-by-side position. It
+     never reverts, even if the user later deselects. */
+  .main-layout.is-empty { gap: 0; }
+  .main-layout.is-empty #detail {
+    width: 0;
+    min-width: 0;
+    min-height: 0;
+    opacity: 0;
+  }
 
   /* Compact tier: smaller laptops / tablets in landscape. Still fully
      fixed, still side by side — just a smaller designed size, not a
      scaled-down version of the desktop numbers above. */
   @media (max-width: 1279.98px) {
-    .main-layout { gap: 32px; }
+    .main-layout { gap: 32px; height: 380px; }
     #wheel-host { width: 380px; }
     #detail { width: 380px; }
   }
@@ -121,9 +161,11 @@
   /* Stacked tier: too narrow for both fixed columns side by side.
      min(…, 100%) on both is the one deliberate exception to "always
      fixed" in this layout — a safety net against horizontal overflow
-     on genuinely small phone screens, not a return to fluid scaling. */
+     on genuinely small phone screens, not a return to fluid scaling.
+     height reverts to auto here since the column stacks wheel+cards
+     cumulatively rather than side by side. */
   @media (max-width: 899.98px) {
-    .main-layout { flex-direction: column; align-items: center; gap: 32px; }
+    .main-layout { flex-direction: column; align-items: center; gap: 32px; height: auto; }
     #wheel-host { width: min(360px, 100%); }
     #detail { width: min(420px, 100%); }
   }
@@ -182,7 +224,7 @@
     </header>
 
     <div class="stage-area">
-      <div class="main-layout">
+      <div class="main-layout is-empty">
         <div id="wheel-host"></div>
 
         <!-- This is where the app renders the selected Element's title and its
