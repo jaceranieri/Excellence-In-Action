@@ -2049,10 +2049,34 @@
     // once the visitor has granted Drive access — opening a consent popup
     // and polling until it's closed if they haven't (or a prior grant
     // expired) yet.
-    function withPickerAuth(cb) {
+    //
+    // `attempt` counts popup round-trips for this one Attach Files click.
+    // If the FIRST popup closes and the visitor is still unauthorized,
+    // that's normal (they just clicked through consent) and we silently
+    // retry. If a SECOND round-trip also comes back unauthorized, the
+    // popup almost certainly showed Google's own
+    // "The state token is invalid or has expired" error page instead of
+    // the consent screen — which we can't detect directly (it's a
+    // script.google.com page, a different origin than this app's
+    // googleusercontent.com sandbox, so we can't read its content). That
+    // error means the browser session that opened the popup didn't match
+    // the one that completed it — almost always multiple signed-in Google
+    // accounts, or third-party cookies blocked for script.google.com /
+    // accounts.google.com. Rather than silently looping on more popups,
+    // surface that explanation and let them choose to retry.
+    function withPickerAuth(cb, attempt) {
+      attempt = attempt || 0;
       google.script.run
         .withSuccessHandler(function (auth) {
           if (auth.authorized) { cb(auth); return; }
+          if (attempt >= 1) {
+            showComposeError('Drive authorization didn\'t complete. This usually means ' +
+              'multiple Google accounts are signed in on this browser, or third-party ' +
+              'cookies are blocked for script.google.com. Try again in an incognito ' +
+              'window signed into only your school Google account, then click Attach ' +
+              'Files again.');
+            return;
+          }
           var popup = window.open(auth.authorizationUrl, 'eia-drive-auth', 'width=520,height=650');
           if (!popup) {
             showComposeError('Please allow pop-ups for this site, then try Attach Files again.');
@@ -2061,7 +2085,7 @@
           var poll = setInterval(function () {
             if (!popup.closed) return;
             clearInterval(poll);
-            withPickerAuth(cb); // re-check — either granted now, or they just closed it
+            withPickerAuth(cb, attempt + 1); // re-check — either granted now, or they just closed it
           }, 500);
         })
         .withFailureHandler(function (err) {
