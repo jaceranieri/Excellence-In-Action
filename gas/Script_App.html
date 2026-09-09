@@ -2092,11 +2092,23 @@
           console.error('Failed to get Drive authorization:', err);
           showComposeError('Could not connect to Google Drive — try again.');
         })
-        .getPickerAuth();
+        .getPickerAuth(SCHOOL_NAME);
     }
 
     function onPickerPicked(auth, data) {
       if (data.action !== google.picker.Action.PICKED) return;
+      // Share with the review group (as before) plus every other active
+      // staff member at this same school (auth.schoolTeammateEmails, from
+      // the Users sheet — there's no per-school Google Group to share
+      // with instead), so a colleague reviewing the same school's Themes
+      // can actually open an attachment a teammate added, not just see
+      // its name. sendNotificationEmail:false on the teammate shares only
+      // — nobody wants an email every time anyone at their school attaches
+      // a file; the review-group share keeps its existing behavior.
+      var shareTargets = [{ type: 'group', emailAddress: auth.reviewGroupEmail, notify: true }]
+        .concat((auth.schoolTeammateEmails || []).map(function (email) {
+          return { type: 'user', emailAddress: email, notify: false };
+        }));
       (data.docs || []).forEach(function (doc) {
         composeAttachments.push({
           fileId: doc.id,
@@ -2109,11 +2121,14 @@
         // already have share rights on this file), so a failure here
         // (e.g. a file type that can't be shared with a Group) doesn't
         // block attaching it to the evidence entry.
-        fetch('https://www.googleapis.com/drive/v3/files/' + doc.id + '/permissions', {
-          method: 'POST',
-          headers: { 'Authorization': 'Bearer ' + auth.accessToken, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ role: 'reader', type: 'group', emailAddress: auth.reviewGroupEmail })
-        }).catch(function (err) { console.error('Failed to share attachment with review group:', err); });
+        shareTargets.forEach(function (target) {
+          fetch('https://www.googleapis.com/drive/v3/files/' + doc.id +
+              '/permissions?sendNotificationEmail=' + target.notify, {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + auth.accessToken, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ role: 'reader', type: target.type, emailAddress: target.emailAddress })
+          }).catch(function (err) { console.error('Failed to share attachment with ' + target.emailAddress + ':', err); });
+        });
       });
       renderComposeAttachments();
     }

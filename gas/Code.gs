@@ -340,22 +340,52 @@ function logDriveRedirectUri() {
 }
 
 /**
+ * Active teammates' emails at `schoolName` (Users sheet, Active=TRUE),
+ * excluding `excludeEmail`. There's no per-school Google Group to share
+ * attachments with, so this looks the roster up directly from the same
+ * Users sheet the login gate already reads — it's the only source of
+ * "who else is at this school" the app has.
+ */
+function getSchoolTeammateEmails_(schoolName, excludeEmail) {
+  var sheet = SpreadsheetApp.openById(requireProp_('USERS_SHEET_ID')).getSheets()[0];
+  var rows = sheet.getDataRange().getValues();
+  var exclude = String(excludeEmail || '').toLowerCase().trim();
+  var emails = [];
+  for (var i = 1; i < rows.length; i++) {
+    var row = rows[i];
+    var rowEmail = String(row[0] || '').toLowerCase().trim();
+    var rowSchool = String(row[2] || '').trim();
+    var active = row[4] === true || String(row[4]).trim().toUpperCase() === 'TRUE';
+    if (rowEmail && rowEmail !== exclude && rowSchool === schoolName && active) {
+      emails.push(rowEmail);
+    }
+  }
+  return emails;
+}
+
+/**
  * Called by the client right before opening the Picker. If the visitor
  * hasn't granted Drive access yet (or a prior grant expired/was
  * revoked), returns an authorizationUrl for the client to open in a
  * popup; once they grant access there, calling this again returns the
  * real per-visitor access token plus what the client needs to build the
  * Picker itself.
+ *
+ * schoolTeammateEmails lets the client also share a newly-attached file
+ * with the rest of the uploader's own school (not just the review
+ * group) — see the sharing loop in Script_App.html's onPickerPicked().
  */
-function getPickerAuth() {
+function getPickerAuth(schoolName) {
   var service = getDriveService_();
   if (!service.hasAccess()) {
     return { authorized: false, authorizationUrl: service.getAuthorizationUrl() };
   }
+  var email = Session.getActiveUser().getEmail();
   return {
     authorized: true,
     accessToken: service.getAccessToken(),
     apiKey: requireProp_('PICKER_API_KEY'),
-    reviewGroupEmail: requireProp_('REVIEW_GROUP_EMAIL')
+    reviewGroupEmail: requireProp_('REVIEW_GROUP_EMAIL'),
+    schoolTeammateEmails: getSchoolTeammateEmails_(schoolName, email)
   };
 }

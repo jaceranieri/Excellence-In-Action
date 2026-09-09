@@ -161,6 +161,24 @@ buttons, confirmed with the project owner, and uploads land wherever
 Picker's Upload view defaults them (no app-managed folder — also
 confirmed, not a default to revisit without asking first).
 
+**Sharing an attachment beyond the uploader.** After a pick/upload,
+`onPickerPicked()` shares the file with `REVIEW_GROUP_EMAIL` (as
+before) *and* with every other Active user at the same school —
+`Code.gs`'s `getPickerAuth(schoolName)` looks that roster up from the
+Users sheet (no per-school Google Group exists to share with instead)
+and returns it as `schoolTeammateEmails`. Without this, a colleague at
+the same school could see an evidence entry's attachment name/link in
+the app but get a 403 opening it, since the file only ever lived in the
+uploader's own Drive and was shared with the review group, never with
+teammates. The per-teammate shares pass
+`sendNotificationEmail=false` (unlike the review-group share) so
+attaching a file doesn't email everyone at the school every time;
+they're still best-effort, same as the review-group share — a failure
+doesn't block attaching the file to the entry, it just means that one
+person may need re-sharing by hand. If a school later gets its own
+Google Group, swap `schoolTeammateEmails` for that group email and drop
+the per-user loop.
+
 Getting this to run as the *visiting* user (not this app's own
 "Execute as: Me" identity) took two wrong turns before landing on what's
 actually implemented now — worth understanding both, since either one
