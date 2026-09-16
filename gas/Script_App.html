@@ -1568,7 +1568,16 @@
         '</div>';
     }
 
-    function renderElementDetail(segment) {
+    // cascadeBaseDelay: extra ms added on top of each card's own i*35ms
+    // stagger, before its fade-in animation starts. Only the very first
+    // Element selection (the one that also expands #detail from its
+    // collapsed .is-empty width) passes this — see onSelect below — so the
+    // cascade waits for that 0.4s slide to finish instead of playing while
+    // the box is still narrow. Every later selection (Element switches,
+    // the post-login state restore) passes nothing, so cards cascade in
+    // immediately as before.
+    function renderElementDetail(segment, cascadeBaseDelay) {
+      var baseDelay = cascadeBaseDelay || 0;
       var data = ELEMENT_THEMES[segment.id];
       var title = (data && data.title) || segment.lines.join(' ');
       var themes = (data && data.themes) || [];
@@ -1584,7 +1593,7 @@
       // that category only.
       var shadowHex = segment.category === 'teaching' ? style.accent : darkenHex(accentHex, 0.2);
       var cardsHtml = themes.map(function (t, i) {
-        return renderThemeCard(t, i, accentHex, accentRgb, shadowHex, i * 35);
+        return renderThemeCard(t, i, accentHex, accentRgb, shadowHex, baseDelay + i * 35);
       }).join('');
       detailEl.innerHTML =
         '<div class="element-detail" style="--title-color:' + style.ring + '">' +
@@ -2297,8 +2306,14 @@
         // wheel-centred starting state — see .main-layout.is-empty in
         // Index.html's <style>. Never re-added, even on later
         // deselection, so the layout stays put once expanded.
-        document.querySelector('.main-layout').classList.remove('is-empty');
-        renderElementDetail(segment);
+        var mainLayout = document.querySelector('.main-layout');
+        var isFirstExpand = mainLayout.classList.contains('is-empty');
+        mainLayout.classList.remove('is-empty');
+        // On that first expand only, hold the cards' cascade off until the
+        // 0.4s wheel-slide (#detail's width transition) has finished —
+        // see the matching opacity transition-delay on #detail in
+        // Index.html's <style>.
+        renderElementDetail(segment, isFirstExpand ? 400 : 0);
       }
     });
 

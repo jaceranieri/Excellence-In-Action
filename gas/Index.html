@@ -136,7 +136,14 @@
     min-height: 90px;
     box-sizing: border-box;
     overflow: hidden; /* only actually clips anything during the collapsed (.is-empty) state below — #detail's own height is otherwise auto/content-driven, so nothing here is ever cut off */
-    transition: width 0.4s ease, opacity 0.3s ease, min-height 0.4s ease;
+    /* opacity's own 0.4s delay makes it wait for the width transition to
+       finish before starting to fade in — otherwise the Theme cards were
+       already rendered (and their own tc-fade-in had already played) while
+       the box was still narrow, so they visibly stretched/reflowed as the
+       box kept widening. See the matching animation-delay bump in
+       renderThemeCard's caller (onSelect) below, which holds off the
+       per-card cascade until this same moment. */
+    transition: width 0.4s ease, opacity 0.3s ease 0.4s, min-height 0.4s ease;
   }
   #detail .placeholder { color: #999; font-style: italic; margin: 0; text-align: center; }
 
