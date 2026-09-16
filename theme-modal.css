@@ -752,8 +752,19 @@
     overflow: visible;
   }
   .rubric-col {
+    /* flex: none (not just overflow-y back to visible) is the actual
+       fix here — the desktop tier's flex: 1 1 480px is a HEIGHT basis
+       in this stacked, column-direction body, and min-height: 0 (needed
+       there so this column can be capped and scroll internally) removes
+       this item's automatic min-height floor too. Together, on this
+       tier, that let the column's box render at a fixed 480px instead
+       of its real (much taller) content height, with the overflowing
+       rubric rows spilling visibly downward on top of the sidebar
+       below instead of pushing it down the page. flex: none cancels
+       the grow/shrink/basis entirely, so the column is sized by its
+       own content again, like a normal block. */
+    flex: none;
     overflow-y: visible;
-    min-height: 0;
   }
   .modal-sidebar-col {
     max-width: none;
