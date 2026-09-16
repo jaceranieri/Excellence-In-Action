@@ -3,11 +3,30 @@
  * a rubric grid (criteria rows x 4 fixed levels) on the left, and a
  * Grade badge + Evidence container on the right.
  *
- * Structure note: `.theme-modal` (the fixed-size box) is NOT itself the
- * scrolling element — `.theme-modal-scroll` inside it is. That split
- * exists so the header (sticky, with the close button in it) stays put
- * at the top of the modal's visible area regardless of how far the
- * content inside has scrolled, rather than scrolling away with it.
+ * Structure note: on the side-by-side (desktop/tablet) layout,
+ * `.theme-modal-scroll` itself no longer scrolls — it's a column flexbox
+ * (header, then body) capped at the modal's own max-height. Only
+ * `.rubric-col` scrolls internally now; `.theme-modal-header` and
+ * `.modal-sidebar-col` (Grade dropdown + Evidence) just sit at their
+ * natural place in that column and never move, however long the rubric
+ * gets or however far it's scrolled. This was a deliberate change from
+ * an earlier version where `.theme-modal-scroll` was the one scrolling
+ * element for header+body together (header merely `position: sticky` to
+ * stay visually put) — that made the Grade/Evidence sidebar scroll away
+ * with a long rubric, which is exactly what shouldn't happen: the
+ * visitor should always be able to see/change the grade and add evidence
+ * without hunting for them. `min-height: 0` on the flex chain
+ * (`.theme-modal-scroll` → `.theme-modal-body` → `.rubric-col`) is what
+ * makes a flex child capable of scrolling internally instead of just
+ * growing past its box — the same trick `.evidence-container` /
+ * `.evidence-list-scroll` already used below it.
+ *
+ * The narrow/stacked breakpoint (≤760px) deliberately keeps the OLD
+ * single-scroll behaviour instead (see the responsive section at the
+ * bottom): once rubric and sidebar stack into one column there's no
+ * side-by-side split left to make sticky, and a normal one long
+ * scrolling page reads better on a phone than a pinned sidebar eating
+ * screen height above a short rubric viewport.
  *
  * The Evidence container (`.evidence-container`) has two mutually
  * exclusive views, toggled in the demo script: the accordion list
@@ -79,13 +98,23 @@
 
 .theme-modal-scroll {
   max-height: calc(100vh - 48px);
-  overflow-y: auto;
+  /* Column flex, not a scroller itself on this (desktop/tablet) tier —
+     see the file-header comment above. overflow: hidden here is what
+     actually caps it at max-height instead of growing past it; .rubric-col
+     below is the one part that scrolls when content doesn't fit. */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   border-radius: 18px; /* explicit, not just inherited via the parent's overflow:hidden — keeps the corners round even where a scrollbar sits right at the edge */
 }
 
 .theme-modal-header {
-  position: sticky;
-  top: 0;
+  /* No longer position: sticky — .theme-modal-scroll doesn't scroll on
+     this tier, so the header just sits at the top of the column, always
+     visible, with nothing to stick against. Still position: sticky at
+     the ≤760px breakpoint below, where the old single-scroll behaviour
+     returns. */
+  flex: none;
   z-index: 2;
   display: flex;
   align-items: center;
@@ -129,7 +158,18 @@
 
 .theme-modal-body {
   display: flex;
-  flex-wrap: wrap; /* NEW — if the sidebar genuinely can't fit beside the rubric, it drops below automatically, instead of the fixed old breakpoint leaving a broken zone in between */
+  /* flex-wrap: wrap used to live here ("if the sidebar genuinely can't fit
+     beside the rubric, it drops below automatically") but a wrapping flex
+     container sizes its (single, non-wrapped in practice — see the
+     ≤760px breakpoint below, which already owns the real narrow case)
+     line to its content's own height rather than the container's, which
+     defeated align-items: stretch below and let .rubric-col/
+     .modal-sidebar-col grow past .theme-modal-scroll's max-height cap
+     instead of being clipped to it. Dropped in favour of the explicit
+     breakpoint doing that job instead. */
+  flex: 1 1 auto; /* fills whatever's left of .theme-modal-scroll's column below the header, up to its max-height cap */
+  min-height: 0; /* lets this shrink below its content's natural height instead of pushing .theme-modal-scroll past max-height — required for .rubric-col below to actually get a bounded height to scroll within */
+  overflow: hidden; /* .rubric-col does the actual scrolling; this just stops its content from spilling past the capped box */
   gap: 32px;
   padding: 26px 32px 32px;
   align-items: stretch; /* sidebar column stretches to match the rubric column's height, when they're on the same line */
@@ -140,6 +180,11 @@
 .rubric-col {
   flex: 1 1 480px;
   min-width: 340px; /* was 0 — that's the actual bug: it let this column shrink smaller than its grid's own 4x160px+gaps content size, so the grid overflowed sideways under the sidebar instead of the column just refusing to shrink further */
+  min-height: 0; /* same flex-shrink trick as above — without it this column just grows to its grid's full height instead of respecting the row's stretched (capped) height */
+  overflow-y: auto;
+  /* Bottom padding so the last rubric row's focus/hover state and shadow
+     band aren't flush against (or clipped by) the scroll edge. */
+  padding-bottom: 4px;
 }
 
 .rubric-header,
@@ -688,8 +733,38 @@
 /* Responsive -------------------------------------------------------------*/
 
 @media (max-width: 760px) {
+  /* Restore the old single-scroll behaviour for this stacked tier — see
+     the file-header comment. Once rubric and sidebar are one column
+     there's no side-by-side split to make sticky, so the whole modal
+     scrolls as one normal page again, header included. */
+  .theme-modal-scroll {
+    display: block;
+    overflow-y: auto;
+  }
+  .theme-modal-header {
+    position: sticky;
+    top: 0;
+  }
   .theme-modal-body {
     flex-direction: column;
+    flex: none;
+    min-height: 0;
+    overflow: visible;
+  }
+  .rubric-col {
+    /* flex: none (not just overflow-y back to visible) is the actual
+       fix here — the desktop tier's flex: 1 1 480px is a HEIGHT basis
+       in this stacked, column-direction body, and min-height: 0 (needed
+       there so this column can be capped and scroll internally) removes
+       this item's automatic min-height floor too. Together, on this
+       tier, that let the column's box render at a fixed 480px instead
+       of its real (much taller) content height, with the overflowing
+       rubric rows spilling visibly downward on top of the sidebar
+       below instead of pushing it down the page. flex: none cancels
+       the grow/shrink/basis entirely, so the column is sized by its
+       own content again, like a normal block. */
+    flex: none;
+    overflow-y: visible;
   }
   .modal-sidebar-col {
     max-width: none;

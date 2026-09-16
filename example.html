@@ -107,7 +107,14 @@
     min-height: 90px;
     box-sizing: border-box;
     overflow: hidden; /* only actually clips anything during the collapsed (.is-empty) state below — #detail's own height is otherwise auto/content-driven, so nothing here is ever cut off */
-    transition: width 0.4s ease, opacity 0.3s ease, min-height 0.4s ease;
+    /* opacity's own 0.4s delay makes it wait for the width transition to
+       finish before starting to fade in — otherwise the Theme cards were
+       already rendered (and their own tc-fade-in had already played) while
+       the box was still narrow, so they visibly stretched/reflowed as the
+       box kept widening. See the matching animation-delay bump in
+       renderThemeCard's caller (onSelect) below, which holds off the
+       per-card cascade until this same moment. */
+    transition: width 0.4s ease, opacity 0.3s ease 0.4s, min-height 0.4s ease;
   }
   #detail .placeholder { color: #999; font-style: italic; margin: 0; text-align: center; }
 
@@ -1616,7 +1623,16 @@
         '</div>';
     }
 
-    function renderElementDetail(segment) {
+    // cascadeBaseDelay: extra ms added on top of each card's own i*35ms
+    // stagger, before its fade-in animation starts. Only the very first
+    // Element selection (the one that also expands #detail from its
+    // collapsed .is-empty width) passes this — see onSelect below — so the
+    // cascade waits for that 0.4s slide to finish instead of playing while
+    // the box is still narrow. Every later selection (Element switches,
+    // the post-login state restore) passes nothing, so cards cascade in
+    // immediately as before.
+    function renderElementDetail(segment, cascadeBaseDelay) {
+      var baseDelay = cascadeBaseDelay || 0;
       var data = ELEMENT_THEMES[segment.id];
       var title = (data && data.title) || segment.lines.join(' ');
       var themes = (data && data.themes) || [];
@@ -1632,7 +1648,7 @@
       // that category only.
       var shadowHex = segment.category === 'teaching' ? style.accent : darkenHex(accentHex, 0.2);
       var cardsHtml = themes.map(function (t, i) {
-        return renderThemeCard(t, i, accentHex, accentRgb, shadowHex, i * 35);
+        return renderThemeCard(t, i, accentHex, accentRgb, shadowHex, baseDelay + i * 35);
       }).join('');
       detailEl.innerHTML =
         '<div class="element-detail" style="--title-color:' + style.ring + '">' +
@@ -2223,8 +2239,13 @@
         // wheel-centred starting state — see .main-layout.is-empty in
         // this page's <style>. Never re-added, even on later
         // deselection, so the layout stays put once expanded.
-        document.querySelector('.main-layout').classList.remove('is-empty');
-        renderElementDetail(segment);
+        var mainLayout = document.querySelector('.main-layout');
+        var isFirstExpand = mainLayout.classList.contains('is-empty');
+        mainLayout.classList.remove('is-empty');
+        // On that first expand only, hold the cards' cascade off until the
+        // 0.4s wheel-slide (#detail's width transition) has finished —
+        // see the matching opacity transition-delay on #detail above.
+        renderElementDetail(segment, isFirstExpand ? 400 : 0);
       }
     });
 
