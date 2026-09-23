@@ -669,20 +669,12 @@
   color: #8a8d99;
 }
 
-.evidence-staged-attachment.is-copying .evidence-staged-status {
-  animation: evidence-copying-pulse 1.4s ease-in-out infinite;
-}
-
 .evidence-staged-attachment.is-error {
   border-color: #efc9c9;
 }
 
 .evidence-staged-attachment.is-error .evidence-staged-status {
   color: #c94f4f;
-}
-
-@keyframes evidence-copying-pulse {
-  50% { opacity: 0.45; }
 }
 
 .evidence-compose-notice {
@@ -761,6 +753,11 @@
 
 .evidence-staged-remove:hover {
   background: #dfe1e8;
+}
+
+.evidence-staged-remove:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 .evidence-compose-actions {

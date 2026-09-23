@@ -1972,23 +1972,24 @@
       evidenceComposeEl.style.display = isCompose ? 'flex' : 'none';
     }
 
-    // Staged attachments look like {name, mimeType, status, fileId, url,
-    // error, fresh}. status is 'copying' | 'error' | undefined (ready).
-    // `fresh` marks copies made during this compose session: if the compose
-    // is abandoned they're trashed server-side, since they never became
-    // evidence. Attachments carried over from a saved entry aren't fresh.
+    // Staged attachments are either {fileId, name, mimeType, url} — already
+    // in the school's evidence folder, carried over from a saved entry — or
+    // {pickedId, name, mimeType} — picked in Google Picker and not copied
+    // until Submit (Code.gs's saveEvidenceEntry()). A staged item with
+    // `error` set failed its last copy attempt and is shown in red.
+    var MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+    var composeSubmitting = false;
+
     function renderComposeAttachments() {
       evidenceComposeAttachmentsEl.innerHTML = composeAttachments.map(function (a, i) {
-        var status = a.status === 'copying' ? 'Copying to your school’s evidence folder…'
-          : (a.status === 'error' ? a.error : '');
-        return '<div class="evidence-staged-attachment' +
-            (a.status === 'copying' ? ' is-copying' : '') + (a.status === 'error' ? ' is-error' : '') + '">' +
+        var status = a.error || (a.pickedId ? 'Copied to your school’s evidence folder when you submit' : '');
+        return '<div class="evidence-staged-attachment' + (a.error ? ' is-error' : '') + '">' +
           '<span class="evidence-staged-name">' + escapeHtml(a.name) +
             (status ? '<span class="evidence-staged-status">' + escapeHtml(status) + '</span>' : '') +
           '</span>' +
-          '<button type="button" class="evidence-staged-remove" data-index="' + i + '" aria-label="Remove attachment">&times;</button></div>';
+          '<button type="button" class="evidence-staged-remove" data-index="' + i + '" aria-label="Remove attachment"' +
+            (composeSubmitting ? ' disabled' : '') + '>&times;</button></div>';
       }).join('');
-      evidenceSubmitBtn.disabled = composeAttachments.some(function (a) { return a.status === 'copying'; });
     }
 
     function inferAttachmentKind(mimeType) {
@@ -2020,30 +2021,27 @@
     }
 
     function updateComposeSubmitLabel() {
-      evidenceSubmitBtn.textContent = editingNumber !== null ? 'Save Changes' : 'Submit';
+      if (composeSubmitting) {
+        evidenceSubmitBtn.textContent = composeAttachments.some(function (a) { return a.pickedId; }) ? 'Copying files…' : 'Saving…';
+      } else {
+        evidenceSubmitBtn.textContent = editingNumber !== null ? 'Save Changes' : 'Submit';
+      }
     }
 
-    function discardFileIds(ids) {
-      if (!ids.length) return;
-      google.script.run
-        .withFailureHandler(function (err) { console.error('Failed to discard unsaved attachments:', err); })
-        .discardStagedAttachments(ids);
-    }
-
-    // Copies still in flight are discarded when they land (see
-    // copyPickedDoc), because they'll no longer be in composeAttachments.
-    function abandonComposeAttachments() {
-      discardFileIds(composeAttachments
-        .filter(function (a) { return a.fresh && a.fileId; })
-        .map(function (a) { return a.fileId; }));
-      composeAttachments = [];
+    function setComposeSubmitting(on) {
+      composeSubmitting = on;
+      evidenceSubmitBtn.disabled = on;
+      evidenceCancelBtn.disabled = on;
+      evidenceAttachBtn.disabled = on;
+      evidenceTextarea.readOnly = on;
+      updateComposeSubmitLabel();
+      renderComposeAttachments();
     }
 
     function openCompose() {
-      renderComposeAttachments();
+      setComposeSubmitting(false);
       hideComposeError();
       hideComposeNotice();
-      updateComposeSubmitLabel();
       setEvidenceMode('compose');
       evidenceTextarea.focus();
       prefetchPickerAuth();
@@ -2067,36 +2065,29 @@
 
     function exitComposeMode() {
       editingNumber = null;
+      composeAttachments = [];
       stopDriveAuthWait();
+      setComposeSubmitting(false);
       hideComposeError();
       hideComposeNotice();
       setEvidenceMode('list');
     }
 
-    function cancelCompose() {
-      abandonComposeAttachments();
-      exitComposeMode();
-    }
-
     evidenceAddBtn.addEventListener('click', enterComposeMode);
-    evidenceCancelBtn.addEventListener('click', cancelCompose);
+    evidenceCancelBtn.addEventListener('click', exitComposeMode);
 
     // -- Evidence: attach files via Google Picker --------------------------
     // The Picker shows the *visitor's* Drive, so it needs the visitor's own
     // OAuth token (Code.gs's getPickerAuth(); see the "Visitor Google Drive
-    // authorization" section there for why it's a server-side OAuth flow).
-    // Each picked file is then copied server-side into the school's
-    // evidence folder (Code.gs's attachDriveFile()); the evidence entry
-    // links to that copy, never to the visitor's original.
+    // authorization" section there for how that flow works). Picking only
+    // stages the file; it's copied into the school's evidence folder on
+    // Submit, and the evidence entry links to that copy.
     var gapiPickerLoaded = false;
     var pickerAuth = null;
     var pickerAuthAt = 0;
     var PICKER_AUTH_FRESH_MS = 5 * 60 * 1000;
-    var DRIVE_AUTH_TIMEOUT_MS = 3 * 60 * 1000;
+    var DRIVE_AUTH_TIMEOUT_MS = 5 * 60 * 1000;
     var driveAuthPoll = null;
-    var MULTI_ACCOUNT_TIP = 'If Google says you need permission, or asks you to sign out of other accounts, ' +
-      'your browser is signed in to more than one Google account. Open Excellence in Action in a Chrome profile ' +
-      '(or an Incognito window) that is signed in only to your school account.';
 
     function withGapiPicker(cb) {
       if (gapiPickerLoaded) { cb(); return; }
@@ -2130,7 +2121,7 @@
 
     function onAttachClick() {
       hideComposeError();
-      if (driveAuthPoll) return;
+      if (driveAuthPoll || composeSubmitting) return;
       if (pickerAuthIsFresh()) {
         if (pickerAuth.authorized) openDrivePicker(pickerAuth);
         else if (pickerAuth.authError) showConnectPrompt(pickerAuth);
@@ -2154,7 +2145,7 @@
     function showConnectPrompt(auth) {
       showComposeNotice(
         (auth.authError ? '<p class="is-error">' + escapeHtml(auth.authError) + '</p>' : '') +
-        '<p>To attach files from Google Drive, Excellence in Action needs permission to open the files you choose.</p>' +
+        '<p>To attach files from Google Drive, allow Excellence in Action to open the files you choose. You only need to do this once.</p>' +
         '<div class="evidence-notice-actions">' +
           '<button type="button" class="evidence-notice-btn" data-action="connect">Connect Google Drive</button>' +
           '<button type="button" class="evidence-notice-btn is-secondary" data-action="dismiss">Cancel</button>' +
@@ -2168,10 +2159,9 @@
         showComposeError('Your browser blocked the Google sign-in window. Allow pop-ups for this site, then click Attach Files again.');
         return;
       }
-      pickerAuth = null; // that authorization URL is spent
+      pickerAuth = null; // that authorization URL is single-use
       showComposeNotice(
         '<p>Finish connecting Google Drive in the window that just opened — this page will carry on automatically.</p>' +
-        '<p class="evidence-notice-tip">' + escapeHtml(MULTI_ACCOUNT_TIP) + '</p>' +
         '<div class="evidence-notice-actions">' +
           '<button type="button" class="evidence-notice-btn is-secondary" data-action="dismiss">Cancel</button>' +
         '</div>');
@@ -2190,7 +2180,7 @@
         if (Date.now() - started > DRIVE_AUTH_TIMEOUT_MS) {
           stopDriveAuthWait();
           hideComposeNotice();
-          showComposeError('Google Drive wasn’t connected. Click Attach Files to try again. ' + MULTI_ACCOUNT_TIP);
+          showComposeError('Google Drive wasn’t connected. Click Attach Files to try again.');
           return;
         }
         inFlight = true;
@@ -2245,44 +2235,18 @@
     }
 
     function onPickerPicked(data) {
-      if (data.action !== google.picker.Action.PICKED || !currentModalTheme) return;
-      var theme = currentModalTheme;
+      if (data.action !== google.picker.Action.PICKED) return;
       (data.docs || []).forEach(function (doc) {
-        var item = { name: doc.name, mimeType: doc.mimeType, status: 'copying', fresh: true };
+        var already = composeAttachments.some(function (a) { return a.pickedId === doc.id; });
+        if (already) return;
+        var item = { pickedId: doc.id, name: doc.name, mimeType: doc.mimeType };
+        if (doc.sizeBytes && Number(doc.sizeBytes) > MAX_ATTACHMENT_BYTES) {
+          item.error = 'Larger than 25 MB, so it can’t be attached.';
+        }
         composeAttachments.push(item);
-        copyPickedDoc(item, doc.id, theme);
       });
+      hideComposeError();
       renderComposeAttachments();
-    }
-
-    function copyPickedDoc(item, pickedId, theme) {
-      google.script.run
-        .withSuccessHandler(function (res) {
-          var stillStaged = composeAttachments.indexOf(item) >= 0;
-          if (res && res.ok) {
-            if (!stillStaged) { discardFileIds([res.attachment.fileId]); return; }
-            item.status = undefined;
-            item.fileId = res.attachment.fileId;
-            item.name = res.attachment.name;
-            item.mimeType = res.attachment.mimeType;
-            item.url = res.attachment.url;
-            item.kind = inferAttachmentKind(item.mimeType);
-          } else {
-            if (res && res.needsAuth) pickerAuth = null;
-            if (!stillStaged) return;
-            item.status = 'error';
-            item.error = (res && res.error) || 'Couldn’t attach this file. Please try again.';
-          }
-          renderComposeAttachments();
-        })
-        .withFailureHandler(function (err) {
-          console.error('Failed to attach file:', err);
-          if (composeAttachments.indexOf(item) < 0) return;
-          item.status = 'error';
-          item.error = 'Couldn’t attach this file. Please try again.';
-          renderComposeAttachments();
-        })
-        .attachDriveFile(pickedId, theme.id, theme.title);
     }
 
     evidenceAttachBtn.addEventListener('click', onAttachClick);
@@ -2298,83 +2262,91 @@
     });
     evidenceComposeAttachmentsEl.addEventListener('click', function (e) {
       var btn = e.target.closest('.evidence-staged-remove');
-      if (!btn) return;
-      var removed = composeAttachments.splice(parseInt(btn.getAttribute('data-index'), 10), 1)[0];
-      // A removed attachment from an already-saved entry is archived by the
-      // server when the edit is saved; a fresh, unsaved copy is just trashed.
-      if (removed && removed.fresh && removed.fileId) discardFileIds([removed.fileId]);
+      if (!btn || composeSubmitting) return;
+      // Removing an attachment that's on a saved entry archives it when the
+      // edit is saved; a picked file hasn't been copied yet, so nothing to undo.
+      composeAttachments.splice(parseInt(btn.getAttribute('data-index'), 10), 1);
+      hideComposeError();
       renderComposeAttachments();
     });
 
-    function attachmentIdsKey(list) {
-      return (list || []).map(function (a) { return a.fileId + ':' + a.name; }).join('|');
-    }
-
+    // -- Evidence: submit --------------------------------------------------
+    // Waits for the server (which copies any newly picked files) before
+    // updating the list. If a copy fails, nothing is saved: the draft stays
+    // open with the failing files marked, ready to fix and resubmit.
     evidenceSubmitBtn.addEventListener('click', function () {
-      if (!currentModalTheme) return;
-      if (composeAttachments.some(function (a) { return a.status === 'copying'; })) {
-        showComposeError('Please wait for your files to finish copying.');
+      if (!currentModalTheme || composeSubmitting) return;
+      if (composeAttachments.some(function (a) { return a.error; })) {
+        showComposeError('Remove the files marked in red before submitting.');
         return;
       }
-      var attachments = composeAttachments
-        .filter(function (a) { return a.status !== 'error' && a.fileId; })
-        .map(function (a) {
-          return { fileId: a.fileId, name: a.name, mimeType: a.mimeType, url: a.url, kind: a.kind || inferAttachmentKind(a.mimeType) };
-        });
       var text = evidenceTextarea.value.trim();
-      if (!text && attachments.length === 0) {
+      if (!text && composeAttachments.length === 0) {
         showComposeError('Add a note or attach a file before submitting.');
         return;
       }
       hideComposeError();
-      var theme = currentModalTheme;
-      theme.evidence = theme.evidence || [];
-      var entry;
-      if (editingNumber !== null) {
-        entry = findEvidenceByNumber(theme, editingNumber);
-        if (entry) {
-          entry.text = text;
-          entry.attachments = attachments;
-        }
-      } else {
-        var nextNumber = theme.evidence.reduce(function (max, e) { return Math.max(max, e.number || 0); }, 0) + 1;
-        entry = {
-          type: 'note',
-          number: nextNumber,
-          date: formatDateDDMMYY(new Date()),
-          text: text,
-          attachments: attachments
-        };
-        theme.evidence.push(entry);
-      }
-      composeAttachments = []; // now owned by the entry — must not be discarded
-      exitComposeMode();
-      renderEvidenceList(theme);
-      syncCard(currentModalCard, theme); // grade AND evidence count/icon both stay in sync
+      hideComposeNotice();
 
-      if (entry && SCHOOL_NAME) {
-        google.script.run
-          .withSuccessHandler(function (result) {
-            if (!result) return;
-            if (result.entryId) entry.entryId = result.entryId;
-            if (result.attachments && attachmentIdsKey(result.attachments) !== attachmentIdsKey(entry.attachments)) {
-              entry.attachments = result.attachments;
-              if (currentModalTheme === theme && evidenceComposeEl.style.display === 'none') renderEvidenceList(theme);
-            }
-          })
-          .withFailureHandler(function (err) {
-            console.error('Failed to save evidence entry:', err);
-            showSaveStatus('Evidence not saved — please try again', '#c94f4f', true);
-          })
-          .saveEvidenceEntry(theme.id, {
-            entryId: entry.entryId || null,
-            number: entry.number,
-            type: entry.type,
-            date: entry.date,
-            text: entry.text,
-            attachments: entry.attachments
-          });
+      var theme = currentModalTheme;
+      var card = currentModalCard;
+      var editingEntry = editingNumber !== null ? findEvidenceByNumber(theme, editingNumber) : null;
+      var number = editingEntry ? editingEntry.number
+        : (theme.evidence || []).reduce(function (max, e) { return Math.max(max, e.number || 0); }, 0) + 1;
+      var date = editingEntry ? editingEntry.date : formatDateDDMMYY(new Date());
+      var staged = composeAttachments.slice();
+
+      function applySaved(result) {
+        var saved = editingEntry || { type: 'note', number: number, date: date };
+        saved.entryId = result.entryId;
+        saved.text = text;
+        saved.attachments = result.attachments || [];
+        if (!editingEntry) {
+          theme.evidence = theme.evidence || [];
+          theme.evidence.push(saved);
+        }
+        if (currentModalTheme === theme) {
+          exitComposeMode();
+          renderEvidenceList(theme);
+        }
+        syncCard(card, theme); // grade AND evidence count/icon both stay in sync
       }
+
+      if (!SCHOOL_NAME) { applySaved({ entryId: null, attachments: staged }); return; }
+
+      setComposeSubmitting(true);
+      google.script.run
+        .withSuccessHandler(function (result) {
+          if (result && result.ok) { applySaved(result); return; }
+          setComposeSubmitting(false);
+          if (result && result.needsAuth) {
+            // Not the files' fault — keep them staged so a reconnect + resubmit just works.
+            pickerAuth = null;
+            showComposeError('Your Google Drive connection needs renewing. Click Attach Files to reconnect, then submit again.');
+            return;
+          }
+          var errorsById = {};
+          ((result && result.errors) || []).forEach(function (err) { errorsById[err.pickedId] = err.error; });
+          staged.forEach(function (a) { if (a.pickedId && errorsById[a.pickedId]) a.error = errorsById[a.pickedId]; });
+          renderComposeAttachments();
+          showComposeError('Some files couldn’t be copied (marked in red). Remove them, then submit again.');
+        })
+        .withFailureHandler(function (err) {
+          console.error('Failed to save evidence entry:', err);
+          setComposeSubmitting(false);
+          showComposeError('Your evidence wasn’t saved. Please try again.');
+        })
+        .saveEvidenceEntry(theme.id, {
+          entryId: editingEntry ? editingEntry.entryId || null : null,
+          number: number,
+          type: editingEntry ? editingEntry.type : 'note',
+          date: date,
+          text: text,
+          themeTitle: theme.title,
+          attachments: staged.map(function (a) {
+            return a.pickedId ? { pickedId: a.pickedId, name: a.name } : { fileId: a.fileId };
+          })
+        });
     });
 
     function refreshRubricAndBadge(theme) {
@@ -2407,9 +2379,10 @@
     }
 
     function closeThemeModal() {
+      if (composeSubmitting) return; // a submit in flight could still come back with errors to fix
       modalOverlay.classList.remove('is-open');
       gradeBadgeWrap.classList.remove('is-open');
-      if (evidenceComposeEl.style.display !== 'none') cancelCompose(); // discard any unsaved compose state on close
+      exitComposeMode(); // discard any unsaved compose state on close
       document.body.style.overflow = '';
       if (lastFocusedEl && typeof lastFocusedEl.focus === 'function') lastFocusedEl.focus();
     }

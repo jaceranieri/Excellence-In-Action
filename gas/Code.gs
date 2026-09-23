@@ -55,6 +55,7 @@ var MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 var MAX_EVIDENCE_TEXT = 20000;
 
 function doGet(e) {
+  if (isOAuthRedirect_(e)) return handleOAuthRedirect_(e);
   var access = getCurrentUserAccess();
   var tpl = HtmlService.createTemplateFromFile('Index');
   tpl.access = access;
@@ -294,21 +295,60 @@ function normalizeAttachments_(list, folderId) {
 }
 
 /**
- * Adds a new evidence entry (no entryId) or overwrites the visitor's
- * school's existing one in place. When editing, any attachment that was on
- * the saved entry but is no longer in `entry.attachments` gets archived.
- * Returns { entryId, attachments } — the normalized attachments are what
- * the client should display from now on.
+ * Saves a new evidence entry (no entryId) or updates one of the visitor's
+ * school's entries. entry.attachments mixes two kinds:
+ *   { fileId }            already in the school folder (from a saved entry)
+ *   { pickedId, name }    picked in Google Picker, copied into the folder now
+ * All copies are made before anything is written. If any copy fails, the
+ * ones that worked are trashed and nothing is saved, so the visitor can
+ * fix the problem and submit again. Attachments dropped from a saved entry
+ * are archived. Returns
+ *   { ok: true, entryId, attachments }
+ *   { ok: false, errors: [{ pickedId, error }], needsAuth }
  */
 function saveEvidenceEntry(themeId, entry) {
   var access = requireActiveUser_();
   if (!/^[A-Za-z0-9_]+$/.test(String(themeId || ''))) throw new Error('Invalid theme.');
   entry = entry || {};
+  var list = entry.attachments || [];
   // Looked up lazily so text-only evidence still saves for a school whose
   // EvidenceFolder hasn't been set up yet.
   var folderId = null;
   function schoolFolderId() { return folderId || (folderId = getSchoolFolderId_(access.schoolName)); }
-  var attachments = (entry.attachments || []).length ? normalizeAttachments_(entry.attachments, schoolFolderId()) : [];
+
+  var existing = list.filter(function (a) { return a && a.fileId && !a.pickedId; });
+  var picks = list.filter(function (a) { return a && a.pickedId; });
+  var kept = existing.length ? normalizeAttachments_(existing, schoolFolderId()) : [];
+
+  var copied = [];
+  if (picks.length) {
+    var token = getVisitorAccessToken_(access.email);
+    if (!token) {
+      return { ok: false, needsAuth: true, errors: picks.map(function (p) {
+        return { pickedId: p.pickedId, error: 'Reconnect Google Drive (click Attach Files), then submit again.' };
+      }) };
+    }
+    var errors = [];
+    var needsAuth = false;
+    var seen = {};
+    picks.forEach(function (p) {
+      if (seen[p.pickedId]) return;
+      seen[p.pickedId] = true;
+      var r = copyPickedFile_(token, String(p.pickedId), access, schoolFolderId(), themeId, entry.themeTitle);
+      if (r.ok) {
+        copied.push(r.attachment);
+      } else {
+        errors.push({ pickedId: p.pickedId, error: r.error });
+        if (r.needsAuth) needsAuth = true;
+      }
+    });
+    if (errors.length) {
+      trashFiles_(copied);
+      return { ok: false, errors: errors, needsAuth: needsAuth };
+    }
+  }
+
+  var attachments = kept.concat(copied);
   var attachmentsJson = JSON.stringify(attachments);
   var text = String(entry.text || '').slice(0, MAX_EVIDENCE_TEXT);
   var number = parseInt(entry.number, 10) || 0;
@@ -316,8 +356,8 @@ function saveEvidenceEntry(themeId, entry) {
   var date = String(entry.date || '').slice(0, 20);
 
   var lock = LockService.getScriptLock();
-  lock.waitLock(30000);
   try {
+    lock.waitLock(30000);
     var sheet = ensureSheet_(TABS.EVIDENCE, EVIDENCE_HEADERS);
     var now = new Date().toISOString();
     var rowIdx = -1;
@@ -335,11 +375,14 @@ function saveEvidenceEntry(themeId, entry) {
       if (removed.length) archiveEvidenceFiles_(removed, schoolFolderId());
       sheet.getRange(rowIdx, 5, 1, 4).setValues([[type, date, text, attachmentsJson]]);
       sheet.getRange(rowIdx, 11).setValue(now);
-      return { entryId: entry.entryId, attachments: attachments, ok: true };
+      return { ok: true, entryId: entry.entryId, attachments: attachments };
     }
     var entryId = Utilities.getUuid();
     sheet.appendRow([entryId, access.schoolName, themeId, number, type, date, text, attachmentsJson, access.email, now, now]);
-    return { entryId: entryId, attachments: attachments, ok: true };
+    return { ok: true, entryId: entryId, attachments: attachments };
+  } catch (e) {
+    trashFiles_(copied); // never leave copies behind for an entry that didn't save
+    throw e;
   } finally {
     lock.releaseLock();
   }
@@ -517,35 +560,22 @@ function friendlyAttachError_(e) {
  * Every read of the source happens with the visitor's own token, so this
  * can only ever copy files the visitor could already open themselves.
  */
-function attachDriveFile(pickedFileId, themeId, themeTitle) {
-  var access = requireActiveUser_();
-  if (!/^[A-Za-z0-9_-]{10,}$/.test(String(pickedFileId || ''))) return { ok: false, error: 'Invalid file.' };
-  if (!/^[A-Za-z0-9_]+$/.test(String(themeId || ''))) return { ok: false, error: 'Invalid theme.' };
-  var folderId;
-  try {
-    folderId = getSchoolFolderId_(access.schoolName);
-  } catch (e) {
-    return { ok: false, error: e.message };
-  }
-
-  var service = getVisitorDriveService_(access.email);
-  if (!service.hasAccess()) return { ok: false, needsAuth: true, error: 'Please reconnect Google Drive, then attach the file again.' };
-  var token = service.getAccessToken();
-
+function copyPickedFile_(token, pickedFileId, access, folderId, themeId, themeTitle) {
+  if (!/^[A-Za-z0-9_-]{10,}$/.test(pickedFileId)) return { ok: false, error: 'Invalid file.' };
   var src;
   try {
     src = driveRest_(token, 'get', 'files/' + pickedFileId, { fields: 'id,name,mimeType,size,capabilities(canCopy)' });
   } catch (e) {
     if (e.status === 401) {
-      service.reset();
-      return { ok: false, needsAuth: true, error: 'Your Google Drive connection expired. Click Attach Files to reconnect.' };
+      clearDriveToken_(access.email);
+      return { ok: false, needsAuth: true, error: 'Your Google Drive connection expired. Click Attach Files to reconnect, then submit again.' };
     }
     console.error(e);
     return { ok: false, error: friendlyAttachError_(e) };
   }
   if (src.mimeType === 'application/vnd.google-apps.folder') return { ok: false, error: 'Folders can\'t be attached — pick the files inside instead.' };
   if (src.mimeType === 'application/vnd.google-apps.shortcut') return { ok: false, error: 'That\'s a shortcut — open its folder and pick the original file instead.' };
-  if (src.size && Number(src.size) > MAX_ATTACHMENT_BYTES) return { ok: false, error: '"' + src.name + '" is larger than 25 MB, so it can\'t be attached.' };
+  if (src.size && Number(src.size) > MAX_ATTACHMENT_BYTES) return { ok: false, error: 'Larger than 25 MB, so it can\'t be attached.' };
   if (src.capabilities && src.capabilities.canCopy === false) return { ok: false, error: friendlyAttachError_({ status: 403, reason: 'cannotCopy', message: '' }) };
 
   var ownerEmail = Session.getEffectiveUser().getEmail();
@@ -587,171 +617,207 @@ function attachDriveFile(pickedFileId, themeId, themeTitle) {
   }
 }
 
-/**
- * Trashes copies the visitor attached while composing but never submitted
- * (they cancelled, closed the modal, or removed the file before saving).
- * These never became evidence, so they go to Trash, not ARCHIVE. Only
- * touches files in the school folder that this visitor attached and that
- * no saved evidence entry references.
- */
-function discardStagedAttachments(fileIds) {
-  var access = requireActiveUser_();
-  var folderId = getSchoolFolderId_(access.schoolName);
-  var referenced = {};
-  readSchoolEvidence_(access.schoolName).forEach(function (entry) {
-    (entry.attachments || []).forEach(function (a) { if (a && a.fileId) referenced[a.fileId] = true; });
+/** Trashes copies made for an entry that then failed to save. */
+function trashFiles_(attachments) {
+  (attachments || []).forEach(function (a) {
+    try { DriveApp.getFileById(a.fileId).setTrashed(true); } catch (e) { console.error('Failed to trash ' + a.fileId + ': ' + e); }
   });
-  var marker = 'Attached by: ' + access.email + '\n';
-  (fileIds || []).forEach(function (id) {
-    id = String(id || '');
-    if (!/^[A-Za-z0-9_-]{10,}$/.test(id) || referenced[id]) return;
-    try {
-      var file = DriveApp.getFileById(id);
-      if (!isInFolder_(file, folderId)) return;
-      if (String(file.getDescription() || '').indexOf(marker) < 0) return;
-      file.setTrashed(true);
-    } catch (e) {
-      console.error('Failed to discard ' + id + ': ' + e);
-    }
-  });
-  return { ok: true };
 }
 
 // ===========================================================================
 // Visitor Google Drive authorization (for the Picker + reading picked files)
 // ===========================================================================
 //
-// Why a separate OAuth flow at all: this app runs as its owner, so
-// ScriptApp.getOAuthToken() is always the owner's token — it can't show a
-// visitor their own Drive. Google Identity Services' client-side token
-// flow can't be used either, since Apps Script serves the page from a
-// *.googleusercontent.com origin Google refuses to register. So the
-// "OAuth2 for Apps Script" library runs a server-side Authorization Code
-// flow via a /usercallback redirect.
+// The Picker shows the *visitor's* Drive, so it needs the visitor's own
+// OAuth token: ScriptApp.getOAuthToken() is always the owner's, and Google
+// Identity Services can't be used because Apps Script serves the page from
+// a *.googleusercontent.com origin Google refuses to register.
 //
-// Tokens are stored in Script Properties keyed by the *visitor's email*
-// (hashed), not in UserProperties. In an "Execute as: Me" web app,
-// UserProperties belongs to the script owner, not the visitor — so a
-// UserProperties store ends up sharing one Drive token between everyone.
+// This is a standard OAuth 2.0 Authorization Code flow whose redirect URI
+// is this web app's own /exec URL (WEB_APP_URL), handled by doGet(). It
+// deliberately does NOT use the OAuth2 library's /usercallback endpoint:
+// Apps Script binds that endpoint's state token to the account that
+// created it — the script owner, in an "Execute as: Me" app — and then
+// validates it as whoever lands on the callback, so every visitor other
+// than the owner can hit "The state token is invalid or has expired".
+// doGet() runs under the same deployment and identity as the rest of the
+// app, and the state here is a random one-time value held server-side.
 //
-// Scope is drive.file (only files the visitor picks or the app creates),
-// plus userinfo.email so the callback can confirm the visitor authorised
-// the same account they're signed in to the app with.
+// Account safety: the state value maps to the visitor's email, login_hint
+// and hd point Google at that account, and the redirect handler checks the
+// email in Google's id_token matches before storing anything. Tokens are
+// stored per visitor in Script Properties (UserProperties belongs to the
+// script owner in an Execute-as-me app, so it can't tell visitors apart).
 //
-// Multiple signed-in Google accounts: login_hint + hd steer Google's
-// account chooser to the right account. The /usercallback page itself is
-// served under whichever account the browser treats as its default,
-// which fails for a DOMAIN-only web app when that default is a personal
-// account. The domain-scoped redirect URI (/a/macros/<domain>/...) makes
-// Google serve it under the domain account instead. Set Script Property
-// DRIVE_OAUTH_REDIRECT_MODE=standard to fall back to the plain URI.
+// WEB_APP_URL must be the deployment's exact URL as shown under Deploy >
+// Manage deployments — for a domain-only app that's the
+// https://script.google.com/a/macros/<domain>/s/<id>/exec form, which also
+// makes Google serve the redirect under the school account in browsers
+// signed in to several accounts. It stays the same across "New version"
+// redeploys of the same deployment.
 
-var DRIVE_SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email';
+var DRIVE_SCOPES = 'openid email https://www.googleapis.com/auth/drive.file';
+var OAUTH_STATE_TTL_SECONDS = 900;
 
-function scriptOwnerDomain_() {
-  return String(Session.getEffectiveUser().getEmail() || '').split('@')[1] || '';
-}
-
-function standardRedirectUri_() {
-  return 'https://script.google.com/macros/d/' + ScriptApp.getScriptId() + '/usercallback';
-}
-
-function domainRedirectUri_() {
-  return 'https://script.google.com/a/macros/' + scriptOwnerDomain_() + '/d/' + ScriptApp.getScriptId() + '/usercallback';
-}
-
-/** Script Properties store that drops the id_token to keep each entry small. */
-function slimTokenStore_() {
-  var props = PropertiesService.getScriptProperties();
-  return {
-    getProperty: function (key) { return props.getProperty(key); },
-    setProperty: function (key, value) {
-      try {
-        var token = JSON.parse(value);
-        if (token && typeof token === 'object') {
-          delete token.id_token;
-          value = JSON.stringify(token);
-        }
-      } catch (e) { /* not JSON — store as-is */ }
-      props.setProperty(key, value);
-    },
-    deleteProperty: function (key) { props.deleteProperty(key); }
-  };
-}
-
-function getVisitorDriveService_(email) {
-  var service = OAuth2.createService('drive_' + shortHash_(email))
-    .setAuthorizationBaseUrl('https://accounts.google.com/o/oauth2/v2/auth')
-    .setTokenUrl('https://oauth2.googleapis.com/token')
-    .setClientId(requireProp_('DRIVE_OAUTH_CLIENT_ID'))
-    .setClientSecret(requireProp_('DRIVE_OAUTH_CLIENT_SECRET'))
-    .setCallbackFunction('driveAuthCallback')
-    .setPropertyStore(slimTokenStore_())
-    .setScope(DRIVE_SCOPES)
-    .setParam('access_type', 'offline')
-    .setParam('prompt', 'consent')
-    .setParam('login_hint', email);
-  var domain = email.split('@')[1];
-  if (domain) service.setParam('hd', domain);
-  if (String(prop_('DRIVE_OAUTH_REDIRECT_MODE') || 'domain').toLowerCase() !== 'standard') {
-    if (typeof service.setRedirectUri !== 'function') {
-      throw new Error('The OAuth2 library is too old — update it to the latest version under Libraries in the Apps Script editor.');
-    }
-    service.setRedirectUri(domainRedirectUri_());
+function webAppUrl_() {
+  var url = requireProp_('WEB_APP_URL').trim();
+  if (!/^https:\/\/script\.google\.com\/.+\/exec$/.test(url)) {
+    throw new Error('Script Property WEB_APP_URL must be the web app\'s full .../exec URL from Deploy > Manage deployments.');
   }
-  return service;
+  return url;
 }
 
-function authErrorKey_(email) {
-  return 'eia.driveAuthError.' + shortHash_(email);
+function driveTokenKey_(email) { return 'eia.driveToken.' + shortHash_(email); }
+function authErrorKey_(email) { return 'eia.driveAuthError.' + shortHash_(email); }
+
+function readDriveToken_(email) {
+  var raw = PropertiesService.getScriptProperties().getProperty(driveTokenKey_(email));
+  try { return raw ? JSON.parse(raw) : null; } catch (e) { return null; }
+}
+function writeDriveToken_(email, token) {
+  PropertiesService.getScriptProperties().setProperty(driveTokenKey_(email), JSON.stringify(token));
+}
+function clearDriveToken_(email) {
+  PropertiesService.getScriptProperties().deleteProperty(driveTokenKey_(email));
 }
 
-/** Email the token was issued to, or '' if Google didn't say. */
-function tokenEmail_(accessToken) {
-  var res = UrlFetchApp.fetch('https://oauth2.googleapis.com/tokeninfo?access_token=' + encodeURIComponent(accessToken), { muteHttpExceptions: true });
-  if (res.getResponseCode() !== 200) return '';
-  try { return String(JSON.parse(res.getContentText()).email || '').toLowerCase(); } catch (e) { return ''; }
+function tokenRequest_(payload) {
+  payload.client_id = requireProp_('DRIVE_OAUTH_CLIENT_ID');
+  payload.client_secret = requireProp_('DRIVE_OAUTH_CLIENT_SECRET');
+  var res = UrlFetchApp.fetch('https://oauth2.googleapis.com/token', { method: 'post', payload: payload, muteHttpExceptions: true });
+  var json = {};
+  try { json = JSON.parse(res.getContentText() || '{}'); } catch (e) { json = {}; }
+  if (res.getResponseCode() !== 200) {
+    var err = new Error('Google token request failed: ' + (json.error_description || json.error || res.getResponseCode()));
+    err.oauthError = json.error || '';
+    throw err;
+  }
+  return json;
 }
 
-function callbackPage_(heading, message) {
+/** A valid access token for this visitor (refreshed if close to expiry), or '' if they need to connect. */
+function getVisitorAccessToken_(email) {
+  var t = readDriveToken_(email);
+  if (!t) return '';
+  if (t.accessToken && t.expiresAt - Date.now() > 10 * 60 * 1000) return t.accessToken;
+  if (!t.refreshToken) { clearDriveToken_(email); return ''; }
+  try {
+    var r = tokenRequest_({ refresh_token: t.refreshToken, grant_type: 'refresh_token' });
+    t.accessToken = r.access_token;
+    t.expiresAt = Date.now() + Number(r.expires_in || 3600) * 1000;
+    writeDriveToken_(email, t);
+    return t.accessToken;
+  } catch (e) {
+    if (e.oauthError === 'invalid_grant') { clearDriveToken_(email); return ''; } // revoked or expired
+    throw e;
+  }
+}
+
+function buildAuthorizationUrl_(email) {
+  var state = Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '');
+  CacheService.getScriptCache().put('eia.oauthState.' + state, email, OAUTH_STATE_TTL_SECONDS);
+  var params = {
+    client_id: requireProp_('DRIVE_OAUTH_CLIENT_ID'),
+    redirect_uri: webAppUrl_(),
+    response_type: 'code',
+    scope: DRIVE_SCOPES,
+    access_type: 'offline',
+    prompt: 'consent',
+    include_granted_scopes: 'true',
+    login_hint: email,
+    state: state
+  };
+  var domain = email.split('@')[1];
+  if (domain) params.hd = domain;
+  return 'https://accounts.google.com/o/oauth2/v2/auth?' + Object.keys(params).map(function (k) {
+    return encodeURIComponent(k) + '=' + encodeURIComponent(params[k]);
+  }).join('&');
+}
+
+function isOAuthRedirect_(e) {
+  var p = (e && e.parameter) || {};
+  return !!(p.state && (p.code || p.error));
+}
+
+/** Email claim from an id_token received directly from Google's token endpoint over TLS. */
+function idTokenEmail_(idToken) {
+  try {
+    var part = String(idToken || '').split('.')[1] || '';
+    while (part.length % 4) part += '=';
+    var claims = JSON.parse(Utilities.newBlob(Utilities.base64DecodeWebSafe(part)).getDataAsString());
+    return String(claims.email || '').toLowerCase();
+  } catch (e) {
+    return '';
+  }
+}
+
+function revokeToken_(token) {
+  try {
+    UrlFetchApp.fetch('https://oauth2.googleapis.com/revoke', { method: 'post', payload: { token: token }, muteHttpExceptions: true });
+  } catch (e) { /* best effort */ }
+}
+
+function authResultPage_(heading, message, success) {
   var esc = function (s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
   return HtmlService.createHtmlOutput(
     '<div style="font-family:Figtree,Segoe UI,Arial,sans-serif;max-width:420px;margin:48px auto;padding:0 20px;color:#2a2c38">' +
     '<h2 style="font-size:20px;margin:0 0 12px">' + esc(heading) + '</h2>' +
-    '<p style="font-size:14px;line-height:1.5;margin:0">' + esc(message) + '</p></div>'
+    '<p style="font-size:14px;line-height:1.5;margin:0">' + esc(message) + '</p></div>' +
+    (success ? '<script>setTimeout(function () { try { window.top.close(); } catch (e) {} }, 1200);</script>' : '')
   ).setTitle('Excellence in Action — Google Drive');
 }
 
-/**
- * OAuth2 library's redirect target. The visitor's email travels inside the
- * signed state token (set in getPickerAuth), so the token is stored for
- * the right visitor even if this page runs under a different signed-in
- * account.
- */
-function driveAuthCallback(request) {
-  var email = String((request.parameter && request.parameter.eiaEmail) || '').toLowerCase();
-  if (!email) return callbackPage_('Something went wrong', 'Close this window and click Attach Files again.');
-  var service = getVisitorDriveService_(email);
+/** Google redirects the consent window back to WEB_APP_URL?code=...&state=... */
+function handleOAuthRedirect_(e) {
+  var p = e.parameter;
+  var cache = CacheService.getScriptCache();
+  var stateKey = 'eia.oauthState.' + String(p.state).replace(/[^A-Za-z0-9]/g, '');
+  var email = cache.get(stateKey);
+  if (!email) {
+    return authResultPage_('This link has expired', 'Close this window and click Attach Files again.');
+  }
+  cache.remove(stateKey); // one-time use
   var props = PropertiesService.getScriptProperties();
-  var granted = false;
+
+  if (p.error) {
+    return authResultPage_('Google Drive wasn\'t connected', p.error === 'access_denied'
+      ? 'Access wasn\'t granted. Close this window and click Attach Files if you\'d like to try again.'
+      : 'Google reported a problem (' + p.error + '). Close this window and try again.');
+  }
+
+  var token;
   try {
-    granted = service.handleCallback(request);
-  } catch (e) {
-    console.error('Drive auth callback failed: ' + e);
+    token = tokenRequest_({ code: p.code, redirect_uri: webAppUrl_(), grant_type: 'authorization_code' });
+  } catch (err) {
+    console.error(err);
+    return authResultPage_('Google Drive wasn\'t connected', 'Something went wrong finishing the connection. Close this window and click Attach Files again.');
   }
-  if (!granted) {
-    return callbackPage_('Google Drive wasn\'t connected', 'Access wasn\'t granted. Close this window and click Attach Files to try again.');
+
+  var tokenEmail = idTokenEmail_(token.id_token);
+  if (tokenEmail !== email) {
+    revokeToken_(token.access_token);
+    var wrong = 'You connected Google Drive as ' + (tokenEmail || 'a different account') + ', but you\'re signed in to Excellence in Action as ' +
+      email + '. Click Attach Files again and choose ' + email + ' when Google asks which account to use.';
+    props.setProperty(authErrorKey_(email), wrong);
+    return authResultPage_('Wrong Google account', wrong);
   }
-  var tokenEmail = tokenEmail_(service.getAccessToken());
-  if (tokenEmail && tokenEmail !== email) {
-    service.reset();
-    var msg = 'You connected Google Drive as ' + tokenEmail + ', but you\'re signed in to Excellence in Action as ' + email +
-      '. Click Attach Files again and choose ' + email + ' when Google asks which account to use.';
-    props.setProperty(authErrorKey_(email), msg);
-    return callbackPage_('Wrong Google account', msg);
+  // Google's consent screen lets people untick individual permissions.
+  if (String(token.scope || '').indexOf('https://www.googleapis.com/auth/drive.file') < 0) {
+    revokeToken_(token.access_token);
+    var unticked = 'Google Drive access wasn\'t ticked on the permissions screen. Click Attach Files again and tick the box that lets ' +
+      'Excellence in Action see the Google Drive files you choose.';
+    props.setProperty(authErrorKey_(email), unticked);
+    return authResultPage_('One more step', unticked);
   }
+
+  var previous = readDriveToken_(email);
+  writeDriveToken_(email, {
+    accessToken: token.access_token,
+    refreshToken: token.refresh_token || (previous && previous.refreshToken) || '',
+    expiresAt: Date.now() + Number(token.expires_in || 3600) * 1000
+  });
   props.deleteProperty(authErrorKey_(email));
-  return callbackPage_('Google Drive connected', 'You can close this window and go back to Excellence in Action.');
+  return authResultPage_('Google Drive connected', 'You can close this window — Excellence in Action will carry on automatically.', true);
 }
 
 function projectNumber_() {
@@ -759,40 +825,26 @@ function projectNumber_() {
   return /^\d+$/.test(n) ? n : '';
 }
 
-/** Refresh early so the Picker never gets handed a token about to expire. */
-function ensureFreshToken_(service) {
-  var token = service.getToken();
-  if (!token || !token.refresh_token) return;
-  var grantedAt = Number(token.granted_time || 0);
-  var expiresIn = Number(token.expires_in || 0);
-  if (grantedAt && expiresIn && grantedAt + expiresIn - Date.now() / 1000 < 600) service.refresh();
-}
-
 /**
  * Called by the page before opening the Picker, and polled while the
- * visitor completes the consent popup. Returns either
+ * visitor completes the consent window. Returns either
  *   { authorized: true, accessToken, apiKey, appId }
  * or
  *   { authorized: false, authorizationUrl, authError }
- * authError is set (once) when the callback rejected a wrong-account grant.
+ * authError is set (once) when the redirect handler rejected a grant.
  */
 function getPickerAuth() {
   var access = requireActiveUser_();
-  var service = getVisitorDriveService_(access.email);
   var props = PropertiesService.getScriptProperties();
   var authError = props.getProperty(authErrorKey_(access.email)) || '';
   if (authError) props.deleteProperty(authErrorKey_(access.email));
-  if (!service.hasAccess()) {
-    return {
-      authorized: false,
-      authorizationUrl: service.getAuthorizationUrl({ eiaEmail: access.email }),
-      authError: authError
-    };
+  var token = getVisitorAccessToken_(access.email);
+  if (!token) {
+    return { authorized: false, authorizationUrl: buildAuthorizationUrl_(access.email), authError: authError };
   }
-  ensureFreshToken_(service);
   return {
     authorized: true,
-    accessToken: service.getAccessToken(),
+    accessToken: token,
     apiKey: requireProp_('PICKER_API_KEY'),
     appId: projectNumber_()
   };
@@ -802,20 +854,21 @@ function getPickerAuth() {
 // Editor-only utilities (run from the Apps Script editor's Run menu)
 // ===========================================================================
 
-/** Logs both redirect URIs — add BOTH to the OAuth client in Cloud Console. */
+/** Logs the redirect URI to add to the OAuth client in Cloud Console. */
 function logDriveRedirectUri() {
-  Logger.log('Domain redirect URI (used by default): ' + domainRedirectUri_());
-  Logger.log('Standard redirect URI (fallback):       ' + standardRedirectUri_());
+  Logger.log('Authorized redirect URI to register: ' + webAppUrl_());
 }
 
-/**
- * Deletes Drive tokens left by the old per-UserProperties implementation.
- * Run once after deploying this version.
- */
+/** Deletes Drive tokens left by earlier implementations. Run once after deploying. */
 function resetLegacyDriveTokens() {
-  var props = PropertiesService.getUserProperties();
-  ['oauth2.drive', 'oauth2.drive_v2'].forEach(function (k) { props.deleteProperty(k); });
-  Logger.log('Legacy Drive tokens removed.');
+  var userProps = PropertiesService.getUserProperties();
+  ['oauth2.drive', 'oauth2.drive_v2'].forEach(function (k) { userProps.deleteProperty(k); });
+  var scriptProps = PropertiesService.getScriptProperties();
+  var removed = 0;
+  scriptProps.getKeys().forEach(function (k) {
+    if (k.indexOf('oauth2.drive_') === 0) { scriptProps.deleteProperty(k); removed++; }
+  });
+  Logger.log('Legacy Drive tokens removed (' + removed + ' per-visitor entries).');
 }
 
 /**
@@ -827,12 +880,17 @@ function checkSetup() {
   var ok = true;
   function log(pass, msg) { if (!pass) ok = false; Logger.log((pass ? 'OK    ' : 'FIX   ') + msg); }
 
-  ['USERS_SHEET_ID', 'DATA_SHEET_ID', 'PICKER_API_KEY', 'DRIVE_OAUTH_CLIENT_ID', 'DRIVE_OAUTH_CLIENT_SECRET'].forEach(function (k) {
+  ['USERS_SHEET_ID', 'DATA_SHEET_ID', 'WEB_APP_URL', 'PICKER_API_KEY', 'DRIVE_OAUTH_CLIENT_ID', 'DRIVE_OAUTH_CLIENT_SECRET'].forEach(function (k) {
     log(!!prop_(k), 'Script Property ' + k);
   });
   log(true, 'Script Property REVIEW_GROUP_EMAIL (optional): ' + (prop_('REVIEW_GROUP_EMAIL') || '(not set)'));
-  log(typeof OAuth2 !== 'undefined', 'OAuth2 library added');
-  log(!!projectNumber_(), 'DRIVE_OAUTH_CLIENT_ID looks like <project number>-....apps.googleusercontent.com');
+  try {
+    webAppUrl_();
+    log(true, 'WEB_APP_URL looks like a deployment URL');
+  } catch (e) {
+    log(false, e.message);
+  }
+  log(!!(prop_('DRIVE_OAUTH_CLIENT_ID') && projectNumber_()), 'DRIVE_OAUTH_CLIENT_ID looks like <project number>-....apps.googleusercontent.com');
 
   var schools = [];
   try {
@@ -854,6 +912,6 @@ function checkSetup() {
       log(false, s.schoolName + ': cannot open EvidenceFolder (' + (e.status || '') + ') — is it shared with you as Editor?');
     }
   });
-  logDriveRedirectUri();
+  if (prop_('WEB_APP_URL')) logDriveRedirectUri();
   Logger.log(ok ? 'All checks passed.' : 'Some checks need fixing (see FIX lines above).');
 }
