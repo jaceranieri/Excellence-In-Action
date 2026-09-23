@@ -6,6 +6,61 @@ git log (`git log --oneline`) for the full blow-by-blow, since almost
 every commit message documents a real bug that was found and fixed, not
 just a style tweak.
 
+## Current status (as of 23 Sep 2026)
+
+**Branch:** the repo's default branch is `claude/code-project-setup-1qbwa6`
+(there is no `main`). The evidence-folder and Drive work landed there in
+[PR #3](https://github.com/jaceranieri/Excellence-In-Action/pull/3).
+PR #3's description is out of date: it still mentions the OAuth2
+library, which the final commit removed. Trust the code and this file.
+
+**Confirmed working on the live deployment (reported by the project
+owner):**
+- Login gate and per-school access from the Users sheet.
+- Evidence files copied into each school's EvidenceFolder, with
+  view-only sharing for staff at the same school.
+- Connecting Google Drive through the `/exec` redirect, including for a
+  staff member using several Chrome profiles. That flow replaced the
+  OAuth2 library's `/usercallback`, which failed for non-owners with
+  "The state token is invalid or has expired". See "Visitor Drive
+  authorization" below.
+- Picking and uploading files through the Picker.
+
+**Shipped in the last commit (`548dcc4`), not yet confirmed live:**
+- Background save: Submit closes the draft at once, the entry shows
+  "Copying files…", and failures show "Not saved" with Try again / Edit /
+  Discard.
+- Batched Drive copies (`copyPickedFiles_()` / `runDriveBatch_()`), with
+  retries for temporary errors.
+- Picker tabs: Recent, My Drive, Shared drives, Upload.
+- Error messages now include the Drive status and reason code.
+- To deploy: paste `Code.gs`, `Script_App.html` and
+  `Stylesheet_ThemeModal.html`, then publish a new version. No Script
+  Property or Cloud Console changes are needed.
+
+**Open items / next steps:**
+1. **"Untitled document" copy error:** one staff member couldn't
+   attach a file with that name. The root cause is unknown; nothing in
+   the code treats the name specially, and a mocked copy of it works.
+   The new retries may fix it. If it recurs, get the red error text
+   (which now includes a Drive code) or the matching entry in Apps
+   Script → Executions.
+2. **Check the Picker tabs live:** confirm Recent lists newest files
+   first, and that the tab labels appear. `DocsView.setLabel` is only
+   called when the Picker build supports it.
+3. **`REVIEW_GROUP_EMAIL`:** it was a placeholder
+   (`testgroup@syd.catholic.edu.au`). Confirm the real reviewers' Group
+   is set. It gets Viewer on every school folder.
+4. **Copy ownership:** all copies are owned by the script owner's
+   account. They count against that account's Drive storage, and every
+   file depends on that one account staying active. Moving the
+   EvidenceFolders into a Shared Drive would remove both risks. The code
+   already passes `supportsAllDrives` everywhere, but it hasn't been
+   tried.
+5. **Ratings are last-write-wins per school** (see "Save flow —
+   Ratings"). Revisit only if simultaneous edits at the same school
+   cause problems.
+
 ## What this is
 
 A Sydney Catholic Schools "Excellence in Action" self-review tool: an
@@ -324,13 +379,9 @@ reconnect.
    - Submit. The button reads "Copying files…", then the entry appears
      with links to the copies.
 
-**Not yet done / worth knowing:**
-- The redirect-to-`/exec` flow and the copy-on-submit UI were tested
-  locally in headless Chromium with a mocked `google.script.run` and
-  Picker (staging, the 25 MB check at pick time, failed copies keeping
-  the draft open, a reconnect keeping staged files, edit/archive, and
-  consent-window polling). The real OAuth, Drive and Sheets calls need
-  the live test above.
+**Worth knowing:**
+- See "Current status" at the top for what's confirmed live and what's
+  still open.
 - A console line `[Violation] Permissions policy violation: unload is not
   allowed in this document` appears when the Picker opens. It comes from
   Google's own Picker/gapi scripts, is harmless, and isn't ours to fix.
@@ -415,6 +466,21 @@ end-to-end locally:
 4. Click `#login-gate-continue-btn` to get past the gate before
    measuring/screenshotting anything.
 
+To exercise server-backed flows (evidence save, Drive connect, the
+Picker) without Apps Script, load a small stub script before the app's
+scripts. It should define:
+- `google.script.run`: a chainable object whose `withSuccessHandler` /
+  `withFailureHandler` return new wrappers, and whose other properties
+  call fake server handlers after a `setTimeout`.
+- `google.script.host.origin`
+- `google.picker`: builder and view classes that record the callback so
+  a test can call it with fake `docs`.
+- `gapi.load`
+
+Swap it in for the `apis.google.com/js/api.js` script tag. `Code.gs`
+logic can be unit-tested in Node the same way: run it in a `vm` context
+with stubbed `UrlFetchApp` / `ScriptApp` / `Session` / `Utilities`.
+
 Measure actual `getBoundingClientRect()` / `getComputedStyle()` values
 rather than trusting a screenshot alone — several of the bugs above
 (the auto-margin issue especially) were invisible without checking
@@ -455,7 +521,7 @@ computed margins directly.
 2. Test locally per "Testing gotcha" above if the change touches layout,
    the login flow, or anything in `#app-root`.
 3. Commit and push to the session's working branch and open a PR into
-   `main`.
+   `claude/code-project-setup-1qbwa6` (the default branch).
 4. Tell the user which `gas/*.html`/`.gs` files changed — they paste the
    updated file contents into their existing Apps Script project's
    matching files (same names, no extensions in the Apps Script editor)
@@ -465,7 +531,7 @@ computed margins directly.
 
 | File | What it is |
 |---|---|
-| `gas/Code.gs` | `doGet()`, `include()` helper, `getCurrentUserAccess()` |
+| `gas/Code.gs` | All server code:<br>• `doGet()`, which also handles the Drive OAuth redirect<br>• Users/Schools lookup and `requireActiveUser_()`<br>• Ratings and evidence persistence<br>• evidence-folder copy/archive (`copyPickedFiles_()`, `archiveEvidenceFiles_()`)<br>• visitor Drive auth (`getPickerAuth()`)<br>• editor utilities (`checkSetup()`, `resetLegacyDriveTokens()`, `logDriveRedirectUri()`) |
 | `gas/appsscript.json` | Manifest — `executeAs: USER_DEPLOYING`, `access: DOMAIN` |
 | `gas/Index.html` | Page shell: login gate markup, `#app-root`, `.stage-area`/`.main-layout`, all the page-level `<style>` |
 | `gas/Script_LoginGate.html` | 3-state login gate logic, `enterApp()` |
