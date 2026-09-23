@@ -458,17 +458,26 @@
 
 .evidence-accordion-title {
   display: flex;
-  align-items: baseline;
-  gap: 7px;
+  flex-direction: column;
+  gap: 2px;
   min-width: 0;
   font-family: 'Figtree', 'Segoe UI', sans-serif;
 }
 
+/* The entry's title (or "Evidence N" for entries saved before titles
+   existed). One line while closed; wraps in full once the entry is open. */
 .evidence-accordion-number {
   font-size: 12.5px;
   font-weight: 700;
   color: #2a2c38;
-  flex: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.evidence-accordion-item.is-open .evidence-accordion-number {
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .evidence-accordion-meta {
@@ -577,6 +586,20 @@
   margin-bottom: 0;
 }
 
+/* File names stay on one line (full name in the tooltip) so a long name
+   doesn't push everything else down. */
+.evidence-attachment-name,
+.evidence-staged-filename {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.evidence-attachment-name {
+  flex: 1 1 auto;
+}
+
 .evidence-attachment-icon {
   width: 24px;
   height: 24px;
@@ -601,10 +624,17 @@
   flex-direction: column;
 }
 
+.evidence-compose-label {
+  flex: none;
+  margin: 0 0 6px;
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #a3a6b0;
+}
+
+.evidence-compose-title,
 .evidence-compose-textarea {
-  flex: 1 1 auto;
-  min-height: 90px;
-  resize: none;
   border: 1.5px solid #e5e7ee;
   border-radius: 10px;
   padding: 12px 14px;
@@ -615,6 +645,23 @@
   outline: none;
   box-sizing: border-box;
   transition: border-color 0.15s ease;
+}
+
+.evidence-compose-title {
+  flex: none;
+  width: 100%;
+  margin-bottom: 12px;
+  font-weight: 600;
+}
+
+.evidence-compose-title:focus {
+  border-color: var(--modal-accent, #1c1f4f);
+}
+
+.evidence-compose-textarea {
+  flex: 1 1 auto;
+  min-height: 90px;
+  resize: none;
 }
 
 .evidence-compose-textarea:focus {
@@ -846,6 +893,7 @@
   :root:not([data-theme="light"]) .evidence-accordion-item,
   :root:not([data-theme="light"]) .evidence-attachment,
   :root:not([data-theme="light"]) .evidence-staged-attachment,
+  :root:not([data-theme="light"]) .evidence-compose-title,
   :root:not([data-theme="light"]) .evidence-compose-textarea {
     background: #262838;
     border-color: #34364a;
@@ -920,6 +968,7 @@
 :root[data-theme="dark"] .evidence-accordion-item,
 :root[data-theme="dark"] .evidence-attachment,
 :root[data-theme="dark"] .evidence-staged-attachment,
+:root[data-theme="dark"] .evidence-compose-title,
 :root[data-theme="dark"] .evidence-compose-textarea {
   background: #262838;
   border-color: #34364a;

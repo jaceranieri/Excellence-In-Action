@@ -1428,25 +1428,62 @@
     // doc comment) — acceptable for v1 per HANDOFF.md.
     var ratingsSaveTimer = null;
     var ratingsDirty = false;
-    var saveStatusEl = null;
+    var ratingsToast = null;
 
-    function ensureSaveStatusEl() {
-      if (saveStatusEl) return saveStatusEl;
-      saveStatusEl = document.createElement('div');
-      saveStatusEl.setAttribute('aria-live', 'polite');
-      saveStatusEl.style.cssText = 'position:fixed;bottom:16px;right:16px;padding:6px 14px;' +
-        'border-radius:999px;font:600 13px/1.4 Figtree,"Segoe UI",sans-serif;color:#fff;' +
-        'background:#5f6368;opacity:0;transition:opacity .25s ease;pointer-events:none;z-index:9999;';
-      document.body.appendChild(saveStatusEl);
-      return saveStatusEl;
+    // -- Toasts --------------------------------------------------------------
+    // Status messages stacked in the bottom-right corner, outside the Theme
+    // modal, so a background evidence save keeps reporting progress (and
+    // its result) after the modal is closed. Each toast is reusable:
+    // update() puts it back on screen if it was dismissed or auto-hidden.
+    // States: 'busy' (spinner), 'success', 'error'.
+    var toastStackEl = null;
+
+    function createToast() {
+      if (!toastStackEl) {
+        toastStackEl = document.createElement('div');
+        toastStackEl.className = 'eia-toasts';
+        toastStackEl.setAttribute('aria-live', 'polite');
+        document.body.appendChild(toastStackEl);
+      }
+      var el = document.createElement('div');
+      el.className = 'eia-toast';
+      el.setAttribute('role', 'status');
+      el.innerHTML =
+        '<span class="eia-toast-icon" aria-hidden="true"></span>' +
+        '<span class="eia-toast-text"><span class="eia-toast-title"></span><span class="eia-toast-detail"></span></span>' +
+        '<button type="button" class="eia-toast-close" aria-label="Dismiss">&times;</button>';
+      var titleEl = el.querySelector('.eia-toast-title');
+      var detailEl = el.querySelector('.eia-toast-detail');
+      var hideTimer = null;
+      var removeTimer = null;
+
+      function dismiss() {
+        clearTimeout(hideTimer);
+        el.classList.remove('is-visible');
+        clearTimeout(removeTimer);
+        removeTimer = setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 250);
+      }
+
+      function update(state, title, detail, autoHideMs) {
+        clearTimeout(hideTimer);
+        clearTimeout(removeTimer);
+        el.className = 'eia-toast is-' + state + (el.classList.contains('is-visible') ? ' is-visible' : '');
+        titleEl.textContent = title;
+        detailEl.textContent = detail || '';
+        detailEl.style.display = detail ? '' : 'none';
+        if (!el.parentNode) toastStackEl.appendChild(el);
+        void el.offsetWidth; // so the fade-in runs when (re)added
+        el.classList.add('is-visible');
+        if (autoHideMs) hideTimer = setTimeout(dismiss, autoHideMs);
+      }
+
+      el.querySelector('.eia-toast-close').addEventListener('click', dismiss);
+      return { update: update, dismiss: dismiss };
     }
 
-    function showSaveStatus(text, color, autoHide) {
-      var el = ensureSaveStatusEl();
-      el.textContent = text;
-      el.style.background = color;
-      el.style.opacity = '1';
-      if (autoHide) setTimeout(function () { el.style.opacity = '0'; }, 1800);
+    function showRatingsToast(state, title, autoHideMs) {
+      ratingsToast = ratingsToast || createToast();
+      ratingsToast.update(state, title, '', autoHideMs);
     }
 
     function buildRatingsPayload() {
@@ -1465,12 +1502,12 @@
       if (!ratingsDirty || !SCHOOL_NAME) return;
       ratingsDirty = false;
       clearTimeout(ratingsSaveTimer);
-      showSaveStatus('Saving…', '#5f6368', false);
+      showRatingsToast('busy', 'Saving ratings…');
       google.script.run
-        .withSuccessHandler(function () { showSaveStatus('Saved', '#1E8E4F', true); })
+        .withSuccessHandler(function () { showRatingsToast('success', 'Ratings saved', 1800); })
         .withFailureHandler(function (err) {
           console.error('Failed to save ratings:', err);
-          showSaveStatus('Save failed — retrying', '#E2574C', false);
+          showRatingsToast('error', 'Ratings didn’t save — retrying');
           ratingsDirty = true;
           ratingsSaveTimer = setTimeout(flushRatingsSave, 4000);
         })
@@ -1716,6 +1753,8 @@
     // content and toggles visibility, so listeners are attached once too
     // (delegated on the rubric grid / grade dropdown containers).
 
+    var MAX_EVIDENCE_TITLE = 150; // matches Code.gs
+
     var modalOverlay = document.createElement('div');
     modalOverlay.className = 'theme-modal-overlay';
     modalOverlay.innerHTML =
@@ -1748,7 +1787,10 @@
                   '<span>Add Evidence</span>' +
                 '</button>' +
                 '<div class="evidence-compose" style="display:none">' +
-                  '<textarea class="evidence-compose-textarea" placeholder="Describe this evidence\u2026"></textarea>' +
+                  '<label class="evidence-compose-label" for="evidence-compose-title">Evidence title</label>' +
+                  '<input type="text" id="evidence-compose-title" class="evidence-compose-title" maxlength="' + MAX_EVIDENCE_TITLE + '" placeholder="A few words describing this evidence" autocomplete="off">' +
+                  '<label class="evidence-compose-label" for="evidence-compose-details">Details</label>' +
+                  '<textarea id="evidence-compose-details" class="evidence-compose-textarea" placeholder="Give a full description of this evidence\u2026"></textarea>' +
                   '<div class="evidence-compose-attachments"></div>' +
                   '<div class="evidence-compose-notice" style="display:none"></div>' +
                   '<p class="evidence-compose-error" style="display:none"></p>' +
@@ -1777,6 +1819,7 @@
     var evidenceListScrollEl = modalOverlay.querySelector('.evidence-list-scroll');
     var evidenceAddBtn = modalOverlay.querySelector('.evidence-add-btn');
     var evidenceComposeEl = modalOverlay.querySelector('.evidence-compose');
+    var evidenceTitleInput = modalOverlay.querySelector('.evidence-compose-title');
     var evidenceTextarea = modalOverlay.querySelector('.evidence-compose-textarea');
     var evidenceComposeAttachmentsEl = modalOverlay.querySelector('.evidence-compose-attachments');
     var evidenceComposeErrorEl = modalOverlay.querySelector('.evidence-compose-error');
@@ -1860,6 +1903,11 @@
       return null;
     }
 
+    // Entries saved before titles existed fall back to their number.
+    function evidenceDisplayTitle(item) {
+      return item.title || ('Evidence ' + item.number);
+    }
+
     // Keeps whichever entry is open across re-renders (background saves
     // re-render the list); `openNumber` forces a specific entry open.
     function renderEvidenceList(theme, openNumber) {
@@ -1889,11 +1937,13 @@
       if (item.pending) meta.push(copying ? 'Copying files…' : 'Saving…');
       else if (item.saveError) meta.push('Not saved');
       var attachmentsHtml = attachments.map(function (a) {
-        var label = escapeHtml(a.name) + attachmentIcon(a.kind || inferAttachmentKind(a.mimeType));
+        var label = '<span class="evidence-attachment-name">' + escapeHtml(a.name) + '</span>' +
+          attachmentIcon(a.kind || inferAttachmentKind(a.mimeType));
+        var tooltip = ' title="' + escapeHtml(a.error ? a.name + ' — ' + a.error : a.name) + '"';
         if (a.url && !a.pickedId) {
-          return '<a class="evidence-attachment" href="' + escapeHtml(a.url) + '" target="_blank" rel="noopener">' + label + '</a>';
+          return '<a class="evidence-attachment" href="' + escapeHtml(a.url) + '" target="_blank" rel="noopener"' + tooltip + '>' + label + '</a>';
         }
-        return '<div class="evidence-attachment' + (a.error ? ' is-error' : ' is-pending') + '">' + label + '</div>';
+        return '<div class="evidence-attachment' + (a.error ? ' is-error' : ' is-pending') + '"' + tooltip + '>' + label + '</div>';
       }).join('');
       var status = '';
       var actions;
@@ -1918,7 +1968,8 @@
       return '<div class="evidence-accordion-item' + (isOpen ? ' is-open' : '') + stateClass + '" data-number="' + item.number + '">' +
         '<div class="evidence-accordion-header" tabindex="0" role="button" aria-expanded="' + (isOpen ? 'true' : 'false') + '">' +
           '<span class="evidence-accordion-title">' +
-            '<span class="evidence-accordion-number">Evidence ' + item.number + '</span>' +
+            '<span class="evidence-accordion-number" title="' + escapeHtml(evidenceDisplayTitle(item)) + '">' +
+              escapeHtml(evidenceDisplayTitle(item)) + '</span>' +
             '<span class="evidence-accordion-meta">' + escapeHtml(meta.join(' · ')) + '</span>' +
           '</span>' +
           '<svg class="evidence-accordion-chevron" viewBox="0 0 10 6" fill="none" xmlns="http://www.w3.org/2000/svg">' +
@@ -1926,7 +1977,7 @@
         '</div>' +
         '<div class="evidence-accordion-body"><div class="evidence-accordion-body-inner">' +
           status +
-          '<p class="evidence-item-text">' + escapeHtml(item.text || '') + '</p>' +
+          (item.text ? '<p class="evidence-item-text">' + escapeHtml(item.text) + '</p>' : '') +
           (attachmentsHtml ? '<p class="evidence-attachments-label">Attachments</p>' + attachmentsHtml : '') +
           (actions ? '<div class="evidence-item-actions">' + actions + '</div>' : '') +
         '</div></div>' +
@@ -2033,7 +2084,8 @@
       evidenceComposeAttachmentsEl.innerHTML = composeAttachments.map(function (a, i) {
         var status = a.error || (a.pickedId ? 'Copied to your school’s evidence folder when you submit' : '');
         return '<div class="evidence-staged-attachment' + (a.error ? ' is-error' : '') + '">' +
-          '<span class="evidence-staged-name">' + escapeHtml(a.name) +
+          '<span class="evidence-staged-name" title="' + escapeHtml(a.name) + '">' +
+            '<span class="evidence-staged-filename">' + escapeHtml(a.name) + '</span>' +
             (status ? '<span class="evidence-staged-status">' + escapeHtml(status) + '</span>' : '') +
           '</span>' +
           '<button type="button" class="evidence-staged-remove" data-index="' + i + '" aria-label="Remove attachment">&times;</button></div>';
@@ -2078,13 +2130,14 @@
       hideComposeError();
       hideComposeNotice();
       setEvidenceMode('compose');
-      evidenceTextarea.focus();
+      evidenceTitleInput.focus();
       prefetchPickerAuth();
     }
 
     function enterComposeMode() {
       editingNumber = null;
       composeAttachments = [];
+      evidenceTitleInput.value = '';
       evidenceTextarea.value = '';
       openCompose();
     }
@@ -2094,6 +2147,7 @@
       if (!item || item.pending) return;
       editingNumber = number;
       composeAttachments = (item.attachments || []).map(function (a) { return Object.assign({}, a); });
+      evidenceTitleInput.value = item.title || '';
       evidenceTextarea.value = item.text || '';
       openCompose();
     }
@@ -2344,11 +2398,29 @@
       syncCard(card, theme); // grade AND evidence count/icon both stay in sync
     }
 
+    // One toast per entry, reused if it's retried or edited and saved again.
+    var entryToasts = new WeakMap();
+
+    function entryToast(entry) {
+      var toast = entryToasts.get(entry);
+      if (!toast) { toast = createToast(); entryToasts.set(entry, toast); }
+      return toast;
+    }
+
     function saveEntryInBackground(theme, card, entry) {
       entry.pending = true;
       entry.saveError = '';
       savesInFlight++;
       refreshEvidenceViews(theme, card);
+      var toast = entryToast(entry);
+      var toastDetail = '“' + evidenceDisplayTitle(entry) + '” · ' + theme.title;
+      var fileCount = entry.attachments.filter(function (a) { return a.pickedId; }).length;
+      toast.update('busy', fileCount
+        ? 'Copying ' + fileCount + ' file' + (fileCount === 1 ? '' : 's') + ' to your school’s evidence folder…'
+        : 'Saving evidence…', toastDetail);
+      function toastFailed() {
+        toast.update('error', 'Evidence not saved', toastDetail + ' — open this Theme to try again.');
+      }
       google.script.run
         .withSuccessHandler(function (result) {
           savesInFlight--;
@@ -2357,6 +2429,9 @@
             entry.entryId = result.entryId;
             entry.attachments = result.attachments || [];
             delete entry.lastSaved;
+            toast.update('success', fileCount
+              ? 'Evidence copied to your school’s evidence folder'
+              : 'Evidence saved', toastDetail, 5000);
           } else if (result && result.needsAuth) {
             pickerAuth = null;
             entry.saveError = 'Your Google Drive connection needs renewing. Choose Edit, click Attach Files to reconnect, then save again.';
@@ -2366,6 +2441,7 @@
             entry.attachments.forEach(function (a) { if (a.pickedId && errorsById[a.pickedId]) a.error = errorsById[a.pickedId]; });
             entry.saveError = 'Some files couldn’t be copied. Choose Edit to remove them, then save again.';
           }
+          if (entry.saveError) toastFailed();
           refreshEvidenceViews(theme, card);
         })
         .withFailureHandler(function (err) {
@@ -2373,6 +2449,7 @@
           savesInFlight--;
           entry.pending = false;
           entry.saveError = 'Your evidence wasn’t saved. Please try again.';
+          toastFailed();
           refreshEvidenceViews(theme, card);
         })
         .saveEvidenceEntry(theme.id, {
@@ -2380,6 +2457,7 @@
           number: entry.number,
           type: entry.type,
           date: entry.date,
+          title: entry.title,
           text: entry.text,
           themeTitle: theme.title,
           attachments: entry.attachments.map(function (a) {
@@ -2391,7 +2469,10 @@
     // Undoes a failed save: a never-saved entry is removed; an edit of a
     // saved entry goes back to what's actually stored.
     function discardFailedEntry(theme, entry) {
+      var toast = entryToasts.get(entry);
+      if (toast) toast.dismiss();
       if (entry.lastSaved) {
+        entry.title = entry.lastSaved.title;
         entry.text = entry.lastSaved.text;
         entry.attachments = entry.lastSaved.attachments;
         delete entry.lastSaved;
@@ -2411,9 +2492,15 @@
         showComposeError('Remove the files marked in red before submitting.');
         return;
       }
+      var title = evidenceTitleInput.value.trim();
       var text = evidenceTextarea.value.trim();
+      if (!title) {
+        showComposeError('Give this evidence a title before submitting.');
+        evidenceTitleInput.focus();
+        return;
+      }
       if (!text && composeAttachments.length === 0) {
-        showComposeError('Add a note or attach a file before submitting.');
+        showComposeError('Add some details or attach a file before submitting.');
         return;
       }
       var theme = currentModalTheme;
@@ -2421,7 +2508,7 @@
       var entry = editingNumber !== null ? findEvidenceByNumber(theme, editingNumber) : null;
       if (entry) {
         if (entry.entryId && !entry.lastSaved) {
-          entry.lastSaved = { text: entry.text, attachments: entry.attachments.slice() };
+          entry.lastSaved = { title: entry.title, text: entry.text, attachments: entry.attachments.slice() };
         }
       } else {
         entry = {
@@ -2433,6 +2520,7 @@
         theme.evidence = theme.evidence || [];
         theme.evidence.push(entry);
       }
+      entry.title = title;
       entry.text = text;
       entry.attachments = composeAttachments.map(stagedToEntryAttachment);
       exitComposeMode();

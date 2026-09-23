@@ -38,6 +38,26 @@ owner):**
   `Stylesheet_ThemeModal.html`, then publish a new version. No Script
   Property or Cloud Console changes are needed.
 
+**Shipped after that (evidence titles + toasts), not yet confirmed live:**
+- Evidence now has a required **Evidence title** (a few words) and a
+  **Details** box (the full description, stored in the old `Text`
+  column). The title replaces "Evidence N" in the list. Entries saved
+  before this have no title and still show "Evidence N".
+- The title is stored in a new **`Title` column at the end of
+  EvidenceLog** (column L). `ensureSheet_()` adds the missing header to
+  the existing tab on first use, so no manual sheet edit is needed.
+- Attachment names are always one line, cut off with "…". The full
+  name is in the tooltip.
+- Evidence saves report progress in bottom-right **toasts**
+  (`createToast()` in `Script_App.html`): "Copying N files to your
+  school's evidence folder…", then "Evidence copied…" or "Evidence not
+  saved". Toasts sit outside the modal, so they keep updating after it
+  closes. Error toasts stay until dismissed, or until Discard is clicked.
+  Ratings saves use the same toast system and no longer have their own
+  pill.
+- To deploy: paste `Code.gs`, `Script_App.html` and
+  `Stylesheet_ThemeModal.html`, then publish a new version.
+
 **Open items / next steps:**
 1. **"Untitled document" copy error:** one staff member couldn't
    attach a file with that name. The root cause is unknown; nothing in
@@ -162,12 +182,13 @@ first write if they don't already exist (`ensureSheet_()`):
   Saved as one whole-row overwrite per save (last-write-wins — see below).
 - **EvidenceLog** — one row per evidence entry (not per school):
   `EntryId, SchoolName, ThemeId, EntryNumber, Type, Date, Text,
-  Attachments, CreatedBy, CreatedAt, UpdatedAt`. `Attachments` is a JSON
+  Attachments, CreatedBy, CreatedAt, UpdatedAt, Title`. `Text` holds
+  the Details; `Title` was added later, so it's last. `Attachments` is a JSON
   array of `{fileId, name, mimeType, url}`, each a copy inside the
   school's evidence folder. `EntryId` (a UUID,
   generated server-side in `saveEvidenceEntry()`) is the real identity for
   edits/deletes — `EntryNumber` is only the theme-scoped display number
-  the UI has always shown ("Evidence 1", "Evidence 2", ...).
+  the UI shows for an entry with no title ("Evidence 1", "Evidence 2", ...).
 
 **Theme ids**: every theme in `ELEMENT_THEMES` now carries a stable `id`
 field (e.g. `"L_CPP_CBR"`), derived from the common `_`-joined prefix of
@@ -189,9 +210,9 @@ the login gate's Continue click.
 calls `scheduleSaveRatings()`, which debounces ~1.5s (so clicking through
 several rubric rows collapses into one save) before calling `Code.gs`'s
 `saveRatings()` with the *entire* ratings blob for every theme, not just
-what changed. Also flushed on tab-hide/`beforeunload`. A small
-bottom-right "Saving…/Saved/Save failed — retrying" badge
-(`showSaveStatus()`) reflects this. **This is last-write-wins, not a
+what changed. Also flushed on tab-hide/`beforeunload`. A bottom-right
+toast ("Saving ratings…/Ratings saved/Ratings didn't save — retrying")
+reflects this. **This is last-write-wins, not a
 field-level merge** — two staff at the same school saving within the same
 debounce window can clobber each other's change to a *different* theme.
 Accepted tradeoff for v1 (see the original planning conversation); if
@@ -204,7 +225,8 @@ appears (opened) with a pulsing "Copying files…" / "Saving…" status, and
 Edit/Delete are hidden, while `Code.gs`'s `saveEvidenceEntry()` runs in
 the background (append if new, update in place by `EntryId` if editing).
 Once a `google.script.run` call is sent, the server finishes it even if
-the modal or tab is closed. `beforeunload` still warns while a save is
+the modal or tab is closed. A toast for each save shows its progress
+and result, even after the modal is closed. `beforeunload` still warns while a save is
 in flight, because a failure can't be shown after the tab is gone.
 
 If a save fails, nothing is stored on the server, and the entry stays in

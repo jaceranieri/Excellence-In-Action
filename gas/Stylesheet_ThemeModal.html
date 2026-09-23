@@ -459,17 +459,26 @@
 
 .evidence-accordion-title {
   display: flex;
-  align-items: baseline;
-  gap: 7px;
+  flex-direction: column;
+  gap: 2px;
   min-width: 0;
   font-family: 'Figtree', 'Segoe UI', sans-serif;
 }
 
+/* The entry's title (or "Evidence N" for entries saved before titles
+   existed). One line while closed; wraps in full once the entry is open. */
 .evidence-accordion-number {
   font-size: 12.5px;
   font-weight: 700;
   color: #2a2c38;
-  flex: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.evidence-accordion-item.is-open .evidence-accordion-number {
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .evidence-accordion-meta {
@@ -593,6 +602,20 @@
   margin-bottom: 0;
 }
 
+/* File names stay on one line (full name in the tooltip) so a long name
+   doesn't push everything else down. */
+.evidence-attachment-name,
+.evidence-staged-filename {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.evidence-attachment-name {
+  flex: 1 1 auto;
+}
+
 .evidence-attachment.is-pending {
   opacity: 0.6;
 }
@@ -652,10 +675,17 @@
   flex-direction: column;
 }
 
+.evidence-compose-label {
+  flex: none;
+  margin: 0 0 6px;
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #a3a6b0;
+}
+
+.evidence-compose-title,
 .evidence-compose-textarea {
-  flex: 1 1 auto;
-  min-height: 90px;
-  resize: none;
   border: 1.5px solid #e5e7ee;
   border-radius: 10px;
   padding: 12px 14px;
@@ -666,6 +696,23 @@
   outline: none;
   box-sizing: border-box;
   transition: border-color 0.15s ease;
+}
+
+.evidence-compose-title {
+  flex: none;
+  width: 100%;
+  margin-bottom: 12px;
+  font-weight: 600;
+}
+
+.evidence-compose-title:focus {
+  border-color: var(--modal-accent, #1c1f4f);
+}
+
+.evidence-compose-textarea {
+  flex: 1 1 auto;
+  min-height: 90px;
+  resize: none;
 }
 
 .evidence-compose-textarea:focus {
@@ -981,6 +1028,7 @@
   :root:not([data-theme="light"]) .evidence-accordion-item,
   :root:not([data-theme="light"]) .evidence-attachment,
   :root:not([data-theme="light"]) .evidence-staged-attachment,
+  :root:not([data-theme="light"]) .evidence-compose-title,
   :root:not([data-theme="light"]) .evidence-compose-textarea {
     background: #262838;
     border-color: #34364a;
@@ -1064,6 +1112,7 @@
 :root[data-theme="dark"] .evidence-accordion-item,
 :root[data-theme="dark"] .evidence-attachment,
 :root[data-theme="dark"] .evidence-staged-attachment,
+:root[data-theme="dark"] .evidence-compose-title,
 :root[data-theme="dark"] .evidence-compose-textarea {
   background: #262838;
   border-color: #34364a;
@@ -1123,5 +1172,145 @@
 :root[data-theme="dark"] .rubric-cell:nth-child(4n+1):not(:first-child) {
   border-top-color: #34364a;
   border-bottom-color: #34364a;
+}
+
+/* Toasts (GAS build only) -------------------------------------------------
+   Bottom-right status messages for ratings and evidence saves. They sit
+   outside the modal (and above it), so a background evidence copy keeps
+   reporting progress after the modal is closed. See createToast() in
+   Script_App.html. */
+
+.eia-toasts {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  max-width: min(360px, calc(100vw - 32px));
+  pointer-events: none;
+}
+
+.eia-toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 10px 10px 12px;
+  border-radius: 12px;
+  background: #2a2c38;
+  color: #fff;
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+  box-shadow: 0 3px 0 0 #171825, 0 10px 24px rgba(0, 0, 0, 0.18);
+  pointer-events: auto;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.eia-toast.is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+.eia-toast.is-success {
+  background: #1E8E4F;
+  box-shadow: 0 3px 0 0 #166b3b, 0 10px 24px rgba(0, 0, 0, 0.18);
+}
+
+.eia-toast.is-error {
+  background: #c94f4f;
+  box-shadow: 0 3px 0 0 #9c3a3a, 0 10px 24px rgba(0, 0, 0, 0.18);
+}
+
+.eia-toast-icon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  box-sizing: border-box;
+}
+
+.eia-toast.is-busy .eia-toast-icon {
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  animation: eia-toast-spin 0.8s linear infinite;
+}
+
+.eia-toast.is-success .eia-toast-icon,
+.eia-toast.is-error .eia-toast-icon {
+  background: #fff;
+}
+
+.eia-toast.is-success .eia-toast-icon::before {
+  content: '\2713';
+  color: #1E8E4F;
+}
+
+.eia-toast.is-error .eia-toast-icon::before {
+  content: '!';
+  color: #c94f4f;
+}
+
+.eia-toast-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.eia-toast-title {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.eia-toast-detail {
+  font-size: 11.5px;
+  line-height: 1.4;
+  opacity: 0.85;
+  overflow-wrap: anywhere;
+}
+
+.eia-toast-close {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.eia-toast-close:hover,
+.eia-toast-close:focus-visible {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.15);
+}
+
+@keyframes eia-toast-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .eia-toast {
+    transition: none;
+  }
+  .eia-toast.is-busy .eia-toast-icon {
+    animation-duration: 2.4s;
+  }
 }
 </style>

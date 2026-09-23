@@ -1759,6 +1759,8 @@
     // content and toggles visibility, so listeners are attached once too
     // (delegated on the rubric grid / grade dropdown containers).
 
+    var MAX_EVIDENCE_TITLE = 150;
+
     var modalOverlay = document.createElement('div');
     modalOverlay.className = 'theme-modal-overlay';
     modalOverlay.innerHTML =
@@ -1791,7 +1793,10 @@
                   '<span>Add Evidence</span>' +
                 '</button>' +
                 '<div class="evidence-compose" style="display:none">' +
-                  '<textarea class="evidence-compose-textarea" placeholder="Describe this evidence\u2026"></textarea>' +
+                  '<label class="evidence-compose-label" for="evidence-compose-title">Evidence title</label>' +
+                  '<input type="text" id="evidence-compose-title" class="evidence-compose-title" maxlength="' + MAX_EVIDENCE_TITLE + '" placeholder="A few words describing this evidence" autocomplete="off">' +
+                  '<label class="evidence-compose-label" for="evidence-compose-details">Details</label>' +
+                  '<textarea id="evidence-compose-details" class="evidence-compose-textarea" placeholder="Give a full description of this evidence\u2026"></textarea>' +
                   '<div class="evidence-compose-attachments"></div>' +
                   '<input type="file" class="evidence-file-input" multiple style="display:none">' +
                   '<p class="evidence-compose-error" style="display:none"></p>' +
@@ -1820,6 +1825,7 @@
     var evidenceListScrollEl = modalOverlay.querySelector('.evidence-list-scroll');
     var evidenceAddBtn = modalOverlay.querySelector('.evidence-add-btn');
     var evidenceComposeEl = modalOverlay.querySelector('.evidence-compose');
+    var evidenceTitleInput = modalOverlay.querySelector('.evidence-compose-title');
     var evidenceTextarea = modalOverlay.querySelector('.evidence-compose-textarea');
     var evidenceComposeAttachmentsEl = modalOverlay.querySelector('.evidence-compose-attachments');
     var evidenceComposeErrorEl = modalOverlay.querySelector('.evidence-compose-error');
@@ -1903,6 +1909,10 @@
       return null;
     }
 
+    function evidenceDisplayTitle(item) {
+      return item.title || ('Evidence ' + item.number);
+    }
+
     function renderEvidenceList(theme) {
       var items = (theme.evidence || []).slice().sort(function (a, b) { return (b.number || 0) - (a.number || 0); });
       if (!items.length) {
@@ -1917,19 +1927,21 @@
       var meta = [item.date];
       if (attachments.length) meta.push(attachments.length + ' attachment' + (attachments.length === 1 ? '' : 's'));
       var attachmentsHtml = attachments.map(function (a) {
-        return '<div class="evidence-attachment">' + escapeHtml(a.name) + attachmentIcon(a.kind) + '</div>';
+        return '<div class="evidence-attachment" title="' + escapeHtml(a.name) + '">' +
+          '<span class="evidence-attachment-name">' + escapeHtml(a.name) + '</span>' + attachmentIcon(a.kind) + '</div>';
       }).join('');
       return '<div class="evidence-accordion-item">' +
         '<div class="evidence-accordion-header" tabindex="0" role="button" aria-expanded="false">' +
           '<span class="evidence-accordion-title">' +
-            '<span class="evidence-accordion-number">Evidence ' + item.number + '</span>' +
+            '<span class="evidence-accordion-number" title="' + escapeHtml(evidenceDisplayTitle(item)) + '">' +
+              escapeHtml(evidenceDisplayTitle(item)) + '</span>' +
             '<span class="evidence-accordion-meta">' + escapeHtml(meta.join(' \u00b7 ')) + '</span>' +
           '</span>' +
           '<svg class="evidence-accordion-chevron" viewBox="0 0 10 6" fill="none" xmlns="http://www.w3.org/2000/svg">' +
             '<path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
         '</div>' +
         '<div class="evidence-accordion-body"><div class="evidence-accordion-body-inner">' +
-          '<p class="evidence-item-text">' + escapeHtml(item.text || '') + '</p>' +
+          (item.text ? '<p class="evidence-item-text">' + escapeHtml(item.text) + '</p>' : '') +
           (attachmentsHtml ? '<p class="evidence-attachments-label">Attachments</p>' + attachmentsHtml : '') +
           '<div class="evidence-item-actions">' +
             '<button type="button" class="evidence-edit-btn" data-number="' + item.number + '">Edit</button>' +
@@ -2010,7 +2022,8 @@
 
     function renderComposeAttachments() {
       evidenceComposeAttachmentsEl.innerHTML = composeAttachments.map(function (a, i) {
-        return '<div class="evidence-staged-attachment">' + escapeHtml(a.name) +
+        return '<div class="evidence-staged-attachment" title="' + escapeHtml(a.name) + '">' +
+          '<span class="evidence-staged-filename">' + escapeHtml(a.name) + '</span>' +
           '<button type="button" class="evidence-staged-remove" data-index="' + i + '" aria-label="Remove attachment">&times;</button></div>';
       }).join('');
     }
@@ -2042,12 +2055,13 @@
     function enterComposeMode() {
       editingNumber = null;
       composeAttachments = [];
+      evidenceTitleInput.value = '';
       evidenceTextarea.value = '';
       renderComposeAttachments();
       hideComposeError();
       updateComposeSubmitLabel();
       setEvidenceMode('compose');
-      evidenceTextarea.focus();
+      evidenceTitleInput.focus();
     }
 
     function startEditEvidence(number) {
@@ -2055,12 +2069,13 @@
       if (!item) return;
       editingNumber = number;
       composeAttachments = (item.attachments || []).slice();
+      evidenceTitleInput.value = item.title || '';
       evidenceTextarea.value = item.text || '';
       renderComposeAttachments();
       hideComposeError();
       updateComposeSubmitLabel();
       setEvidenceMode('compose');
-      evidenceTextarea.focus();
+      evidenceTitleInput.focus();
     }
 
     function exitComposeMode() {
@@ -2089,9 +2104,15 @@
 
     evidenceSubmitBtn.addEventListener('click', function () {
       if (!currentModalTheme) return;
+      var title = evidenceTitleInput.value.trim();
       var text = evidenceTextarea.value.trim();
+      if (!title) {
+        showComposeError('Give this evidence a title before submitting.');
+        evidenceTitleInput.focus();
+        return;
+      }
       if (!text && composeAttachments.length === 0) {
-        showComposeError('Add a note or attach a file before submitting.');
+        showComposeError('Add some details or attach a file before submitting.');
         return;
       }
       hideComposeError();
@@ -2099,6 +2120,7 @@
       if (editingNumber !== null) {
         var existing = findEvidenceByNumber(currentModalTheme, editingNumber);
         if (existing) {
+          existing.title = title;
           existing.text = text;
           existing.attachments = composeAttachments.slice();
         }
@@ -2108,6 +2130,7 @@
           type: 'note',
           number: nextNumber,
           date: formatDateDDMMYY(new Date()),
+          title: title,
           text: text,
           attachments: composeAttachments.slice()
         });

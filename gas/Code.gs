@@ -47,12 +47,15 @@ function requireProp_(key) {
 var TABS = { USERS: 'Users', SCHOOLS: 'Schools', RATINGS: 'Ratings', EVIDENCE: 'EvidenceLog' };
 
 var RATINGS_HEADERS = ['SchoolName', 'RatingsJSON', 'LastUpdatedBy', 'LastUpdatedAt'];
-var EVIDENCE_HEADERS = ['EntryId', 'SchoolName', 'ThemeId', 'EntryNumber', 'Type', 'Date', 'Text', 'Attachments', 'CreatedBy', 'CreatedAt', 'UpdatedAt'];
+// Title was added after launch, so it's last: rows saved before it simply
+// have no title, and the client shows "Evidence <number>" for them.
+var EVIDENCE_HEADERS = ['EntryId', 'SchoolName', 'ThemeId', 'EntryNumber', 'Type', 'Date', 'Text', 'Attachments', 'CreatedBy', 'CreatedAt', 'UpdatedAt', 'Title'];
 
 var ARCHIVE_FOLDER_NAME = 'ARCHIVE';
 var ARCHIVED_PREFIX = 'ARCHIVED – ';
 var MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 var MAX_EVIDENCE_TEXT = 20000;
+var MAX_EVIDENCE_TITLE = 150; // matches Script_App.html
 
 function doGet(e) {
   if (isOAuthRedirect_(e)) return handleOAuthRedirect_(e);
@@ -193,6 +196,10 @@ function ensureSheet_(tabName, headers) {
     sheet = ss.insertSheet(tabName);
     sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
     sheet.setFrozenRows(1);
+  } else if (sheet.getLastColumn() < headers.length) {
+    // Tab created before a column was added: label the new header cells.
+    var have = sheet.getLastColumn();
+    sheet.getRange(1, have + 1, 1, headers.length - have).setValues([headers.slice(have)]);
   }
   return sheet;
 }
@@ -225,6 +232,7 @@ function readSchoolEvidence_(schoolName) {
         number: row[3],
         type: row[4],
         date: row[5],
+        title: String(row[11] || ''),
         text: row[6],
         attachments: parseAttachments_(row[7])
       };
@@ -341,6 +349,7 @@ function saveEvidenceEntry(themeId, entry) {
 
   var attachments = kept.concat(copied);
   var attachmentsJson = JSON.stringify(attachments);
+  var title = String(entry.title || '').trim().slice(0, MAX_EVIDENCE_TITLE);
   var text = String(entry.text || '').slice(0, MAX_EVIDENCE_TEXT);
   var number = parseInt(entry.number, 10) || 0;
   var type = String(entry.type || 'note').slice(0, 40);
@@ -365,11 +374,11 @@ function saveEvidenceEntry(themeId, entry) {
         .filter(function (a) { return a && a.fileId && !keptIds[a.fileId]; });
       if (removed.length) archiveEvidenceFiles_(removed, schoolFolderId());
       sheet.getRange(rowIdx, 5, 1, 4).setValues([[type, date, text, attachmentsJson]]);
-      sheet.getRange(rowIdx, 11).setValue(now);
+      sheet.getRange(rowIdx, 11, 1, 2).setValues([[now, title]]);
       return { ok: true, entryId: entry.entryId, attachments: attachments };
     }
     var entryId = Utilities.getUuid();
-    sheet.appendRow([entryId, access.schoolName, themeId, number, type, date, text, attachmentsJson, access.email, now, now]);
+    sheet.appendRow([entryId, access.schoolName, themeId, number, type, date, text, attachmentsJson, access.email, now, now, title]);
     return { ok: true, entryId: entryId, attachments: attachments };
   } catch (e) {
     trashFiles_(copied); // never leave copies behind for an entry that didn't save
