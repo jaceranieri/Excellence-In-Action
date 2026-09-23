@@ -656,6 +656,93 @@
   box-shadow: 0 2px 0 0 #e9eaf0;
 }
 
+.evidence-staged-name {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.evidence-staged-status {
+  font-size: 10.5px;
+  color: #8a8d99;
+}
+
+.evidence-staged-attachment.is-copying .evidence-staged-status {
+  animation: evidence-copying-pulse 1.4s ease-in-out infinite;
+}
+
+.evidence-staged-attachment.is-error {
+  border-color: #efc9c9;
+}
+
+.evidence-staged-attachment.is-error .evidence-staged-status {
+  color: #c94f4f;
+}
+
+@keyframes evidence-copying-pulse {
+  50% { opacity: 0.45; }
+}
+
+.evidence-compose-notice {
+  flex: none;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #f4f5f8;
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: #4a4d5a;
+}
+
+.evidence-compose-notice p {
+  margin: 0 0 6px;
+}
+
+.evidence-compose-notice p:last-child {
+  margin-bottom: 0;
+}
+
+.evidence-compose-notice .is-error {
+  color: #c94f4f;
+}
+
+.evidence-compose-notice .evidence-notice-tip {
+  font-size: 10.5px;
+  color: #8a8d99;
+}
+
+.evidence-notice-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.evidence-notice-btn {
+  border: none;
+  border-radius: 8px;
+  padding: 7px 12px;
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+  font-weight: 700;
+  font-size: 11.5px;
+  cursor: pointer;
+  background: var(--modal-accent, #2E5AAC);
+  color: #fff;
+}
+
+.evidence-notice-btn.is-secondary {
+  background: #e3e5ec;
+  color: #2a2c38;
+}
+
+.evidence-compose-actions button:disabled {
+  opacity: 0.5;
+  cursor: default;
+  transform: none;
+}
+
 .evidence-staged-remove {
   width: 20px;
   height: 20px;
@@ -866,6 +953,14 @@
   :root:not([data-theme="light"]) .evidence-compose-actions button {
     box-shadow: 0 3px 0 0 #171825;
   }
+  :root:not([data-theme="light"]) .evidence-compose-notice {
+    background: #262838;
+    color: #c7c9db;
+  }
+  :root:not([data-theme="light"]) .evidence-notice-btn.is-secondary {
+    background: #34364a;
+    color: #d7d9ea;
+  }
   :root:not([data-theme="light"]) .grade-dropdown {
     box-shadow: 0 4px 0 0 #171825, 0 12px 28px rgba(0, 0, 0, 0.4);
   }
@@ -936,6 +1031,14 @@
 }
 :root[data-theme="dark"] .evidence-compose-actions button {
   box-shadow: 0 3px 0 0 #171825;
+}
+:root[data-theme="dark"] .evidence-compose-notice {
+  background: #262838;
+  color: #c7c9db;
+}
+:root[data-theme="dark"] .evidence-notice-btn.is-secondary {
+  background: #34364a;
+  color: #d7d9ea;
 }
 :root[data-theme="dark"] .grade-dropdown {
   box-shadow: 0 4px 0 0 #171825, 0 12px 28px rgba(0, 0, 0, 0.4);

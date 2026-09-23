@@ -67,8 +67,10 @@ in `import-eia.py` itself; not run by the app.
   the `USERS_SHEET_ID` Script Property (Project Settings → Script
   Properties in the Apps Script editor — not hardcoded in `Code.gs`).
 - `Code.gs`'s `getCurrentUserAccess()` reads `Session.getActiveUser().getEmail()`
-  and looks it up (case-insensitive) against the sheet's **first tab**
-  (whatever it's named). Returns `{email, found, active, name, schoolName, crestUrl}`.
+  and looks it up (case-insensitive) against the **Users** tab (falling
+  back to the first tab). Returns `{email, found, active, name, schoolName, crestUrl}`.
+  The same spreadsheet's **Schools** tab maps each school to its evidence
+  folder — see "Attachments" below.
 - **Deployment settings matter**: `appsscript.json` has
   `"executeAs": "USER_DEPLOYING"` (i.e. "Execute as: Me") and
   `"access": "DOMAIN"`. This combination is deliberate and documented in
@@ -106,7 +108,8 @@ first write if they don't already exist (`ensureSheet_()`):
 - **EvidenceLog** — one row per evidence entry (not per school):
   `EntryId, SchoolName, ThemeId, EntryNumber, Type, Date, Text,
   Attachments, CreatedBy, CreatedAt, UpdatedAt`. `Attachments` is a JSON
-  array of `{fileId, name, mimeType, url, kind}`. `EntryId` (a UUID,
+  array of `{fileId, name, mimeType, url}`, each a copy inside the
+  school's evidence folder. `EntryId` (a UUID,
   generated server-side in `saveEvidenceEntry()`) is the real identity for
   edits/deletes — `EntryNumber` is only the theme-scoped display number
   the UI has always shown ("Evidence 1", "Evidence 2", ...).
@@ -149,200 +152,171 @@ never successfully saved (no `entryId` yet, e.g. a save that's still
 in-flight or failed) are only removed client-side, since there's nothing
 to delete server-side.
 
-**Attachments — Google Picker, not a real file input.** The evidence
-compose form's "Attach Files" button opens the Google Picker
-(`openDrivePicker()`), letting the visitor pick an existing Drive file
-they own or upload a new one — into **their own** Drive, not the app's.
-The dialog has both "My Drive" (existing files) and "Upload" (local
-computer → their own Drive) as tabs in the same dialog
-(`.addView(google.picker.ViewId.DOCS).addView(new
-google.picker.DocsUploadView())`) — a deliberate choice over two separate
-buttons, confirmed with the project owner, and uploads land wherever
-Picker's Upload view defaults them (no app-managed folder — also
-confirmed, not a default to revisit without asking first).
+**Attachments — copied into each school's evidence folder.** Evidence
+never links to a staff member's own file. When someone picks a file in
+the Google Picker (tabs: Google Drive, Shared drives, Upload), the server
+(`Code.gs`'s `attachDriveFile()`) copies it into that school's
+**EvidenceFolder**, and the evidence entry links to the copy.
 
-Getting this to run as the *visiting* user (not this app's own
-"Execute as: Me" identity) took two wrong turns before landing on what's
-actually implemented now — worth understanding both, since either one
-looks plausible until you actually hit its wall:
+- **Where the folder comes from:** the Users spreadsheet's **Schools**
+  tab. Columns are found by header name: `SchoolName` (must match the
+  Users tab's SchoolName) and `EvidenceFolder` (a folder URL or bare
+  ID). The Users tab is read by name (`Users`), falling back to the first
+  tab.
+- **Who owns the copies:** the script owner (the account the web app
+  "Executes as"). The owner needs **Editor** on every school's folder,
+  and the folder owner must allow editors to share (the Drive default).
+  The copies count against the owner's Drive storage.
+- **Who can see them:** after login the page calls
+  `ensureSchoolFolderAccess()`, which gives the visitor **Viewer** on
+  their school's folder (and `REVIEW_GROUP_EMAIL`, if set), with no
+  notification email. Copies inherit the folder's sharing, so staff get
+  view-only and the owner keeps edit. Anyone given **Editor** on a
+  school folder directly in Drive also gets edit on its copies; the app
+  can't restrict inherited access in My Drive. Staff can also browse the
+  folder in Drive, including ARCHIVE.
+- **File naming:** `<ThemeId> – <Theme title> – <original name>`, for
+  example `L_IC_PLD – Professional Learning Design – Staff survey.pdf`.
+  The file's Drive description records the theme, school, who attached
+  it and when, and the original name.
+- **How the copy works:** the owner can't read the visitor's file, and
+  the visitor's `drive.file` token can't change sharing on a file the
+  app didn't create. So `attachDriveFile()` goes through a temporary
+  copy: the visitor's token copies the picked file into their My Drive
+  and shares it with the owner (no email). The owner's identity then
+  copies it into the school folder, and the visitor's token deletes the
+  temporary copy. Every read of the source uses the visitor's own token,
+  so the app can only ever copy files the visitor could already open.
+- **Limits:** 25 MB per file (`MAX_ATTACHMENT_BYTES`; Google Docs,
+  Sheets and Slides have no size and are always allowed). Files whose
+  owner disabled copying, folders and shortcuts are rejected with a
+  plain-English message.
+- **Removing evidence:** deleting an entry, or removing an attachment
+  from a saved entry and saving, moves the file into
+  `<school folder>/ARCHIVE` and renames it `ARCHIVED – <name>`
+  (`archiveEvidenceFiles_()`). Copies attached during a compose that was
+  cancelled or closed never became evidence, so they go to Drive's
+  Trash instead (`discardStagedAttachments()`).
+- **The server doesn't trust the browser:** every `google.script.run`
+  function works out the visitor's school from their session
+  (`requireActiveUser_()`), never from an argument.
+  `saveEvidenceEntry()` rebuilds each attachment's name and url from
+  Drive, and drops any file not in that school's folder.
 
-- `ScriptApp.getOAuthToken()` always returns the **developer's** token: since
-  the whole script (every `google.script.run` call included) executes as
-  "Me" regardless of who's visiting, this can't ever represent the visitor.
-- Google Identity Services' client-side `google.accounts.oauth2.initTokenClient()`
-  (what an earlier round of this project actually shipped) requires
-  registering the *calling page's exact origin* with Google. But Apps
-  Script always serves a deployed web app's real content from a
-  per-deployment `*.googleusercontent.com` sandbox domain — never
-  `script.google.com` itself — and Google's OAuth console permanently
-  **forbids** registering any origin on that domain ("Invalid origin:
-  Uses a forbidden domain"). This isn't fixable by trying a different
-  origin string; no origin on that domain is ever accepted, for any Apps
-  Script project.
+**Visitor Drive authorization.** The Picker needs the *visitor's* own
+token. `ScriptApp.getOAuthToken()` is always the owner's, and Google
+Identity Services can't be used because Apps Script serves the page from
+a `*.googleusercontent.com` origin Google refuses to register. So the
+["OAuth2 for Apps Script"](https://github.com/googleworkspace/apps-script-oauth2)
+library runs a server-side Authorization Code flow
+(`getVisitorDriveService_()`, `getPickerAuth()`, `driveAuthCallback()`).
+Details that matter:
 
-**What's actually implemented**: the ["OAuth2 for Apps
-Script"](https://github.com/googleworkspace/apps-script-oauth2) library
-(`Code.gs`'s `getDriveService_()`), which runs a full OAuth2
-Authorization Code redirect through
-`https://script.google.com/macros/d/{SCRIPT_ID}/usercallback` — a URL
-Google's console *does* accept as an Authorized redirect URI, unlike a
-`googleusercontent.com` JS origin. Each visitor's own token is stored in
-`PropertiesService.getUserProperties()`, which — like
-`Session.getActiveUser()` elsewhere in this file — is scoped per browsing
-visitor regardless of the script's own execute-as setting. Flow:
-`Script_App.html`'s `openDrivePicker()` calls `Code.gs`'s
-`getPickerAuth()`; if the visitor hasn't granted Drive access yet (or a
-prior grant expired), it returns an `authorizationUrl` that the client
-opens in a popup and polls (`popup.closed`) until the visitor finishes
-with it, then calls `getPickerAuth()` again. Once authorized, the same
-per-visitor access token is used both to build the Picker
-(`setOAuthToken()`) and, after a pick, to call the Drive REST API
-directly (`fetch(...)`, not `DriveApp`) granting the review group reader
-access — since the visitor is the one with permission to share their own
-file; a server-side `DriveApp.addViewer()` as the developer would fail,
-since the developer never had access to that file to begin with.
+- **Tokens are keyed by visitor email, in Script Properties.** The
+  earlier version used `PropertiesService.getUserProperties()`. In an
+  "Execute as: Me" web app that store most likely belongs to the owner,
+  not the visitor, so one Drive token ended up shared between everyone.
+  Run `resetLegacyDriveTokens()` once to delete the old token.
+- **Scope is `drive.file` plus `userinfo.email`,** not full `drive`.
+  The copy-into-folder design no longer changes sharing on visitors'
+  own files, so the narrow scope is enough. `drive.file` requires the
+  Picker's `setAppId()` (the Cloud project number, taken from the prefix
+  of `DRIVE_OAUTH_CLIENT_ID`). Without it, picked files 404.
+- **Multiple signed-in Google accounts:**
+  - The consent URL carries `login_hint` (the visitor's email) and `hd`
+    (their domain), so Google preselects the right account.
+  - The callback checks, via `tokeninfo`, that the account that granted
+    access is the one signed in to the app. If it isn't, the grant is
+    rejected and the page shows why.
+  - The visitor's email travels inside the signed state token, so the
+    token is stored for the right person even if the callback page runs
+    under another signed-in account.
+  - The redirect URI uses the domain-scoped form
+    `https://script.google.com/a/macros/<domain>/d/<SCRIPT_ID>/usercallback`
+    so Google serves the callback under the school account rather than
+    the browser's default (often personal) account. **This form is
+    untested against a live deployment.** If the consent popup ends on a
+    Google error page, set Script Property
+    `DRIVE_OAUTH_REDIRECT_MODE=standard` to fall back to
+    `https://script.google.com/macros/d/<SCRIPT_ID>/usercallback`.
+    Register both URIs in Cloud Console so switching needs no console
+    change.
+- **Pop-up handling:** the page fetches auth status as soon as compose
+  opens, so an Attach Files click can open the consent window
+  synchronously. Browsers block `window.open()` inside async callbacks.
+  It then polls `getPickerAuth()` every 2.5s (up to 3 minutes) rather
+  than watching `popup.closed`, which Google's sign-in pages break.
+- **Token lifetime:** tokens are requested with `access_type=offline`,
+  so visitors authorise once and tokens refresh silently.
+  `getPickerAuth()` refreshes any token with under 10 minutes left
+  before handing it to the Picker.
 
-**The Drive scope is full `https://www.googleapis.com/auth/drive`, not
-`drive.file`.** `drive.file` was tried first (narrower, "least privilege"
-— the obvious first choice) and does let the Picker/attach flow work,
-but the sharing step then 403s with `insufficientFilePermissions`:
-`drive.file` only grants read/write on a file's own content, not the
-ability to change who it's shared with, unless the app itself created
-that file — which a picked pre-existing file wasn't. There's no
-narrower scope that still permits managing sharing on an arbitrary
-existing file, so `getDriveService_()` requests full `drive`. Since the
-OAuth consent screen is Internal, this doesn't trigger Google's
-app-verification review; it does mean the consent popup visitors see
-says "See, edit, create, and delete all of your Google Drive files"
-rather than the narrower `drive.file` wording, even though this app's
-own code still only ever touches files someone explicitly attaches.
-The OAuth2 service is also named `'drive_v2'`, not `'drive'` — the
-library stores each visitor's granted token keyed by that name in their
-own `UserProperties`, with no idea a code change altered the requested
-scope, so anyone who'd already authorized under the old `'drive'` name
-would keep silently reusing their too-narrow token and hitting the same
-403 forever. The name change forces a fresh authorization prompt for
-everyone, old testers included. (This does NOT require touching the
-Cloud Console redirect URI again — `usercallback`'s registered URL is
-one fixed endpoint per script project, unrelated to the OAuth2 service's
-internal name.)
-
-**All config now lives in Script Properties, not `Code.gs`** (the
-project owner's preference, and better practice regardless — this file
-gets pasted around and eyeballed, Script Properties don't). `Code.gs` no
-longer has a `CONFIG` object; every ID/secret/email is read via
-`requireProp_('KEY_NAME')`, which throws a clear error naming the
-missing key if it isn't set. Set these under the Apps Script editor's
-**Project Settings → Script Properties** before anything will work:
+**All config lives in Script Properties** (Project Settings → Script
+Properties), read via `requireProp_()`:
 
 | Script Property | Value |
 |---|---|
-| `USERS_SHEET_ID` | `1OQXaRVUJopdjr4OWQbOvNLjoq-_bwaiNS3Rfu1-C62I` |
+| `USERS_SHEET_ID` | `1OQXaRVUJopdjr4OWQbOvNLjoq-_bwaiNS3Rfu1-C62I` (Users + Schools tabs) |
 | `DATA_SHEET_ID` | `15l-HVd1MtjN3uc-jnXDEQSNMDHDN1NTJMSa3v78ptfQ` |
-| `REVIEW_GROUP_EMAIL` | your reviewers' Google Group (currently `testgroup@syd.catholic.edu.au` as a placeholder) |
-| `PICKER_API_KEY` | from Cloud Console setup below |
-| `DRIVE_OAUTH_CLIENT_ID` | from Cloud Console setup below |
-| `DRIVE_OAUTH_CLIENT_SECRET` | from Cloud Console setup below — this one's genuinely a secret; Script Properties is exactly the right place for it, `Code.gs` would not have been |
+| `PICKER_API_KEY` | Cloud Console API key, restricted to the Google Picker API |
+| `DRIVE_OAUTH_CLIENT_ID` | Cloud Console OAuth client (Web application) |
+| `DRIVE_OAUTH_CLIENT_SECRET` | same client's secret |
+| `REVIEW_GROUP_EMAIL` | *optional*: a Google Group given Viewer on every school folder |
+| `DRIVE_OAUTH_REDIRECT_MODE` | *optional*: `standard` to use the non-domain callback URI (see above) |
 
-**Cloud Console + Apps Script setup walkthrough** (replaces the earlier,
-GIS-based version of these steps — if you already created an OAuth
-Client following the old instructions, its "Authorized JavaScript
-origins" attempt will have failed with the forbidden-domain error; you
-can reuse the same Client ID/Secret, you just need to add a redirect URI
-to it instead, per step 5 below):
+Token entries (`oauth2.drive_<hash>`) and `eia.driveAuthError.<hash>`
+keys also appear in Script Properties. Those are per-visitor Drive
+tokens and one-shot error messages; leave them alone. Deleting one just
+makes that visitor re-authorise.
 
-1. **Add the OAuth2 library** to the Apps Script project: editor → click
-   the **+** next to "Libraries" in the left sidebar → paste script ID
-   `1B7FSrk5Zi6L1rSxxTDgDEUsPzlukDsi4KGuTMorsTQHhGBzBkMun4iDF` → Look up
-   → pick the latest version → Add. (Do this through the editor UI, not
-   by hand-editing `appsscript.json`'s `dependencies` — the UI fills in
-   the correct current version for you.)
-2. **Link a standard GCP project to the Apps Script project**, if it
-   isn't already: Project Settings (gear icon) → "Google Cloud Platform
-   (GCP) Project" → "Change project" → enter the Project Number of a GCP
-   project you own (create one at console.cloud.google.com first if you
-   don't have one to use).
-3. **Enable the Picker API**: in that GCP project's Console → APIs &
-   Services → Library → search "Google Picker API" → Enable.
-4. **Create the API key**: APIs & Services → Credentials → Create
-   Credentials → API key. Click "Restrict key" → under "API
-   restrictions" choose "Restrict key" → select "Google Picker API" only
-   (don't leave it unrestricted). This becomes the `PICKER_API_KEY`
-   Script Property above.
-5. **Create (or fix) the OAuth Client ID**: APIs & Services →
-   Credentials → Create Credentials → OAuth client ID (or edit the one
-   from an earlier attempt).
-   - If this is the project's first OAuth client, configure the consent
-     screen first — set **User type: Internal** (this app is already
-     domain-restricted via `appsscript.json`'s `access: DOMAIN`, so
-     Internal keeps it that way and skips Google's app-verification
-     review, which External would otherwise require for the full
-     `drive` scope this app requests — see "The Drive scope is full
-     ... not drive.file" above for why).
-   - Application type: **Web application**.
-   - Leave "Authorized JavaScript origins" **empty** — this flow doesn't
-     use it, and no origin here would be accepted anyway.
-   - Under **Authorized redirect URIs**, add the URI from step 6 below.
-   - Save. The Client ID becomes `DRIVE_OAUTH_CLIENT_ID`, the Client
-     Secret becomes `DRIVE_OAUTH_CLIENT_SECRET`.
-6. **Get the exact redirect URI**: in the Apps Script editor, select
-   `logDriveRedirectUri` in the function dropdown → Run → View → Logs.
-   Copy the logged URL (`https://script.google.com/macros/d/{SCRIPT_ID}/usercallback`)
-   into step 5's Authorized redirect URIs. (This will fail with a
-   `requireProp_` error the *first* time, before `DRIVE_OAUTH_CLIENT_ID`/
-   `SECRET` are set — that's fine, `getRedirectUri()` doesn't actually
-   need them to compute the URI; if it does error before you have real
-   values, temporarily set both Script Properties to any placeholder
-   string, run this, then replace them with the real values from step 5.)
-7. **Set all six Script Properties** from the table above.
-8. **Redeploy**: Deploy → Manage deployments → Edit → New version.
-9. **Test**: log in → select an Element → open a Theme → Add Evidence →
-   Attach Files. First time, expect a popup asking you to sign in/consent
-   to Drive access — close it once it says "Drive access granted", then
-   click Attach Files again and the actual Picker dialog should open with
-   its "My Drive" and "Upload" tabs.
-   - If the popup shows a Google error page instead of your consent
-     screen, the redirect URI in step 5 doesn't exactly match what
-     `logDriveRedirectUri()` logged — re-run that and re-check, rather
-     than re-typing it from memory.
-   - If authorization succeeds but the Picker dialog itself then opens
-     **blank**, with a console error `Uncaught Error: Incorrect origin
-     value. Expected 'https://script.google.com' but was
-     '...googleusercontent.com'` — this is a separate, well-known Apps
-     Script + Picker quirk, unrelated to the OAuth setup above: Apps
-     Script renders the page inside a hidden iframe whose real origin is
-     a `*.googleusercontent.com` sandbox domain, not the
-     `script.google.com` URL actually shown in the browser's address
-     bar, and Picker's own origin auto-detection gets confused by that.
-     Already fixed in `openDrivePicker()` via
-     `.setOrigin(google.script.host.origin)` — if you see this error
-     anyway, you're probably running an older pasted-in copy of
-     `Script_App.html`. A `Framing 'https://docs.google.com/' violates
-     ... Content-Security-Policy ... report-only` console message around
-     the same time is harmless noise (a report-only CSP on Google's own
-     infrastructure, "logged, but no further action taken") — not the
-     actual error, ignore it.
-   - If the Picker itself opens fine and you can pick/upload a file, but
-     the browser console shows `POST
-     https://www.googleapis.com/drive/v3/files/{id}/permissions 403
-     (Forbidden)` — that's the `drive.file`-vs-full-`drive` scope issue
-     described above. If you're testing against a version of `Code.gs`
-     from before that fix, or you authorized once already and the fix
-     hasn't forced a re-prompt for some reason, revoke this app's access
-     at https://myaccount.google.com/permissions and try Attach Files
-     again to force a completely fresh authorization.
+**Setup / upgrade checklist:**
 
-**Not yet done / worth knowing**:
-- None of this has been exercised against a live deployment or real
-  Sheets — only syntax-checked locally (no live Apps Script execution or
-  network egress to Google's OAuth/Picker endpoints from this sandboxed
-  dev environment). Test the full loop (rubric click → autosave →
-  reload → state restored; evidence + Picker attach → reload → still
-  there) against the real deployment before trusting it.
-- `RATINGS_HEADERS`/`EVIDENCE_HEADERS` in `Code.gs` are the source of
-  truth for both tabs' column order — if you ever reorder columns by
-  hand in the sheet, update these too (`ensureSheet_()` only writes
-  headers on first creation, it doesn't reconcile an existing tab).
+1. In the GCP project linked to the script, make sure both the **Google
+   Picker API** and the **Google Drive API** are enabled (APIs &
+   Services → Library).
+2. OAuth consent screen: **User type Internal**. Add the scopes
+   `.../auth/drive.file` and `.../auth/userinfo.email` if the console
+   asks.
+3. OAuth client `ExcellenceInActionOAuth_v2` (Web application):
+   - Leave "Authorized JavaScript origins" empty.
+   - Under **Authorized redirect URIs**, add both URIs printed by
+     running `logDriveRedirectUri` in the editor (View → Logs).
+   - Leave the auto-created "Apps Script" OAuth client alone. Apps
+     Script manages it for its own authorization.
+4. In the editor, update the OAuth2 library (Libraries → OAuth2 →
+   latest version). The domain redirect needs `setRedirectUri()`.
+5. Paste the updated `Code.gs`, `Script_App.html`,
+   `Stylesheet_ThemeModal.html` and `Index.html`.
+6. Run **`checkSetup`** from the editor. It prompts you to authorise the
+   new scopes, then logs OK/FIX for:
+   - every Script Property
+   - the Schools tab
+   - for each school, whether the folder opens, whether you can add
+     files, and whether you can share it.
+7. Run **`resetLegacyDriveTokens`** once.
+8. Deploy → Manage deployments → Edit → **New version**.
+9. Test with a second account, ideally one signed in alongside a
+   personal Gmail:
+   - Attach Files → consent window → pick a file → it shows
+     "Copying…", then its new name.
+   - Submit, then open the link as a colleague at the same school: it
+     should be view-only.
+   - Delete the entry and check the file moved to ARCHIVE with the
+     prefix.
+   - Cancel a compose with an attached file and check the copy went to
+     Trash.
+
+**Not yet done / worth knowing:**
+- None of this has run against a live deployment. The flow was tested
+  locally in headless Chromium with a mocked `google.script.run` and
+  Picker (attach, copying/error states, submit, cancel/discard,
+  edit/archive, delete, consent-window polling). The Drive, OAuth and
+  Sheets calls themselves still need the live test above.
+- `RATINGS_HEADERS` / `EVIDENCE_HEADERS` in `Code.gs` are the source of
+  truth for column order. `ensureSheet_()` only writes headers when it
+  creates a tab.
+- Tab close or crash mid-compose can leave an unsubmitted copy in the
+  school folder. It's harmless, just clutter.
 
 ## Layout system — read this before touching sizing
 
@@ -428,19 +402,9 @@ computed margins directly.
 
 ## Known limitations / explicitly deferred (not oversights)
 
-- **Ratings/Evidence persistence is now built (`gas/` only) — see
-  "Ratings + Evidence persistence" below.** All config is read from
-  Script Properties, not hardcoded in `Code.gs` — `USERS_SHEET_ID` and
-  `DATA_SHEET_ID` are known values (see the table in "Ratings + Evidence
-  persistence"), `REVIEW_GROUP_EMAIL` is currently a placeholder
-  (`testgroup@syd.catholic.edu.au`), and `PICKER_API_KEY` /
-  `DRIVE_OAUTH_CLIENT_ID` / `DRIVE_OAUTH_CLIENT_SECRET` need real values
-  from the Cloud Console walkthrough in that same section — none of the
-  six Script Properties exist until you set them. None of this has been
-  tested against a real deployment yet — only syntax-checked locally,
-  since the OAuth2 library's redirect flow and real Sheets writes can't
-  be exercised from this sandboxed dev environment (no live Apps Script
-  execution, no network egress to Google's OAuth/Picker endpoints).
+- **Ratings/Evidence persistence and the evidence-folder copy flow are
+  `gas/` only** — see "Ratings + Evidence persistence" above for the
+  Script Properties, setup checklist and what still needs live testing.
   `example.html` (the static build) intentionally has NO persistence —
   it has no backend to persist to. Its `ELEMENT_THEMES` got the same
   `id` field added (for parity/future use) but nothing else; it stays a
@@ -470,8 +434,8 @@ computed margins directly.
    (see the table above).
 2. Test locally per "Testing gotcha" above if the change touches layout,
    the login flow, or anything in `#app-root`.
-3. Commit and push to `claude/code-project-setup-1qbwa6` (the working
-   branch this whole project has been built on).
+3. Commit and push to the session's working branch and open a PR into
+   `main`.
 4. Tell the user which `gas/*.html`/`.gs` files changed — they paste the
    updated file contents into their existing Apps Script project's
    matching files (same names, no extensions in the Apps Script editor)
