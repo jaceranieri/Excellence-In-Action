@@ -144,17 +144,48 @@ concurrent same-school editing turns out to be common in practice, the
 fix is a read-modify-write per-theme-key merge inside `saveRatings()`
 rather than a whole-row overwrite.
 
-**Save flow — Evidence**: Submit calls `Code.gs`'s `saveEvidenceEntry()`
-(append if new, update in place by `EntryId` if editing) and waits for
-it. The entry appears in the list only once the server confirms. A
-failure keeps the draft open. Deleting calls `deleteEvidenceEntry()`.
+**Save flow — Evidence**: Submit closes the draft immediately. The entry
+appears (opened) with a pulsing "Copying files…" / "Saving…" status, and
+Edit/Delete are hidden, while `Code.gs`'s `saveEvidenceEntry()` runs in
+the background (append if new, update in place by `EntryId` if editing).
+Once a `google.script.run` call is sent, the server finishes it even if
+the modal or tab is closed. `beforeunload` still warns while a save is
+in flight, because a failure can't be shown after the tab is gone.
+
+If a save fails, nothing is stored on the server, and the entry stays in
+the list marked "Not saved" with an explanation:
+- **Try again** is offered only when no individual file failed.
+- **Edit** reopens the draft with the failed files in red.
+- **Discard** removes a never-saved entry. For a failed edit of a saved
+  entry, it reverts to the saved version (`entry.lastSaved`).
+
+Deleting calls `deleteEvidenceEntry()`.
 
 **Attachments — copied into each school's evidence folder.** Evidence
 never links to a staff member's own file. Picking a file in the Google
 Picker (tabs: Google Drive, Shared drives, Upload) only **stages** it.
-On **Submit**, `saveEvidenceEntry()` copies each staged file into that
-school's **EvidenceFolder** (`copyPickedFile_()`), and the entry links to
-the copies. If any copy fails, the copies that worked are trashed,
+On **Submit**, `saveEvidenceEntry()` copies the staged files into that
+school's **EvidenceFolder** (`copyPickedFiles_()`), and the entry links to
+the copies. Each copy step runs for all files at once
+(`UrlFetchApp.fetchAll`, via `runDriveBatch_()`), so a submit costs about
+five round trips to Drive however many files it has. Temporary Drive
+errors (429/5xx) are retried twice with backoff. A 404 on the owner-copy
+step is also retried, because it usually means the share hasn't
+propagated yet.
+
+Picker tabs:
+- **Recent**: all files, no folders.
+- **My Drive**: browsed from the root folder, instead of a flat list of
+  every folder the visitor can access.
+- **Shared drives**
+- **Upload**
+
+All tabs use list view. `DocsView.setLabel` is used when the Picker
+build supports it.
+
+Error messages for unexpected failures include the Drive status and
+reason code (e.g. "Drive error 500 backendError"). The Executions log
+has the matching `console.error` line, with the file ID and name. If any copy fails, the copies that worked are trashed,
 nothing is saved, and the draft stays open with the failing files marked
 in red. Cancelling a draft never touches Drive.
 
@@ -181,7 +212,7 @@ in red. Cancelling a draft never touches Drive.
   it and when, and the original name.
 - **How the copy works:** the owner can't read the visitor's file, and
   the visitor's `drive.file` token can't change sharing on a file the
-  app didn't create. So `copyPickedFile_()` goes through a temporary
+  app didn't create. So `copyPickedFiles_()` goes through a temporary
   copy: the visitor's token copies the picked file into their My Drive
   and shares it with the owner (no email). The owner's identity then
   copies it into the school folder, and the visitor's token deletes the
@@ -300,9 +331,9 @@ reconnect.
   the draft open, a reconnect keeping staged files, edit/archive, and
   consent-window polling). The real OAuth, Drive and Sheets calls need
   the live test above.
-- Submitting several large files can take a while. Each copy is done
-  server-side one after another (Apps Script caps a call at 6 minutes),
-  so keep an eye on it if staff attach many files at once.
+- A console line `[Violation] Permissions policy violation: unload is not
+  allowed in this document` appears when the Picker opens. It comes from
+  Google's own Picker/gapi scripts, is harmless, and isn't ours to fix.
 - `RATINGS_HEADERS` / `EVIDENCE_HEADERS` in `Code.gs` are the source of
   truth for column order. `ensureSheet_()` only writes headers when it
   creates a tab.

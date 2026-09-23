@@ -1860,41 +1860,75 @@
       return null;
     }
 
-    function renderEvidenceList(theme) {
+    // Keeps whichever entry is open across re-renders (background saves
+    // re-render the list); `openNumber` forces a specific entry open.
+    function renderEvidenceList(theme, openNumber) {
+      var openNumbers = {};
+      if (openNumber !== undefined && openNumber !== null) {
+        openNumbers[openNumber] = true;
+      } else {
+        evidenceListScrollEl.querySelectorAll('.evidence-accordion-item.is-open').forEach(function (el) {
+          openNumbers[el.getAttribute('data-number')] = true;
+        });
+      }
       var items = (theme.evidence || []).slice().sort(function (a, b) { return (b.number || 0) - (a.number || 0); });
       if (!items.length) {
         evidenceListScrollEl.innerHTML = '<p class="evidence-empty">No evidence submitted yet.</p>';
         return;
       }
-      evidenceListScrollEl.innerHTML = items.map(renderAccordionItem).join('');
+      evidenceListScrollEl.innerHTML = items.map(function (item) {
+        return renderAccordionItem(item, !!openNumbers[item.number]);
+      }).join('');
     }
 
-    function renderAccordionItem(item) {
+    function renderAccordionItem(item, isOpen) {
       var attachments = item.attachments || [];
+      var copying = attachments.some(function (a) { return a.pickedId; });
       var meta = [item.date];
       if (attachments.length) meta.push(attachments.length + ' attachment' + (attachments.length === 1 ? '' : 's'));
+      if (item.pending) meta.push(copying ? 'Copying files…' : 'Saving…');
+      else if (item.saveError) meta.push('Not saved');
       var attachmentsHtml = attachments.map(function (a) {
         var label = escapeHtml(a.name) + attachmentIcon(a.kind || inferAttachmentKind(a.mimeType));
-        return a.url
-          ? '<a class="evidence-attachment" href="' + escapeHtml(a.url) + '" target="_blank" rel="noopener">' + label + '</a>'
-          : '<div class="evidence-attachment">' + label + '</div>';
+        if (a.url && !a.pickedId) {
+          return '<a class="evidence-attachment" href="' + escapeHtml(a.url) + '" target="_blank" rel="noopener">' + label + '</a>';
+        }
+        return '<div class="evidence-attachment' + (a.error ? ' is-error' : ' is-pending') + '">' + label + '</div>';
       }).join('');
-      return '<div class="evidence-accordion-item">' +
-        '<div class="evidence-accordion-header" tabindex="0" role="button" aria-expanded="false">' +
+      var status = '';
+      var actions;
+      if (item.pending) {
+        status = '<p class="evidence-item-status">' + (copying
+          ? 'Copying files to your school’s evidence folder… You can keep working.'
+          : 'Saving…') + '</p>';
+        actions = '';
+      } else if (item.saveError) {
+        status = '<p class="evidence-item-status is-error">' + escapeHtml(item.saveError) + '</p>';
+        var fileErrors = attachments.some(function (a) { return a.error; });
+        actions =
+          (fileErrors ? '' : '<button type="button" class="evidence-retry-btn" data-number="' + item.number + '">Try again</button>') +
+          '<button type="button" class="evidence-edit-btn" data-number="' + item.number + '">Edit</button>' +
+          '<button type="button" class="evidence-discard-btn" data-number="' + item.number + '">Discard</button>';
+      } else {
+        actions =
+          '<button type="button" class="evidence-edit-btn" data-number="' + item.number + '">Edit</button>' +
+          '<button type="button" class="evidence-delete-btn" data-number="' + item.number + '">Delete</button>';
+      }
+      var stateClass = item.pending ? ' is-pending' : (item.saveError ? ' is-failed' : '');
+      return '<div class="evidence-accordion-item' + (isOpen ? ' is-open' : '') + stateClass + '" data-number="' + item.number + '">' +
+        '<div class="evidence-accordion-header" tabindex="0" role="button" aria-expanded="' + (isOpen ? 'true' : 'false') + '">' +
           '<span class="evidence-accordion-title">' +
             '<span class="evidence-accordion-number">Evidence ' + item.number + '</span>' +
-            '<span class="evidence-accordion-meta">' + escapeHtml(meta.join(' \u00b7 ')) + '</span>' +
+            '<span class="evidence-accordion-meta">' + escapeHtml(meta.join(' · ')) + '</span>' +
           '</span>' +
           '<svg class="evidence-accordion-chevron" viewBox="0 0 10 6" fill="none" xmlns="http://www.w3.org/2000/svg">' +
             '<path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
         '</div>' +
         '<div class="evidence-accordion-body"><div class="evidence-accordion-body-inner">' +
+          status +
           '<p class="evidence-item-text">' + escapeHtml(item.text || '') + '</p>' +
           (attachmentsHtml ? '<p class="evidence-attachments-label">Attachments</p>' + attachmentsHtml : '') +
-          '<div class="evidence-item-actions">' +
-            '<button type="button" class="evidence-edit-btn" data-number="' + item.number + '">Edit</button>' +
-            '<button type="button" class="evidence-delete-btn" data-number="' + item.number + '">Delete</button>' +
-          '</div>' +
+          (actions ? '<div class="evidence-item-actions">' + actions + '</div>' : '') +
         '</div></div>' +
         '</div>';
     }
@@ -1924,6 +1958,8 @@
 
     function deleteEvidence(number, btnEl) {
       if (!currentModalTheme) return;
+      var target = findEvidenceByNumber(currentModalTheme, number);
+      if (!target || target.pending) return;
       if (pendingDeleteNumber === number) {
         clearTimeout(pendingDeleteTimeout);
         pendingDeleteNumber = null;
@@ -1953,6 +1989,20 @@
       if (editBtn) { startEditEvidence(parseInt(editBtn.getAttribute('data-number'), 10)); return; }
       var delBtn = e.target.closest('.evidence-delete-btn');
       if (delBtn) { deleteEvidence(parseInt(delBtn.getAttribute('data-number'), 10), delBtn); return; }
+      var retryBtn = e.target.closest('.evidence-retry-btn');
+      var discardBtn = e.target.closest('.evidence-discard-btn');
+      if ((retryBtn || discardBtn) && currentModalTheme) {
+        var failed = findEvidenceByNumber(currentModalTheme, parseInt((retryBtn || discardBtn).getAttribute('data-number'), 10));
+        if (!failed || failed.pending) return;
+        if (retryBtn) {
+          saveEntryInBackground(currentModalTheme, currentModalCard, failed);
+        } else {
+          discardFailedEntry(currentModalTheme, failed);
+          renderEvidenceList(currentModalTheme);
+          syncCard(currentModalCard, currentModalTheme);
+        }
+        return;
+      }
       var header = e.target.closest('.evidence-accordion-header');
       if (header) toggleAccordionItem(header);
     });
@@ -1978,7 +2028,6 @@
     // until Submit (Code.gs's saveEvidenceEntry()). A staged item with
     // `error` set failed its last copy attempt and is shown in red.
     var MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
-    var composeSubmitting = false;
 
     function renderComposeAttachments() {
       evidenceComposeAttachmentsEl.innerHTML = composeAttachments.map(function (a, i) {
@@ -1987,8 +2036,7 @@
           '<span class="evidence-staged-name">' + escapeHtml(a.name) +
             (status ? '<span class="evidence-staged-status">' + escapeHtml(status) + '</span>' : '') +
           '</span>' +
-          '<button type="button" class="evidence-staged-remove" data-index="' + i + '" aria-label="Remove attachment"' +
-            (composeSubmitting ? ' disabled' : '') + '>&times;</button></div>';
+          '<button type="button" class="evidence-staged-remove" data-index="' + i + '" aria-label="Remove attachment">&times;</button></div>';
       }).join('');
     }
 
@@ -2021,25 +2069,12 @@
     }
 
     function updateComposeSubmitLabel() {
-      if (composeSubmitting) {
-        evidenceSubmitBtn.textContent = composeAttachments.some(function (a) { return a.pickedId; }) ? 'Copying files…' : 'Saving…';
-      } else {
-        evidenceSubmitBtn.textContent = editingNumber !== null ? 'Save Changes' : 'Submit';
-      }
-    }
-
-    function setComposeSubmitting(on) {
-      composeSubmitting = on;
-      evidenceSubmitBtn.disabled = on;
-      evidenceCancelBtn.disabled = on;
-      evidenceAttachBtn.disabled = on;
-      evidenceTextarea.readOnly = on;
-      updateComposeSubmitLabel();
-      renderComposeAttachments();
+      evidenceSubmitBtn.textContent = editingNumber !== null ? 'Save Changes' : 'Submit';
     }
 
     function openCompose() {
-      setComposeSubmitting(false);
+      renderComposeAttachments();
+      updateComposeSubmitLabel();
       hideComposeError();
       hideComposeNotice();
       setEvidenceMode('compose');
@@ -2056,9 +2091,9 @@
 
     function startEditEvidence(number) {
       var item = currentModalTheme && findEvidenceByNumber(currentModalTheme, number);
-      if (!item) return;
+      if (!item || item.pending) return;
       editingNumber = number;
-      composeAttachments = (item.attachments || []).slice();
+      composeAttachments = (item.attachments || []).map(function (a) { return Object.assign({}, a); });
       evidenceTextarea.value = item.text || '';
       openCompose();
     }
@@ -2067,7 +2102,6 @@
       editingNumber = null;
       composeAttachments = [];
       stopDriveAuthWait();
-      setComposeSubmitting(false);
       hideComposeError();
       hideComposeNotice();
       setEvidenceMode('list');
@@ -2121,7 +2155,7 @@
 
     function onAttachClick() {
       hideComposeError();
-      if (driveAuthPoll || composeSubmitting) return;
+      if (driveAuthPoll) return;
       if (pickerAuthIsFresh()) {
         if (pickerAuth.authorized) openDrivePicker(pickerAuth);
         else if (pickerAuth.authError) showConnectPrompt(pickerAuth);
@@ -2206,16 +2240,33 @@
 
     function openDrivePicker(auth) {
       withGapiPicker(function () {
-        var driveView = new google.picker.DocsView(google.picker.ViewId.DOCS)
+        var LIST = google.picker.DocsViewMode.LIST;
+        function labelled(view, label) {
+          if (typeof view.setLabel === 'function') view.setLabel(label);
+          return view;
+        }
+        // Recent: every file (no folders) the visitor can open, newest
+        // activity first — the quickest way to find something just made.
+        var recentView = labelled(new google.picker.DocsView(google.picker.ViewId.DOCS)
+          .setIncludeFolders(false)
+          .setMode(LIST), 'Recent');
+        // My Drive: starts at the root of the visitor's own Drive and is
+        // browsed folder by folder, rather than listing every folder they
+        // can access (which, school-wide, is hundreds).
+        var myDriveView = labelled(new google.picker.DocsView(google.picker.ViewId.DOCS)
+          .setParent('root')
           .setIncludeFolders(true)
-          .setSelectFolderEnabled(false);
-        var sharedDrivesView = new google.picker.DocsView(google.picker.ViewId.DOCS)
+          .setSelectFolderEnabled(false)
+          .setMode(LIST), 'My Drive');
+        var sharedDrivesView = labelled(new google.picker.DocsView(google.picker.ViewId.DOCS)
           .setEnableDrives(true)
           .setIncludeFolders(true)
-          .setSelectFolderEnabled(false);
+          .setSelectFolderEnabled(false)
+          .setMode(LIST), 'Shared drives');
         var builder = new google.picker.PickerBuilder()
           .setTitle('Choose evidence to attach')
-          .addView(driveView)
+          .addView(recentView)
+          .addView(myDriveView)
           .addView(sharedDrivesView)
           .addView(new google.picker.DocsUploadView())
           .enableFeature(google.picker.Feature.MULTISELECT_ENABLED)
@@ -2262,7 +2313,7 @@
     });
     evidenceComposeAttachmentsEl.addEventListener('click', function (e) {
       var btn = e.target.closest('.evidence-staged-remove');
-      if (!btn || composeSubmitting) return;
+      if (!btn) return;
       // Removing an attachment that's on a saved entry archives it when the
       // edit is saved; a picked file hasn't been copied yet, so nothing to undo.
       composeAttachments.splice(parseInt(btn.getAttribute('data-index'), 10), 1);
@@ -2270,12 +2321,92 @@
       renderComposeAttachments();
     });
 
-    // -- Evidence: submit --------------------------------------------------
-    // Waits for the server (which copies any newly picked files) before
-    // updating the list. If a copy fails, nothing is saved: the draft stays
-    // open with the failing files marked, ready to fix and resubmit.
+    // -- Evidence: submit + background save --------------------------------
+    // Submit closes the draft straight away and shows the entry with a
+    // "Copying files…" / "Saving…" status while the server works (Code.gs's
+    // saveEvidenceEntry() copies newly picked files into the school
+    // folder). The server finishes even if the modal or tab is closed.
+    // If it fails, nothing is saved server-side; the entry stays in the
+    // list marked "Not saved" with Try again / Edit / Discard.
+    var savesInFlight = 0;
+
+    function stagedToEntryAttachment(a) {
+      return a.pickedId
+        ? { pickedId: a.pickedId, name: a.name, mimeType: a.mimeType }
+        : { fileId: a.fileId, name: a.name, mimeType: a.mimeType, url: a.url, kind: a.kind };
+    }
+
+    function refreshEvidenceViews(theme, card) {
+      if (currentModalTheme === theme && modalOverlay.classList.contains('is-open') &&
+          evidenceComposeEl.style.display === 'none') {
+        renderEvidenceList(theme);
+      }
+      syncCard(card, theme); // grade AND evidence count/icon both stay in sync
+    }
+
+    function saveEntryInBackground(theme, card, entry) {
+      entry.pending = true;
+      entry.saveError = '';
+      savesInFlight++;
+      refreshEvidenceViews(theme, card);
+      google.script.run
+        .withSuccessHandler(function (result) {
+          savesInFlight--;
+          entry.pending = false;
+          if (result && result.ok) {
+            entry.entryId = result.entryId;
+            entry.attachments = result.attachments || [];
+            delete entry.lastSaved;
+          } else if (result && result.needsAuth) {
+            pickerAuth = null;
+            entry.saveError = 'Your Google Drive connection needs renewing. Choose Edit, click Attach Files to reconnect, then save again.';
+          } else {
+            var errorsById = {};
+            ((result && result.errors) || []).forEach(function (err) { errorsById[err.pickedId] = err.error; });
+            entry.attachments.forEach(function (a) { if (a.pickedId && errorsById[a.pickedId]) a.error = errorsById[a.pickedId]; });
+            entry.saveError = 'Some files couldn’t be copied. Choose Edit to remove them, then save again.';
+          }
+          refreshEvidenceViews(theme, card);
+        })
+        .withFailureHandler(function (err) {
+          console.error('Failed to save evidence entry:', err);
+          savesInFlight--;
+          entry.pending = false;
+          entry.saveError = 'Your evidence wasn’t saved. Please try again.';
+          refreshEvidenceViews(theme, card);
+        })
+        .saveEvidenceEntry(theme.id, {
+          entryId: entry.entryId || null,
+          number: entry.number,
+          type: entry.type,
+          date: entry.date,
+          text: entry.text,
+          themeTitle: theme.title,
+          attachments: entry.attachments.map(function (a) {
+            return a.pickedId ? { pickedId: a.pickedId, name: a.name } : { fileId: a.fileId };
+          })
+        });
+    }
+
+    // Undoes a failed save: a never-saved entry is removed; an edit of a
+    // saved entry goes back to what's actually stored.
+    function discardFailedEntry(theme, entry) {
+      if (entry.lastSaved) {
+        entry.text = entry.lastSaved.text;
+        entry.attachments = entry.lastSaved.attachments;
+        delete entry.lastSaved;
+        entry.saveError = '';
+      } else {
+        theme.evidence = (theme.evidence || []).filter(function (e) { return e !== entry; });
+      }
+    }
+
+    window.addEventListener('beforeunload', function (e) {
+      if (savesInFlight > 0) { e.preventDefault(); e.returnValue = ''; }
+    });
+
     evidenceSubmitBtn.addEventListener('click', function () {
-      if (!currentModalTheme || composeSubmitting) return;
+      if (!currentModalTheme) return;
       if (composeAttachments.some(function (a) { return a.error; })) {
         showComposeError('Remove the files marked in red before submitting.');
         return;
@@ -2285,68 +2416,29 @@
         showComposeError('Add a note or attach a file before submitting.');
         return;
       }
-      hideComposeError();
-      hideComposeNotice();
-
       var theme = currentModalTheme;
       var card = currentModalCard;
-      var editingEntry = editingNumber !== null ? findEvidenceByNumber(theme, editingNumber) : null;
-      var number = editingEntry ? editingEntry.number
-        : (theme.evidence || []).reduce(function (max, e) { return Math.max(max, e.number || 0); }, 0) + 1;
-      var date = editingEntry ? editingEntry.date : formatDateDDMMYY(new Date());
-      var staged = composeAttachments.slice();
-
-      function applySaved(result) {
-        var saved = editingEntry || { type: 'note', number: number, date: date };
-        saved.entryId = result.entryId;
-        saved.text = text;
-        saved.attachments = result.attachments || [];
-        if (!editingEntry) {
-          theme.evidence = theme.evidence || [];
-          theme.evidence.push(saved);
+      var entry = editingNumber !== null ? findEvidenceByNumber(theme, editingNumber) : null;
+      if (entry) {
+        if (entry.entryId && !entry.lastSaved) {
+          entry.lastSaved = { text: entry.text, attachments: entry.attachments.slice() };
         }
-        if (currentModalTheme === theme) {
-          exitComposeMode();
-          renderEvidenceList(theme);
-        }
-        syncCard(card, theme); // grade AND evidence count/icon both stay in sync
+      } else {
+        entry = {
+          type: 'note',
+          number: (theme.evidence || []).reduce(function (max, e) { return Math.max(max, e.number || 0); }, 0) + 1,
+          date: formatDateDDMMYY(new Date()),
+          entryId: null
+        };
+        theme.evidence = theme.evidence || [];
+        theme.evidence.push(entry);
       }
-
-      if (!SCHOOL_NAME) { applySaved({ entryId: null, attachments: staged }); return; }
-
-      setComposeSubmitting(true);
-      google.script.run
-        .withSuccessHandler(function (result) {
-          if (result && result.ok) { applySaved(result); return; }
-          setComposeSubmitting(false);
-          if (result && result.needsAuth) {
-            // Not the files' fault — keep them staged so a reconnect + resubmit just works.
-            pickerAuth = null;
-            showComposeError('Your Google Drive connection needs renewing. Click Attach Files to reconnect, then submit again.');
-            return;
-          }
-          var errorsById = {};
-          ((result && result.errors) || []).forEach(function (err) { errorsById[err.pickedId] = err.error; });
-          staged.forEach(function (a) { if (a.pickedId && errorsById[a.pickedId]) a.error = errorsById[a.pickedId]; });
-          renderComposeAttachments();
-          showComposeError('Some files couldn’t be copied (marked in red). Remove them, then submit again.');
-        })
-        .withFailureHandler(function (err) {
-          console.error('Failed to save evidence entry:', err);
-          setComposeSubmitting(false);
-          showComposeError('Your evidence wasn’t saved. Please try again.');
-        })
-        .saveEvidenceEntry(theme.id, {
-          entryId: editingEntry ? editingEntry.entryId || null : null,
-          number: number,
-          type: editingEntry ? editingEntry.type : 'note',
-          date: date,
-          text: text,
-          themeTitle: theme.title,
-          attachments: staged.map(function (a) {
-            return a.pickedId ? { pickedId: a.pickedId, name: a.name } : { fileId: a.fileId };
-          })
-        });
+      entry.text = text;
+      entry.attachments = composeAttachments.map(stagedToEntryAttachment);
+      exitComposeMode();
+      renderEvidenceList(theme, entry.number);
+      if (SCHOOL_NAME) saveEntryInBackground(theme, card, entry);
+      else syncCard(card, theme);
     });
 
     function refreshRubricAndBadge(theme) {
@@ -2370,6 +2462,7 @@
       modalTitleEl.textContent = theme.title;
       refreshRubricAndBadge(theme);
       setEvidenceMode('list');
+      evidenceListScrollEl.innerHTML = '';
       renderEvidenceList(theme);
 
       lastFocusedEl = document.activeElement;
@@ -2379,7 +2472,6 @@
     }
 
     function closeThemeModal() {
-      if (composeSubmitting) return; // a submit in flight could still come back with errors to fix
       modalOverlay.classList.remove('is-open');
       gradeBadgeWrap.classList.remove('is-open');
       exitComposeMode(); // discard any unsaved compose state on close

@@ -328,23 +328,14 @@ function saveEvidenceEntry(themeId, entry) {
         return { pickedId: p.pickedId, error: 'Reconnect Google Drive (click Attach Files), then submit again.' };
       }) };
     }
-    var errors = [];
-    var needsAuth = false;
     var seen = {};
-    picks.forEach(function (p) {
-      if (seen[p.pickedId]) return;
-      seen[p.pickedId] = true;
-      var r = copyPickedFile_(token, String(p.pickedId), access, schoolFolderId(), themeId, entry.themeTitle);
-      if (r.ok) {
-        copied.push(r.attachment);
-      } else {
-        errors.push({ pickedId: p.pickedId, error: r.error });
-        if (r.needsAuth) needsAuth = true;
-      }
-    });
-    if (errors.length) {
+    var pickedIds = picks.map(function (p) { return String(p.pickedId); })
+      .filter(function (id) { return seen[id] ? false : (seen[id] = true); });
+    var result = copyPickedFiles_(token, pickedIds, access, schoolFolderId(), themeId, entry.themeTitle);
+    copied = result.copied;
+    if (result.errors.length) {
       trashFiles_(copied);
-      return { ok: false, errors: errors, needsAuth: needsAuth };
+      return { ok: false, errors: result.errors, needsAuth: result.needsAuth };
     }
   }
 
@@ -452,30 +443,46 @@ function archiveEvidenceFiles_(attachments, folderId) {
  * copy the file they picked) and with the script's own token (for sharing
  * calls, where DriveApp can't suppress Google's notification emails).
  */
-function driveRest_(token, method, path, query, body) {
+function driveRequest_(token, method, path, query, body) {
   var params = { supportsAllDrives: 'true' };
   Object.keys(query || {}).forEach(function (k) { params[k] = query[k]; });
-  var url = 'https://www.googleapis.com/drive/v3/' + path + '?' + Object.keys(params).map(function (k) {
-    return encodeURIComponent(k) + '=' + encodeURIComponent(params[k]);
-  }).join('&');
-  var options = { method: method, headers: { Authorization: 'Bearer ' + token }, muteHttpExceptions: true };
+  var request = {
+    url: 'https://www.googleapis.com/drive/v3/' + path + '?' + Object.keys(params).map(function (k) {
+      return encodeURIComponent(k) + '=' + encodeURIComponent(params[k]);
+    }).join('&'),
+    method: method,
+    headers: { Authorization: 'Bearer ' + token },
+    muteHttpExceptions: true
+  };
   if (body) {
-    options.contentType = 'application/json';
-    options.payload = JSON.stringify(body);
+    request.contentType = 'application/json';
+    request.payload = JSON.stringify(body);
   }
-  var res = UrlFetchApp.fetch(url, options);
+  return request;
+}
+
+/** Parsed JSON body, or throws an Error carrying the HTTP status and Drive's reason code. */
+function parseDriveResponse_(res) {
   var code = res.getResponseCode();
   var text = res.getContentText();
   var json = null;
   try { json = text ? JSON.parse(text) : null; } catch (e) { json = null; }
   if (code >= 400) {
     var detail = json && json.error;
-    var err = new Error('Drive API ' + method.toUpperCase() + ' ' + path + ' failed (' + code + '): ' + ((detail && detail.message) || text));
+    var err = new Error('Drive API failed (' + code + '): ' + ((detail && detail.message) || text));
     err.status = code;
     err.reason = (detail && detail.errors && detail.errors[0] && detail.errors[0].reason) || '';
     throw err;
   }
   return json;
+}
+
+/** Single Drive v3 REST call (see driveRequest_ for batched use). */
+function driveRest_(token, method, path, query, body) {
+  var request = driveRequest_(token, method, path, query, body);
+  var url = request.url;
+  delete request.url;
+  return parseDriveResponse_(UrlFetchApp.fetch(url, request));
 }
 
 function listPermissionEmails_(token, fileId) {
@@ -541,79 +548,141 @@ function friendlyAttachError_(e) {
   if (e && e.status === 403 && /storageQuotaExceeded/i.test(e.reason)) {
     return 'Your Google Drive is full, so the file couldn\'t be copied.';
   }
-  return 'Couldn\'t copy this file into your school\'s evidence folder. Please try again.';
+  if (e && e.reason === 'folder') return 'Folders can\'t be attached — pick the files inside instead.';
+  if (e && e.reason === 'shortcut') return 'That\'s a shortcut — open its folder and pick the original file instead.';
+  if (e && e.reason === 'tooLarge') return 'Larger than 25 MB, so it can\'t be attached.';
+  // Include the code so a staff member's report can be matched to the Executions log.
+  return 'Couldn\'t copy this file into your school\'s evidence folder (Drive error ' +
+    ((e && e.status) || '?') + (e && e.reason ? ' ' + e.reason : '') + '). Please try again.';
 }
 
 /**
- * Copies a file the visitor picked in Google Picker into their school's
+ * Copies the files the visitor picked in Google Picker into their school's
  * EvidenceFolder, owned by the script owner (so staff get view-only via
  * the folder, and the owner keeps edit).
  *
- * The script owner can't read the visitor's file, and the visitor's
+ * The script owner can't read the visitor's files, and the visitor's
  * drive.file token can't change sharing on a file the app didn't create —
  * so the hop goes through a temporary copy the visitor's token *does*
  * create (and may therefore share):
- *   1. visitor token: copy picked file -> temp file in their My Drive
- *   2. visitor token: share temp file with the script owner (no email)
- *   3. script owner:  copy temp file -> school folder (final, owner-owned)
- *   4. visitor token: delete the temp file
- * Every read of the source happens with the visitor's own token, so this
- * can only ever copy files the visitor could already open themselves.
+ *   1. visitor token: read each picked file's metadata (checks)
+ *   2. visitor token: copy it -> temp file in their My Drive
+ *   3. visitor token: share the temp file with the script owner (no email)
+ *   4. owner token:   copy temp -> school folder (final name + description)
+ *   5. visitor token: delete the temp file
+ * Every read of a source happens with the visitor's own token, so this can
+ * only ever copy files the visitor could already open themselves.
+ *
+ * Each step runs for all files at once (UrlFetchApp.fetchAll), so a batch
+ * costs about five round trips to Drive however many files there are.
+ * Returns { copied: [attachment], errors: [{pickedId, error}], needsAuth }.
  */
-function copyPickedFile_(token, pickedFileId, access, folderId, themeId, themeTitle) {
-  if (!/^[A-Za-z0-9_-]{10,}$/.test(pickedFileId)) return { ok: false, error: 'Invalid file.' };
-  var src;
-  try {
-    src = driveRest_(token, 'get', 'files/' + pickedFileId, { fields: 'id,name,mimeType,size,capabilities(canCopy)' });
-  } catch (e) {
-    if (e.status === 401) {
-      clearDriveToken_(access.email);
-      return { ok: false, needsAuth: true, error: 'Your Google Drive connection expired. Click Attach Files to reconnect, then submit again.' };
-    }
-    console.error(e);
-    return { ok: false, error: friendlyAttachError_(e) };
-  }
-  if (src.mimeType === 'application/vnd.google-apps.folder') return { ok: false, error: 'Folders can\'t be attached — pick the files inside instead.' };
-  if (src.mimeType === 'application/vnd.google-apps.shortcut') return { ok: false, error: 'That\'s a shortcut — open its folder and pick the original file instead.' };
-  if (src.size && Number(src.size) > MAX_ATTACHMENT_BYTES) return { ok: false, error: 'Larger than 25 MB, so it can\'t be attached.' };
-  if (src.capabilities && src.capabilities.canCopy === false) return { ok: false, error: friendlyAttachError_({ status: 403, reason: 'cannotCopy', message: '' }) };
-
+function copyPickedFiles_(token, pickedIds, access, folderId, themeId, themeTitle) {
+  var ownerToken = ScriptApp.getOAuthToken();
   var ownerEmail = Session.getEffectiveUser().getEmail();
-  var tempId = null;
-  try {
-    tempId = driveRest_(token, 'post', 'files/' + pickedFileId + '/copy', { fields: 'id' },
-      { name: 'Excellence in Action (temporary) – ' + src.name, parents: ['root'] }).id;
-    driveRest_(token, 'post', 'files/' + tempId + '/permissions', { sendNotificationEmail: 'false', fields: 'id' },
-      { role: 'writer', type: 'user', emailAddress: ownerEmail });
+  var items = pickedIds.map(function (id) { return { pickedId: id }; });
+  var errors = [];
+  var needsAuth = false;
 
-    var finalName = buildEvidenceFileName_(themeId, themeTitle, src.name);
-    var folder = DriveApp.getFolderById(folderId);
-    var copy;
-    try {
-      copy = DriveApp.getFileById(tempId).makeCopy(finalName, folder);
-    } catch (firstErr) {
-      Utilities.sleep(1500); // the share in step 2 can take a moment to propagate
-      copy = DriveApp.getFileById(tempId).makeCopy(finalName, folder);
-    }
-    copy.setDescription([
-      'Excellence in Action evidence',
-      'Theme: ' + themeId + (themeTitle ? ' – ' + String(themeTitle).trim() : ''),
-      'School: ' + access.schoolName,
-      'Attached by: ' + access.email,
-      'Attached at: ' + new Date().toISOString(),
-      'Original file: ' + src.name
-    ].join('\n'));
-    return {
-      ok: true,
-      attachment: { fileId: copy.getId(), name: copy.getName(), mimeType: copy.getMimeType(), url: copy.getUrl() }
-    };
-  } catch (e) {
-    console.error(e);
-    return { ok: false, error: friendlyAttachError_(e) };
+  function fail(item, e) {
+    item.failed = true;
+    if (e && e.status === 401) needsAuth = true;
+    console.error('Evidence copy failed for ' + item.pickedId + ' (' + (item.name || '?') + '): ' + (e && e.message));
+    errors.push({ pickedId: item.pickedId, error: e && e.status === 401
+      ? 'Your Google Drive connection expired. Reconnect Google Drive, then save again.'
+      : friendlyAttachError_(e) });
+  }
+  function live() { return items.filter(function (it) { return !it.failed; }); }
+
+  items.forEach(function (it) {
+    if (!/^[A-Za-z0-9_-]{10,}$/.test(it.pickedId)) fail(it, { status: 400, reason: 'invalid', message: 'Invalid file id' });
+  });
+
+  try {
+    // 1. Metadata + checks
+    runDriveBatch_(live(), function (it) {
+      return driveRequest_(token, 'get', 'files/' + it.pickedId, { fields: 'id,name,mimeType,size,capabilities(canCopy)' });
+    }, function (it, src) {
+      it.name = src.name;
+      if (src.mimeType === 'application/vnd.google-apps.folder') return fail(it, { status: 400, reason: 'folder', message: 'folder' });
+      if (src.mimeType === 'application/vnd.google-apps.shortcut') return fail(it, { status: 400, reason: 'shortcut', message: 'shortcut' });
+      if (src.size && Number(src.size) > MAX_ATTACHMENT_BYTES) return fail(it, { status: 400, reason: 'tooLarge', message: 'too large' });
+      if (src.capabilities && src.capabilities.canCopy === false) return fail(it, { status: 403, reason: 'cannotCopy', message: 'cannotCopy' });
+    }, fail);
+    if (needsAuth) clearDriveToken_(access.email);
+
+    // 2. Temp copy in the visitor's My Drive
+    runDriveBatch_(live(), function (it) {
+      return driveRequest_(token, 'post', 'files/' + it.pickedId + '/copy', { fields: 'id' },
+        { name: 'Excellence in Action (temporary) – ' + it.name, parents: ['root'] });
+    }, function (it, res) { it.tempId = res.id; }, fail);
+
+    // 3. Share the temp copy with the script owner
+    runDriveBatch_(live(), function (it) {
+      return driveRequest_(token, 'post', 'files/' + it.tempId + '/permissions', { sendNotificationEmail: 'false', fields: 'id' },
+        { role: 'writer', type: 'user', emailAddress: ownerEmail });
+    }, function () {}, fail);
+
+    // 4. Owner copies it into the school folder. A 404 here usually means
+    //    step 3's share hasn't propagated yet, so it's retried too.
+    var now = new Date().toISOString();
+    runDriveBatch_(live(), function (it) {
+      return driveRequest_(ownerToken, 'post', 'files/' + it.tempId + '/copy', { fields: 'id,name,mimeType,webViewLink' }, {
+        name: buildEvidenceFileName_(themeId, themeTitle, it.name),
+        parents: [folderId],
+        description: [
+          'Excellence in Action evidence',
+          'Theme: ' + themeId + (themeTitle ? ' – ' + String(themeTitle).trim() : ''),
+          'School: ' + access.schoolName,
+          'Attached by: ' + access.email,
+          'Attached at: ' + now,
+          'Original file: ' + it.name
+        ].join('\n')
+      });
+    }, function (it, res) {
+      it.attachment = { fileId: res.id, name: res.name, mimeType: res.mimeType, url: res.webViewLink };
+    }, fail, [404]);
   } finally {
-    if (tempId) {
-      try { driveRest_(token, 'delete', 'files/' + tempId); } catch (cleanupErr) { console.error('Temp copy cleanup failed: ' + cleanupErr); }
+    // 5. Remove the temp copies, whatever happened above.
+    var temps = items.filter(function (it) { return it.tempId; });
+    if (temps.length) {
+      try {
+        UrlFetchApp.fetchAll(temps.map(function (it) { return driveRequest_(token, 'delete', 'files/' + it.tempId); }));
+      } catch (cleanupErr) {
+        console.error('Temp copy cleanup failed: ' + cleanupErr);
+      }
     }
+  }
+
+  return {
+    copied: items.filter(function (it) { return it.attachment && !it.failed; }).map(function (it) { return it.attachment; }),
+    errors: errors,
+    needsAuth: needsAuth
+  };
+}
+
+var TRANSIENT_DRIVE_STATUSES = [429, 500, 502, 503, 504];
+
+/**
+ * Runs one request per item in parallel, retrying transient failures (and
+ * any `extraRetryStatuses`) up to twice with a short backoff.
+ */
+function runDriveBatch_(items, buildRequest, onSuccess, onFailure, extraRetryStatuses) {
+  var retryable = TRANSIENT_DRIVE_STATUSES.concat(extraRetryStatuses || []);
+  var pending = items.slice();
+  for (var attempt = 0; pending.length && attempt < 3; attempt++) {
+    if (attempt) Utilities.sleep(800 * attempt);
+    var responses = UrlFetchApp.fetchAll(pending.map(buildRequest));
+    var retry = [];
+    pending.forEach(function (it, i) {
+      try {
+        onSuccess(it, parseDriveResponse_(responses[i]));
+      } catch (e) {
+        if (attempt < 2 && retryable.indexOf(e.status) >= 0) retry.push(it);
+        else onFailure(it, e);
+      }
+    });
+    pending = retry;
   }
 }
 
