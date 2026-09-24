@@ -63,7 +63,7 @@ var EVIDENCE_HEADERS = ['EntryId', 'SchoolName', 'ThemeId', 'EntryNumber', 'Type
 var EVIDENCE_VERSION_HEADERS = ['VersionId', 'EntryId', 'SchoolName', 'ThemeId', 'EntryNumber', 'Type',
   'Date', 'Title', 'Text', 'Attachments', 'SavedBy', 'SavedAt'];
 var HISTORY_HEADERS = ['HistoryId', 'SchoolName', 'Kind', 'Label', 'Actor', 'ActorName',
-  'StartedAt', 'UpdatedAt', 'ChangeCount', 'ChangesJSON', 'SnapshotJSON'];
+  'StartedAt', 'UpdatedAt', 'ChangeCount', 'ChangesJSON', 'SnapshotJSON', 'Summary'];
 
 /** { HeaderName: 1-based column } for a headers array. */
 function columns_(headers) {
@@ -584,6 +584,8 @@ function deleteEvidenceEntry(entryId, stateVersion) {
 //   - SnapshotJSON: the whole school's state once the entry's changes were
 //     made — { ratings, evidence: [versionId, ...] }. That's what a
 //     restore puts back.
+//   - Summary: counts for the collapsed history list (summarizeChanges_()),
+//     so listing history never has to read the (larger) ChangesJSON.
 //
 // Grouping: a change joins the school's latest entry if it's an 'auto'
 // entry by the same person, last updated within HISTORY_GROUP_MINUTES.
@@ -649,6 +651,20 @@ function currentEvidenceVersionIds_(schoolName) {
     versionSheet.getRange(versionSheet.getLastRow() + 1, 1, rows.length, EVIDENCE_VERSION_HEADERS.length).setValues(rows);
   }
   return ids;
+}
+
+/** { ratings: themes with rating changes, added, edited, deleted } for a change list. */
+function summarizeChanges_(changes) {
+  var themes = {};
+  var summary = { ratings: 0, added: 0, edited: 0, deleted: 0 };
+  changes.forEach(function (c) {
+    if (c.t === 'grade' || c.t === 'rubric') themes[c.theme] = true;
+    else if (c.t === 'evidence-add') summary.added++;
+    else if (c.t === 'evidence-edit') summary.edited++;
+    else if (c.t === 'evidence-delete') summary.deleted++;
+  });
+  summary.ratings = Object.keys(themes).length;
+  return summary;
 }
 
 /** grade/rubric changes between two ratings blobs, for the given themes. */
@@ -748,7 +764,7 @@ function appendHistoryRow_(sheet, access, state, kind, label, changes, changeCou
   var id = Utilities.getUuid();
   var now = new Date().toISOString();
   sheet.appendRow([id, access.schoolName, kind, label, access.email, access.name, now, now,
-    changeCount, JSON.stringify(changes), JSON.stringify(snapshot)]);
+    changeCount, JSON.stringify(changes), JSON.stringify(snapshot), JSON.stringify(summarizeChanges_(changes))]);
   var row = sheet.getLastRow();
   state.sheet.getRange(state.row, RATINGS_COL.LastHistoryId, 1, 2).setValues([[id, row]]);
   state.lastHistoryId = id;
@@ -792,14 +808,429 @@ function recordHistory_(access, state, changes, ratings) {
       var overflow = Math.max(0, latest.changeCount - stored); // changes already past the cap
       var count = merged.length + overflow;
       if (merged.length > MAX_HISTORY_CHANGES) merged = merged.slice(0, MAX_HISTORY_CHANGES);
-      sheet.getRange(latest.row, HISTORY_COL.UpdatedAt, 1, 4).setValues([[
-        now.toISOString(), count, JSON.stringify(merged), JSON.stringify(snapshot)]]);
+      sheet.getRange(latest.row, HISTORY_COL.UpdatedAt, 1, 5).setValues([[
+        now.toISOString(), count, JSON.stringify(merged), JSON.stringify(snapshot),
+        JSON.stringify(summarizeChanges_(merged))]]);
       return;
     }
     appendHistoryRow_(sheet, access, state, 'auto', '', changes.slice(0, MAX_HISTORY_CHANGES),
       changes.length, snapshot);
   } catch (e) {
     console.error('Could not record history for ' + access.schoolName + ': ' + (e && e.stack || e));
+  }
+}
+
+// ===========================================================================
+// School history: listing, checkpoints and restore
+// ===========================================================================
+//
+// Everyone at a school can list its history, save checkpoints and restore.
+// A restore puts the whole school back to a history entry's snapshot:
+//   - ratings are replaced with the snapshot's;
+//   - evidence deleted since then comes back (its files move out of
+//     ARCHIVE and lose the "ARCHIVED – " prefix; binned files are taken out
+//     of the bin);
+//   - evidence edited since then goes back to that version, and evidence
+//     added since then is archived like a normal delete.
+// The restore is recorded as its own 'restore' entry, so it can be undone
+// by restoring to the entry just before it. RestoreCount goes up by one, so
+// any page still showing the old state has its next save refused and
+// reloads (isStaleSave_()).
+//
+// File moves happen before any sheet write, so a Drive failure part-way
+// leaves the sheets untouched and the restore can simply be run again.
+// Files already where they should be are left alone.
+
+var MAX_CHECKPOINT_LABEL = 80;
+
+/** A sheet timestamp (ISO text, or a Date if Sheets converted it) in ms. */
+function toMillis_(value) {
+  if (value instanceof Date) return value.getTime();
+  var ms = Date.parse(String(value || ''));
+  return isNaN(ms) ? 0 : ms;
+}
+
+/** Public fields of a History row, for the page. */
+function describeHistoryRow_(v, summary) {
+  return {
+    id: String(v[HISTORY_COL.HistoryId - 1]),
+    kind: String(v[HISTORY_COL.Kind - 1]),
+    label: String(v[HISTORY_COL.Label - 1] || ''),
+    actorName: String(v[HISTORY_COL.ActorName - 1] || v[HISTORY_COL.Actor - 1] || ''),
+    startedAt: toMillis_(v[HISTORY_COL.StartedAt - 1]),
+    updatedAt: toMillis_(v[HISTORY_COL.UpdatedAt - 1]),
+    changeCount: parseInt(v[HISTORY_COL.ChangeCount - 1], 10) || 0,
+    summary: summary || null
+  };
+}
+
+/** Row number and values of one of the school's history entries, or null. */
+function findSchoolHistoryRow_(sheet, historyId, schoolName) {
+  if (!/^[A-Za-z0-9-]{8,64}$/.test(String(historyId || ''))) return null;
+  var row = findRowByValue_(sheet, HISTORY_COL.HistoryId, historyId);
+  if (row < 0) return null;
+  var v = sheet.getRange(row, 1, 1, HISTORY_HEADERS.length).getValues()[0];
+  if (String(v[HISTORY_COL.SchoolName - 1]) !== schoolName) return null;
+  return { row: row, values: v };
+}
+
+/**
+ * One page of the visitor's school's history, newest first:
+ *   { entries: [{ id, kind, label, actorName, startedAt, updatedAt,
+ *                 changeCount, summary }], total, latestId, stateVersion }
+ * startedAt/updatedAt are ms since the epoch. `offset` pages through it
+ * (a page can repeat an entry if new ones arrive meanwhile; de-dupe by id).
+ */
+function getSchoolHistory(offset, limit) {
+  var access = requireActiveUser_();
+  offset = Math.max(0, parseInt(offset, 10) || 0);
+  limit = Math.min(100, Math.max(1, parseInt(limit, 10) || 50));
+  var state = readSchoolRow_(access.schoolName, false);
+  var sheet = ensureSheet_(TABS.HISTORY, HISTORY_HEADERS);
+  var last = sheet.getLastRow();
+  var rows = [];
+  if (last >= 2) {
+    var main = sheet.getRange(2, 1, last - 1, HISTORY_COL.ChangeCount).getValues();
+    var summaries = sheet.getRange(2, HISTORY_COL.Summary, last - 1, 1).getValues();
+    for (var i = 0; i < main.length; i++) {
+      if (String(main[i][HISTORY_COL.SchoolName - 1]) === access.schoolName) {
+        rows.push({ row: i + 2, values: main[i], summary: summaries[i][0] });
+      }
+    }
+  }
+  rows.sort(function (a, b) {
+    return toMillis_(b.values[HISTORY_COL.StartedAt - 1]) - toMillis_(a.values[HISTORY_COL.StartedAt - 1]) || b.row - a.row;
+  });
+  var entries = rows.slice(offset, offset + limit).map(function (r) {
+    var summary = null;
+    try { summary = r.summary ? JSON.parse(r.summary) : null; } catch (e) { summary = null; }
+    if (!summary) {
+      // Written before the Summary column existed: work it out once here.
+      var changes;
+      try { changes = JSON.parse(sheet.getRange(r.row, HISTORY_COL.ChangesJSON).getValue() || '[]'); } catch (e) { changes = []; }
+      summary = summarizeChanges_(changes);
+    }
+    return describeHistoryRow_(r.values, summary);
+  });
+  return { entries: entries, total: rows.length, latestId: state.lastHistoryId, stateVersion: state.restoreCount };
+}
+
+/** The full change list of one history entry (for expanding it in the list). */
+function getHistoryEntryChanges(historyId) {
+  var access = requireActiveUser_();
+  var found = findSchoolHistoryRow_(ensureSheet_(TABS.HISTORY, HISTORY_HEADERS), historyId, access.schoolName);
+  if (!found) return { ok: false };
+  var changes;
+  try { changes = JSON.parse(found.values[HISTORY_COL.ChangesJSON - 1] || '[]'); } catch (e) { changes = []; }
+  return { ok: true, changes: changes, changeCount: parseInt(found.values[HISTORY_COL.ChangeCount - 1], 10) || 0 };
+}
+
+/**
+ * Saves the school's current state as a named checkpoint.
+ * Returns { ok, entry } or { ok: false, stale: true }.
+ */
+function saveCheckpoint(label, stateVersion) {
+  var access = requireActiveUser_();
+  label = String(label || '').replace(/\s+/g, ' ').trim().slice(0, MAX_CHECKPOINT_LABEL);
+  if (!label) throw new Error('Give the checkpoint a name.');
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var state = readSchoolRow_(access.schoolName, true);
+    if (isStaleSave_(state, stateVersion)) return { ok: false, stale: true };
+    var sheet = ensureSheet_(TABS.HISTORY, HISTORY_HEADERS);
+    var snapshot = { ratings: state.ratings, evidence: currentEvidenceVersionIds_(access.schoolName) };
+    var id = appendHistoryRow_(sheet, access, state, 'checkpoint', label, [], 0, snapshot);
+    return { ok: true, entry: describeHistoryRow_(sheet.getRange(state.lastHistoryRow, 1, 1, HISTORY_HEADERS.length).getValues()[0],
+      summarizeChanges_([])), id: id };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** The school's live evidence rows: [{ row, entryId, versionId, values, attachments }]. */
+function readSchoolEvidenceRows_(schoolName) {
+  var sheet = ensureSheet_(TABS.EVIDENCE, EVIDENCE_HEADERS);
+  var last = sheet.getLastRow();
+  if (last < 2) return [];
+  var out = [];
+  sheet.getRange(2, 1, last - 1, EVIDENCE_HEADERS.length).getValues().forEach(function (v, i) {
+    if (String(v[EVIDENCE_COL.SchoolName - 1]) !== schoolName) return;
+    out.push({
+      row: i + 2,
+      entryId: String(v[EVIDENCE_COL.EntryId - 1]),
+      versionId: String(v[EVIDENCE_COL.VersionId - 1] || ''),
+      values: v,
+      attachments: parseAttachments_(v[EVIDENCE_COL.Attachments - 1])
+    });
+  });
+  return out;
+}
+
+/** Reads EvidenceVersions rows by version id: { versionId: {...row fields} }. */
+function readEvidenceVersions_(versionIds, schoolName) {
+  var wanted = {};
+  versionIds.forEach(function (id) { wanted[id] = true; });
+  var out = {};
+  if (!versionIds.length) return out;
+  var sheet = ensureSheet_(TABS.EVIDENCE_VERSIONS, EVIDENCE_VERSION_HEADERS);
+  var last = sheet.getLastRow();
+  if (last < 2) return out;
+  var ids = sheet.getRange(2, 1, last - 1, 1).getValues();
+  for (var i = 0; i < ids.length; i++) {
+    var id = String(ids[i][0]);
+    if (!wanted[id] || out[id]) continue;
+    var v = sheet.getRange(i + 2, 1, 1, EVIDENCE_VERSION_HEADERS.length).getValues()[0];
+    if (String(v[2]) !== schoolName) continue;
+    out[id] = {
+      versionId: id, entryId: String(v[1]), themeId: String(v[3]), number: parseInt(v[4], 10) || 0,
+      type: String(v[5] || 'note'), date: String(v[6] || ''), title: String(v[7] || ''), text: String(v[8] || ''),
+      attachments: parseAttachments_(v[9]), savedBy: String(v[10] || ''), savedAt: v[11]
+    };
+  }
+  return out;
+}
+
+/**
+ * Works out what restoring to `historyId` would change, without changing
+ * anything. Null if the entry isn't one of this school's.
+ */
+function planRestore_(access, state, historyId) {
+  var historySheet = ensureSheet_(TABS.HISTORY, HISTORY_HEADERS);
+  var found = findSchoolHistoryRow_(historySheet, historyId, access.schoolName);
+  if (!found) return null;
+  var snapshot;
+  try { snapshot = JSON.parse(found.values[HISTORY_COL.SnapshotJSON - 1]); } catch (e) { snapshot = null; }
+  if (!snapshot || !snapshot.ratings || !Array.isArray(snapshot.evidence)) {
+    throw new Error('That history entry can’t be restored: its saved state is unreadable.');
+  }
+
+  currentEvidenceVersionIds_(access.schoolName); // versions any evidence that has none yet
+  var current = readSchoolEvidenceRows_(access.schoolName);
+  var currentByEntry = {};
+  current.forEach(function (c) { currentByEntry[c.entryId] = c; });
+
+  var versions = readEvidenceVersions_(snapshot.evidence, access.schoolName);
+  var targetByEntry = {};
+  var unreadable = 0;
+  snapshot.evidence.forEach(function (vid) {
+    if (versions[vid]) targetByEntry[versions[vid].entryId] = versions[vid];
+    else unreadable++;
+  });
+  // Without those rows there's no telling which entries they were, and
+  // carrying on would archive live evidence that should stay.
+  if (unreadable) {
+    throw new Error('That point can’t be restored: ' + unreadable + ' evidence version' +
+      (unreadable === 1 ? ' is' : 's are') + ' missing from the EvidenceVersions tab.');
+  }
+
+  var toRemove = current.filter(function (c) { return !targetByEntry[c.entryId]; });
+  var toRestore = [];
+  Object.keys(targetByEntry).forEach(function (entryId) {
+    var target = targetByEntry[entryId];
+    var cur = currentByEntry[entryId] || null;
+    if (!cur || cur.versionId !== target.versionId) toRestore.push({ target: target, current: cur });
+  });
+
+  var themeIds = {};
+  Object.keys(state.ratings).forEach(function (id) { themeIds[id] = true; });
+  Object.keys(snapshot.ratings).forEach(function (id) { themeIds[id] = true; });
+  var ratingChanges = diffRatings_(state.ratings, snapshot.ratings, Object.keys(themeIds));
+
+  var evidenceChanges = [];
+  toRestore.forEach(function (r) {
+    var t = r.target;
+    if (!r.current) {
+      evidenceChanges.push({ t: 'evidence-add', theme: t.themeId, entry: t.entryId, number: t.number,
+        title: t.title, files: t.attachments.length });
+      return;
+    }
+    var edit = evidenceEditChange_(t.themeId, t.entryId, t.number, r.current.values, t.title, t.text,
+      r.current.attachments, t.attachments);
+    if (edit) evidenceChanges.push(edit);
+  });
+  toRemove.forEach(function (c) {
+    evidenceChanges.push({ t: 'evidence-delete', theme: String(c.values[EVIDENCE_COL.ThemeId - 1]), entry: c.entryId,
+      number: parseInt(c.values[EVIDENCE_COL.EntryNumber - 1], 10) || 0,
+      title: String(c.values[EVIDENCE_COL.Title - 1] || ''), files: c.attachments.length });
+  });
+
+  return {
+    target: describeHistoryRow_(found.values),
+    targetRatings: snapshot.ratings,
+    toRemove: toRemove,
+    toRestore: toRestore,
+    changes: ratingChanges.concat(evidenceChanges)
+  };
+}
+
+/**
+ * What restoring to `historyId` would change, for the confirmation dialog:
+ *   { ok, target, changes, summary, nothingToChange, stateVersion }
+ * `changes` uses the same format as a history entry's changes.
+ */
+function previewRestore(historyId) {
+  var access = requireActiveUser_();
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var state = readSchoolRow_(access.schoolName, false);
+    var plan = planRestore_(access, state, historyId);
+    if (!plan) return { ok: false, notFound: true };
+    return {
+      ok: true,
+      target: plan.target,
+      changes: plan.changes.slice(0, MAX_HISTORY_CHANGES),
+      changeCount: plan.changes.length,
+      summary: summarizeChanges_(plan.changes),
+      nothingToChange: !plan.changes.length && !plan.toRestore.length && !plan.toRemove.length,
+      stateVersion: state.restoreCount
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * Brings files back from the school's ARCHIVE (or the bin) into the school
+ * folder, dropping the "ARCHIVED – " prefix. Only files in the school
+ * folder or its ARCHIVE are touched. Returns { attachments, missing } —
+ * missing lists the names of files that no longer exist.
+ */
+function unarchiveEvidenceFiles_(attachments, folderId) {
+  var out = { attachments: [], missing: [] };
+  if (!attachments.length) return out;
+  var schoolFolder = DriveApp.getFolderById(folderId);
+  var archives = schoolFolder.getFoldersByName(ARCHIVE_FOLDER_NAME);
+  var archiveId = archives.hasNext() ? archives.next().getId() : null;
+  attachments.forEach(function (a) {
+    try {
+      var file = DriveApp.getFileById(a.fileId);
+      var inSchool = isInFolder_(file, folderId);
+      if (!inSchool && !(archiveId && isInFolder_(file, archiveId))) {
+        throw new Error('not in the school folder or its ARCHIVE');
+      }
+      if (file.isTrashed()) file.setTrashed(false);
+      if (!inSchool) file.moveTo(schoolFolder);
+      var name = file.getName();
+      if (name.indexOf(ARCHIVED_PREFIX) === 0) {
+        name = name.slice(ARCHIVED_PREFIX.length);
+        file.setName(name);
+      }
+      out.attachments.push({ fileId: a.fileId, name: name, mimeType: file.getMimeType(), url: file.getUrl() });
+    } catch (e) {
+      console.error('Could not restore file ' + a.fileId + ' (' + a.name + '): ' + e);
+      out.missing.push(a.name || a.fileId);
+    }
+  });
+  return out;
+}
+
+/** Formats a history entry for a restore label, e.g. "End of Term 3" or "24 Sep 2026, 2:15 pm". */
+function restoreTargetLabel_(target) {
+  if (target.kind === 'checkpoint' && target.label) return '“' + target.label + '”';
+  if (target.kind === 'baseline') return 'when history started';
+  var when = Utilities.formatDate(new Date(target.updatedAt), Session.getScriptTimeZone(), 'd MMM yyyy, h:mm a');
+  return when + (target.actorName ? ' (' + target.actorName + ')' : '');
+}
+
+/**
+ * Restores the whole school to history entry `historyId` (see the section
+ * comment above). Returns
+ *   { ok: true, stateVersion, historyId, missingFiles: [names], nothingToChange }
+ *   { ok: false, stale: true }     page is older than the school's last restore
+ *   { ok: false, notFound: true }
+ */
+function restoreToPoint(historyId, stateVersion) {
+  var access = requireActiveUser_();
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var state = readSchoolRow_(access.schoolName, true);
+    if (isStaleSave_(state, stateVersion)) return { ok: false, stale: true };
+    var plan = planRestore_(access, state, historyId);
+    if (!plan) return { ok: false, notFound: true };
+    if (!plan.changes.length && !plan.toRestore.length && !plan.toRemove.length) {
+      return { ok: true, nothingToChange: true, stateVersion: state.restoreCount, missingFiles: [] };
+    }
+
+    // 1. Files. Nothing on the sheets changes until these are done.
+    var folderId = null;
+    function schoolFolderId() { return folderId || (folderId = getSchoolFolderId_(access.schoolName)); }
+    var missingFiles = [];
+    plan.toRemove.forEach(function (c) {
+      if (c.attachments.length) archiveEvidenceFiles_(c.attachments, schoolFolderId());
+    });
+    plan.toRestore.forEach(function (r) {
+      var currentIds = {};
+      var currentById = {};
+      (r.current ? r.current.attachments : []).forEach(function (a) { currentIds[a.fileId] = true; currentById[a.fileId] = a; });
+      var targetIds = {};
+      r.target.attachments.forEach(function (a) { targetIds[a.fileId] = true; });
+      var dropped = (r.current ? r.current.attachments : []).filter(function (a) { return !targetIds[a.fileId]; });
+      if (dropped.length) archiveEvidenceFiles_(dropped, schoolFolderId());
+      var back = r.target.attachments.filter(function (a) { return !currentIds[a.fileId]; });
+      var result = back.length ? unarchiveEvidenceFiles_(back, schoolFolderId()) : { attachments: [], missing: [] };
+      var restoredById = {};
+      result.attachments.forEach(function (a) { restoredById[a.fileId] = a; });
+      missingFiles = missingFiles.concat(result.missing);
+      r.attachments = r.target.attachments
+        .map(function (a) { return currentById[a.fileId] || restoredById[a.fileId]; })
+        .filter(Boolean);
+      r.lostFiles = r.attachments.length !== r.target.attachments.length;
+    });
+
+    // 2. Evidence rows: updates first, then re-added entries (appended at
+    //    the end), then deletions from the bottom up, so row numbers
+    //    captured by the plan stay valid.
+    var sheet = ensureSheet_(TABS.EVIDENCE, EVIDENCE_HEADERS);
+    var now = new Date().toISOString();
+    plan.toRestore.forEach(function (r) {
+      var t = r.target;
+      var attachmentsJson = JSON.stringify(r.attachments);
+      var versionId = t.versionId;
+      if (r.lostFiles) {
+        // Some files are gone for good, so the entry no longer matches
+        // that version exactly: save what it really is now as a new one.
+        versionId = newVersionId_();
+        appendEvidenceVersion_(versionId, t.entryId, access, t.themeId, t.number, t.type, t.date, t.title, t.text, attachmentsJson, now);
+      }
+      if (r.current) {
+        sheet.getRange(r.current.row, EVIDENCE_COL.ThemeId, 1, 6)
+          .setValues([[t.themeId, t.number, t.type, t.date, t.text, attachmentsJson]]);
+        sheet.getRange(r.current.row, EVIDENCE_COL.UpdatedAt, 1, 3).setValues([[now, t.title, versionId]]);
+      } else {
+        sheet.appendRow([t.entryId, access.schoolName, t.themeId, t.number, t.type, t.date, t.text, attachmentsJson,
+          t.savedBy, toMillis_(t.savedAt) ? new Date(toMillis_(t.savedAt)).toISOString() : now, now, t.title, versionId]);
+      }
+    });
+    plan.toRemove.map(function (c) { return c.row; })
+      .sort(function (a, b) { return b - a; })
+      .forEach(function (row) { sheet.deleteRow(row); });
+
+    // 3. Ratings, and the restore counter that makes other open pages reload.
+    var restoreCount = state.restoreCount + 1;
+    state.sheet.getRange(state.row, RATINGS_COL.RatingsJSON, 1, 4)
+      .setValues([[JSON.stringify(plan.targetRatings), access.email, now, restoreCount]]);
+    state.restoreCount = restoreCount;
+    state.ratings = plan.targetRatings;
+
+    // 4. The restore's own history entry.
+    var restoreChange = { t: 'restore', target: plan.target.id, targetKind: plan.target.kind,
+      targetLabel: plan.target.label, targetActorName: plan.target.actorName, targetTime: plan.target.updatedAt };
+    var changes = [restoreChange].concat(plan.changes);
+    var historyId = null;
+    try {
+      var historySheet = ensureSheet_(TABS.HISTORY, HISTORY_HEADERS);
+      var snapshot = { ratings: plan.targetRatings, evidence: currentEvidenceVersionIds_(access.schoolName) };
+      historyId = appendHistoryRow_(historySheet, access, state, 'restore', 'Restored to ' + restoreTargetLabel_(plan.target),
+        changes.slice(0, MAX_HISTORY_CHANGES), plan.changes.length, snapshot);
+    } catch (e) {
+      console.error('Could not record restore for ' + access.schoolName + ': ' + (e && e.stack || e));
+    }
+    return { ok: true, stateVersion: restoreCount, historyId: historyId, missingFiles: missingFiles };
+  } finally {
+    lock.releaseLock();
   }
 }
 

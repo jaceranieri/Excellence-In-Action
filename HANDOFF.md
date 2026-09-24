@@ -58,7 +58,7 @@ owner):**
 - To deploy: paste `Code.gs`, `Script_App.html` and
   `Stylesheet_ThemeModal.html`, then publish a new version.
 
-**School history, step 1 of 3 (recording), not yet confirmed live:**
+**School history, steps 1–2 of 3 (recording + restore), not yet confirmed live:**
 The plan agreed with the project owner:
 - Each school gets a history of every change, with whole-school restore
   to any point. Everyone at the school can view and restore.
@@ -67,8 +67,11 @@ The plan agreed with the project owner:
 - A restore brings evidence back fully: deleted entries return, with
   their files moved out of ARCHIVE, and later entries are archived.
 - History is kept forever and opens from a History button in the banner.
-- Step 1 (done): record history on every save. Step 2: the restore
-  engine and preview. Step 3: the History panel UI.
+- Step 1 (done): record history on every save.
+- Step 2 (done, server only): restore with a preview, checkpoints, and
+  the listing functions the panel needs.
+- Step 3: the History panel UI. Until then nothing calls the step 2
+  functions.
 
 What step 1 changed:
 - Every ratings and evidence change is written to the new **History**
@@ -91,6 +94,15 @@ What step 1 changed:
   `Stylesheet_ThemeModal.html`, then publish a new version. The new tabs
   and columns create themselves.
 
+What step 2 added (all in `Code.gs`; see "School history" below):
+- `getSchoolHistory(offset, limit)`, `getHistoryEntryChanges(id)`,
+  `saveCheckpoint(label, stateVersion)`, `previewRestore(id)` and
+  `restoreToPoint(id, stateVersion)`.
+- A `Summary` column at the end of History, with the counts the
+  collapsed list shows. Rows written by step 1 have none; it's worked
+  out from their changes when listed.
+- Deploy with step 3. Deploying it alone is harmless.
+
 **Open items / next steps:**
 1. **"Untitled document" copy error:** one staff member couldn't
    attach a file with that name. The root cause is unknown; nothing in
@@ -110,7 +122,7 @@ What step 1 changed:
    EvidenceFolders into a Shared Drive would remove both risks. The code
    already passes `supportsAllDrives` everywhere, but it hasn't been
    tried.
-5. **School history steps 2 and 3** (see above).
+5. **School history step 3**, the History panel (see above).
 
 ## What this is
 
@@ -452,7 +464,9 @@ design notes are at the "School history" section of `Code.gs`. In brief:
 
 - **History tab**, one row per history entry: `HistoryId, SchoolName,
   Kind, Label, Actor, ActorName, StartedAt, UpdatedAt, ChangeCount,
-  ChangesJSON, SnapshotJSON`.
+  ChangesJSON, SnapshotJSON, Summary`. `Summary` holds counts
+  (`{ratings, added, edited, deleted}`) so listing never reads the
+  larger JSON columns.
   - `Kind` is `baseline`, `auto`, and later `checkpoint` / `restore`.
   - `ChangesJSON` lists what changed (grade, rubric cell, evidence
     add/edit/delete), capped at 200 per entry.
@@ -482,8 +496,34 @@ design notes are at the "School history" section of `Code.gs`. In brief:
 - **History never blocks a save:** if writing history fails, the save
   still goes through and the error is logged
   (`Could not record history…` in Executions).
-- **Don't delete or reorder rows** on History or EvidenceVersions by
-  hand. Old snapshots point at version rows.
+- **Don't delete rows** on History or EvidenceVersions by hand. Old
+  snapshots point at version rows, and a restore refuses to run if any
+  are missing (otherwise it would archive live evidence).
+
+**Restore** (`restoreToPoint()`; `previewRestore()` runs the same plan
+without changing anything):
+- **What changes:** the whole school goes back to the entry's snapshot.
+  - Ratings are replaced.
+  - Evidence deleted since then comes back, with its files moved out
+    of ARCHIVE (or the bin) and the "ARCHIVED – " prefix removed.
+  - Evidence edited since then goes back to that version.
+  - Evidence added since then is archived, like a normal delete.
+- **Files first:** file moves happen before any sheet write. If Drive
+  fails part-way, the sheets are untouched and running the restore
+  again finishes it. Files already in the right place are left alone.
+  Only files in the school folder or its ARCHIVE are touched.
+- **Files gone for good** (deleted from the bin) are skipped and listed
+  in `missingFiles`. The entry is saved without them as a new version.
+- **Its own history entry:** the restore is recorded as a `restore`
+  entry labelled "Restored to …", so it can be undone by restoring to
+  the entry before it. A restore that changes nothing isn't recorded.
+- **Other pages:** `RestoreCount` goes up by one. Pages still showing
+  the old state have their next save refused and reload.
+- **Lock:** it holds the script lock throughout. Saves by other people
+  wait up to 30 s, and fail with a retry if a large restore takes
+  longer.
+- **Checkpoints** (`saveCheckpoint()`) save the current state under a
+  name of up to 80 characters. They never absorb later changes.
 
 ## Layout system — read this before touching sizing
 
