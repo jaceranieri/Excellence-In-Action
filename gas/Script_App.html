@@ -3,17 +3,18 @@
     // Data
     // =======================================================================
 
-    // The 5 fixed grade levels. Pre-Delivering/Delivering colours are an
-    // interpolated guess between Ungraded (grey) and Sustaining/Excelling
-    // (sampled from your mockup, #F5B400 / #1E8E4F). Used for the outer
-    // cards' dot, the grade dropdown, and the modal's Grade badge itself
-    // (which fades between colours via CSS transition on change).
+    // The 5 fixed grade levels, in the brighter neubrutalism palette
+    // (Excelling / Sustaining / Pre-Delivering sampled from the mockup;
+    // Delivering is a matching bright orange). Used for the Theme cards,
+    // the wheel's indicator ring, the grade dropdown, and the modal's
+    // Grade badge (which fades between colours via CSS transition).
+    // `card` is the Theme card fill where it differs from `color`.
     var GRADES = {
-      'ungraded':       { label: 'Ungraded',       color: '#9AA0A6' },
-      'pre-delivering': { label: 'Pre-Delivering',  color: '#E2574C' },
-      'delivering':     { label: 'Delivering',      color: '#F2994A' },
+      'ungraded':       { label: 'Ungraded',       color: '#9AA0A6', card: '#E9EAEE' },
+      'pre-delivering': { label: 'Pre-Delivering',  color: '#FF5F5E' },
+      'delivering':     { label: 'Delivering',      color: '#FF914D' },
       'sustaining':     { label: 'Sustaining',      color: '#F5B400' },
-      'excelling':      { label: 'Excelling',       color: '#1E8E4F' }
+      'excelling':      { label: 'Excelling',       color: '#02BF63' }
     };
     var RUBRIC_LEVELS = ['pre-delivering', 'delivering', 'sustaining', 'excelling'];
 
@@ -1363,14 +1364,31 @@
     });
 
     var SCHOOL_NAME = '';
+    // Element resources and team messages (Code.gs's getSiteContent()),
+    // loaded once on entering the app. Messages are handled by
+    // Script_Messages.html.
+    var SITE_CONTENT = { resources: [], messages: [], dismissed: [] };
     var USER_EMAIL = '';
+    var USER_NAME = '';
+    // The school's restore count when its state was loaded (Code.gs's
+    // getSchoolState()). Sent with every save; the server refuses saves
+    // from a page loaded before the school was restored to an earlier
+    // point, and the page then reloads (reloadAfterRestore()).
+    var STATE_VERSION = 0;
 
     // Applies a school's saved {ratings, evidence} (see Code.gs's
-    // getSchoolState()) onto ELEMENT_THEMES in place. A theme with no
-    // saved rating entry keeps its ELEMENT_THEMES default (ungraded,
-    // nothing selected) — this only overwrites themes the sheet actually
-    // has data for.
+    // getSchoolState()) onto ELEMENT_THEMES in place. Every theme is reset
+    // to its default first (ungraded, nothing selected, no evidence), so
+    // reloading after a restore doesn't leave anything behind.
     function applySchoolState(state) {
+      Object.keys(THEME_BY_ID).forEach(function (themeId) {
+        var theme = THEME_BY_ID[themeId];
+        theme.grade = 'ungraded';
+        theme.rubric.forEach(function (row) { row.selected = null; });
+        theme.evidence = [];
+      });
+      STATE_VERSION = state.stateVersion || 0;
+      showLastUpdated(state.lastUpdated);
       Object.keys(state.ratings || {}).forEach(function (themeId) {
         var theme = THEME_BY_ID[themeId];
         if (!theme) return; // stale id from a since-removed theme — ignore, don't throw
@@ -1390,7 +1408,7 @@
       });
     }
 
-    function loadSchoolState() {
+    function loadSchoolState(onLoaded, onError) {
       if (!SCHOOL_NAME) return;
       google.script.run
         .withSuccessHandler(function (state) {
@@ -1398,19 +1416,92 @@
           updateDotRingColors();
           var selected = wheel && wheel.getSelected && wheel.getSelected();
           if (selected) renderElementDetail(selected);
+          if (onLoaded) onLoaded();
         })
         .withFailureHandler(function (err) {
           console.error('Failed to load saved ratings/evidence:', err);
+          if (onError) onError(err);
         })
         .getSchoolState();
     }
 
+    // A save was refused because the school has been restored to an
+    // earlier point since this page loaded. Unsaved rating changes are
+    // dropped (they were made on top of the old state); the page reloads
+    // the school's current state, and `afterReload` can put back anything
+    // worth keeping (see saveEntryInBackground()).
+    var restoreReloadCallbacks = null;
+    var restoreToast = null;
+
+    function reloadAfterRestore(afterReload) {
+      if (restoreReloadCallbacks) {
+        if (afterReload) restoreReloadCallbacks.push(afterReload);
+        return;
+      }
+      restoreReloadCallbacks = afterReload ? [afterReload] : [];
+      dirtyThemeIds = {};
+      clearTimeout(ratingsSaveTimer);
+      var toast = restoreToast || (restoreToast = createToast());
+      toast.update('busy', 'Refreshing…', 'Your school’s work was restored to an earlier point.');
+      loadSchoolState(function () {
+        var callbacks = restoreReloadCallbacks;
+        restoreReloadCallbacks = null;
+        callbacks.forEach(function (cb) { cb(); });
+        refreshOpenModal();
+        toast.update('info', 'Your school’s work was restored to an earlier point',
+          'The page has been refreshed to show it. Any changes you made just before it happened weren’t saved.', 12000);
+      }, function () {
+        restoreReloadCallbacks = null;
+        toast.update('error', 'Couldn’t refresh', 'Your school’s work was restored to an earlier point. Reload the page to see it.');
+      });
+    }
+
+    function loadSiteContent() {
+      google.script.run
+        .withSuccessHandler(function (content) {
+          SITE_CONTENT = content || SITE_CONTENT;
+          renderElementResources();
+          if (typeof window.onSiteContentLoaded === 'function') window.onSiteContentLoaded();
+        })
+        .withFailureHandler(function (err) {
+          console.error('Failed to load resources and messages:', err);
+        })
+        .getSiteContent();
+    }
+
     // Exposed for Script_LoginGate.html's enterApp() to call once the
     // visitor's access record (with schoolName/email) is known.
+    // -- Last Updated (banner) --------------------------------------------
+    // Who made the school's latest change and when (Code.gs's
+    // getSchoolState()), e.g. "Jason Ranieri 10.12.26". Loaded with the
+    // school's state; this page's own saves update it straight away.
+    // Other people's changes show on the next load.
+    function showLastUpdated(lastUpdated) {
+      var box = document.querySelector('.app-banner-updated');
+      if (!box) return;
+      if (!lastUpdated || !lastUpdated.at) {
+        box.hidden = true;
+        return;
+      }
+      var when = new Date(lastUpdated.at);
+      box.querySelector('.app-banner-updated-value').textContent =
+        (lastUpdated.name ? lastUpdated.name + ' ' : '') + formatDateDDMMYY(when);
+      box.setAttribute('title', 'Last changed ' + when.toLocaleString('en-AU', {
+        day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }) +
+        (lastUpdated.name ? ' by ' + lastUpdated.name : ''));
+      box.hidden = false;
+    }
+
+    function markUpdatedByMe() {
+      showLastUpdated({ name: USER_NAME, at: Date.now() });
+    }
+
     window.onAppEntered = function (access) {
       SCHOOL_NAME = access.schoolName || '';
       USER_EMAIL = access.email || '';
+      USER_NAME = access.name || '';
       loadSchoolState();
+      loadSiteContent();
       // Gives this visitor view access to their school's evidence folder,
       // so attachment links open for everyone at the school.
       google.script.run
@@ -1427,31 +1518,87 @@
     // are last-write-wins whole-row overwrites (see Code.gs's saveRatings
     // doc comment) — acceptable for v1 per HANDOFF.md.
     var ratingsSaveTimer = null;
-    var ratingsDirty = false;
-    var saveStatusEl = null;
+    var dirtyThemeIds = {}; // themes changed since the last ratings save
+    var ratingsToast = null;
+    var ratingsSavesInFlight = 0;
+    var ratingsSavedCallbacks = [];
 
-    function ensureSaveStatusEl() {
-      if (saveStatusEl) return saveStatusEl;
-      saveStatusEl = document.createElement('div');
-      saveStatusEl.setAttribute('aria-live', 'polite');
-      saveStatusEl.style.cssText = 'position:fixed;bottom:16px;right:16px;padding:6px 14px;' +
-        'border-radius:999px;font:600 13px/1.4 Figtree,"Segoe UI",sans-serif;color:#fff;' +
-        'background:#5f6368;opacity:0;transition:opacity .25s ease;pointer-events:none;z-index:9999;';
-      document.body.appendChild(saveStatusEl);
-      return saveStatusEl;
+    // Runs `cb` once every rating change made so far has reached the
+    // server (or failed), so a checkpoint or restore (Script_History.html)
+    // never races a pending save.
+    function whenRatingsSaved(cb) {
+      if (Object.keys(dirtyThemeIds).length) flushRatingsSave();
+      if (!ratingsSavesInFlight) { cb(); return; }
+      ratingsSavedCallbacks.push(cb);
     }
 
-    function showSaveStatus(text, color, autoHide) {
-      var el = ensureSaveStatusEl();
-      el.textContent = text;
-      el.style.background = color;
-      el.style.opacity = '1';
-      if (autoHide) setTimeout(function () { el.style.opacity = '0'; }, 1800);
+    function ratingsSaveSettled() {
+      ratingsSavesInFlight--;
+      if (ratingsSavesInFlight) return;
+      var callbacks = ratingsSavedCallbacks;
+      ratingsSavedCallbacks = [];
+      callbacks.forEach(function (cb) { cb(); });
     }
 
-    function buildRatingsPayload() {
+    // -- Toasts --------------------------------------------------------------
+    // Status messages stacked in the bottom-left corner, outside the Theme
+    // modal, so a background evidence save keeps reporting progress (and
+    // its result) after the modal is closed. Each toast is reusable:
+    // update() puts it back on screen if it was dismissed or auto-hidden.
+    // States: 'busy' (spinner), 'success', 'error', 'info'.
+    var toastStackEl = null;
+
+    function createToast() {
+      if (!toastStackEl) {
+        toastStackEl = document.createElement('div');
+        toastStackEl.className = 'eia-toasts';
+        toastStackEl.setAttribute('aria-live', 'polite');
+        document.body.appendChild(toastStackEl);
+      }
+      var el = document.createElement('div');
+      el.className = 'eia-toast';
+      el.setAttribute('role', 'status');
+      el.innerHTML =
+        '<span class="eia-toast-icon" aria-hidden="true"></span>' +
+        '<span class="eia-toast-text"><span class="eia-toast-title"></span><span class="eia-toast-detail"></span></span>' +
+        '<button type="button" class="eia-toast-close" aria-label="Dismiss">&times;</button>';
+      var titleEl = el.querySelector('.eia-toast-title');
+      var detailEl = el.querySelector('.eia-toast-detail');
+      var hideTimer = null;
+      var removeTimer = null;
+
+      function dismiss() {
+        clearTimeout(hideTimer);
+        el.classList.remove('is-visible');
+        clearTimeout(removeTimer);
+        removeTimer = setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 250);
+      }
+
+      function update(state, title, detail, autoHideMs) {
+        clearTimeout(hideTimer);
+        clearTimeout(removeTimer);
+        el.className = 'eia-toast is-' + state + (el.classList.contains('is-visible') ? ' is-visible' : '');
+        titleEl.textContent = title;
+        detailEl.textContent = detail || '';
+        detailEl.style.display = detail ? '' : 'none';
+        if (!el.parentNode) toastStackEl.appendChild(el);
+        void el.offsetWidth; // so the fade-in runs when (re)added
+        el.classList.add('is-visible');
+        if (autoHideMs) hideTimer = setTimeout(dismiss, autoHideMs);
+      }
+
+      el.querySelector('.eia-toast-close').addEventListener('click', dismiss);
+      return { update: update, dismiss: dismiss };
+    }
+
+    function showRatingsToast(state, title, autoHideMs) {
+      ratingsToast = ratingsToast || createToast();
+      ratingsToast.update(state, title, '', autoHideMs);
+    }
+
+    function buildRatingsPayload(themeIds) {
       var payload = {};
-      Object.keys(THEME_BY_ID).forEach(function (themeId) {
+      themeIds.forEach(function (themeId) {
         var theme = THEME_BY_ID[themeId];
         payload[themeId] = {
           grade: theme.grade,
@@ -1461,25 +1608,39 @@
       return payload;
     }
 
+    // Only the themes changed since the last save are sent; Code.gs's
+    // saveRatings() merges them into the school's saved ratings.
     function flushRatingsSave() {
-      if (!ratingsDirty || !SCHOOL_NAME) return;
-      ratingsDirty = false;
+      var themeIds = Object.keys(dirtyThemeIds);
+      if (!themeIds.length || !SCHOOL_NAME) return;
+      dirtyThemeIds = {};
       clearTimeout(ratingsSaveTimer);
-      showSaveStatus('Saving…', '#5f6368', false);
+      showRatingsToast('busy', 'Saving ratings…');
+      ratingsSavesInFlight++;
       google.script.run
-        .withSuccessHandler(function () { showSaveStatus('Saved', '#1E8E4F', true); })
+        .withSuccessHandler(function (result) {
+          if (result && result.stale) {
+            if (ratingsToast) ratingsToast.dismiss();
+            reloadAfterRestore();
+          } else {
+            showRatingsToast('success', 'Ratings saved', 1800);
+            markUpdatedByMe();
+          }
+          ratingsSaveSettled();
+        })
         .withFailureHandler(function (err) {
           console.error('Failed to save ratings:', err);
-          showSaveStatus('Save failed — retrying', '#E2574C', false);
-          ratingsDirty = true;
+          showRatingsToast('error', 'Ratings didn’t save — retrying');
+          themeIds.forEach(function (id) { dirtyThemeIds[id] = true; });
           ratingsSaveTimer = setTimeout(flushRatingsSave, 4000);
+          ratingsSaveSettled();
         })
-        .saveRatings(JSON.stringify(buildRatingsPayload()));
+        .saveRatings(JSON.stringify(buildRatingsPayload(themeIds)), STATE_VERSION);
     }
 
-    function scheduleSaveRatings() {
-      if (!SCHOOL_NAME) return;
-      ratingsDirty = true;
+    function scheduleSaveRatings(theme) {
+      if (!SCHOOL_NAME || !theme) return;
+      dirtyThemeIds[theme.id] = true;
       clearTimeout(ratingsSaveTimer);
       ratingsSaveTimer = setTimeout(flushRatingsSave, 1500);
     }
@@ -1538,22 +1699,32 @@
         'stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
     }
 
-    function renderThemeCard(theme, idx, accentHex, accentRgb, shadowHex, delay) {
+    // Card fill for a grade (see GRADES and theme-cards.css).
+    function gradeCardColor(grade) {
+      return grade.card || grade.color;
+    }
+
+    function evidenceBadgeHtml(count) {
+      return attachmentGlyph() + '<span>' + count + '</span>';
+    }
+
+    // --card-accent/--card-accent-rgb (the Element's colour) aren't used by
+    // the card itself any more, but openThemeModal() reads them to colour
+    // the modal.
+    function renderThemeCard(theme, idx, accentHex, accentRgb, delay) {
       var grade = GRADES[theme.grade] || GRADES.ungraded;
       var count = (theme.evidence || []).length;
-      var gradePillShadow = darkenHex(grade.color, 0.22);
-      return '<div class="theme-card" tabindex="0" role="button"' +
-          ' data-theme-index="' + idx + '"' +
+      return '<div class="theme-card' + (theme.grade === 'ungraded' || !GRADES[theme.grade] ? ' is-ungraded' : '') +
+          '" tabindex="0" role="button" data-theme-index="' + idx + '"' +
           ' style="--card-accent:' + accentHex + ';--card-accent-rgb:' + accentRgb +
-          ';--card-shadow:' + shadowHex + ';animation-delay:' + delay + 'ms">' +
-        '<h3 class="theme-card-title">' + escapeHtml(theme.title) + '</h3>' +
-        '<div class="theme-card-indicators" style="--grade-pill-color:' + grade.color +
-            ';--grade-pill-shadow:' + gradePillShadow + '">' +
-          '<span class="theme-card-grade-pill">' + grade.label + '</span>' +
+          ';--grade-color:' + gradeCardColor(grade) + ';animation-delay:' + delay + 'ms">' +
+        '<div class="theme-card-top">' +
+          '<span class="theme-card-grade">' + grade.label + '</span>' +
           '<span class="theme-card-evidence-badge" title="' + count + ' evidence piece' + (count === 1 ? '' : 's') + '">' +
-            attachmentGlyph() + (count > 0 ? '<span>' + count + '</span>' : '') +
+            evidenceBadgeHtml(count) +
           '</span>' +
         '</div>' +
+        '<h3 class="theme-card-title">' + escapeHtml(theme.title) + '</h3>' +
         '</div>';
     }
 
@@ -1590,22 +1761,54 @@
       var style = ExcellenceWheel.CATEGORY_STYLE[segment.category];
       var accentHex = style.wedge;
       var accentRgb = hexToRgbString(accentHex);
-      // Teaching's wedge colour is a golden yellow (#FDB40F) — darkening
-      // it (the default for every other category) came out a muddy
-      // mustard rather than reading as "Teaching's colour, darker". Use
-      // Teaching's own ring/accent orange (#F3712D, the same orange as
-      // its wheel ring and Element title) as the shadow instead, for
-      // that category only.
-      var shadowHex = segment.category === 'teaching' ? style.accent : darkenHex(accentHex, 0.2);
       var cardsHtml = themes.map(function (t, i) {
-        return renderThemeCard(t, i, accentHex, accentRgb, shadowHex, baseDelay + i * 35);
+        return renderThemeCard(t, i, accentHex, accentRgb, baseDelay + i * 35);
       }).join('');
+      // The icon circle is filled with the Element's own wheel colour.
+      currentSegment = segment;
       detailEl.innerHTML =
-        '<div class="element-detail" style="--title-color:' + style.ring + '">' +
+        '<div class="element-detail" style="--element-color:' + accentHex + '">' +
           elementIconPlaceholder() +
           '<h2 class="element-title">' + escapeHtml(title) + '</h2>' +
           '<div class="theme-cards">' + cardsHtml + '</div>' +
+          '<div class="element-resources"></div>' +
         '</div>';
+      // Resources fade in with the cards' cascade, just after the last card.
+      renderElementResources(baseDelay + themes.length * 35);
+    }
+
+    // -- Element resources ------------------------------------------------
+    // Links from the Users spreadsheet's Resources tab (Code.gs's
+    // getSiteContent()), shown as buttons under the selected Element's
+    // Theme cards. A row's Element is matched to the Element's name as
+    // shown in the app (ignoring case, spacing and "&" vs "and") or to its
+    // wheel id.
+    var currentSegment = null;
+
+    function normaliseElementName(name) {
+      return String(name || '').toLowerCase().replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, ' ').trim();
+    }
+
+    // `delayMs` holds the fade-in (theme-cards.css) back to follow the cards.
+    function renderElementResources(delayMs) {
+      var box = detailEl.querySelector('.element-resources');
+      if (!box || !currentSegment) return;
+      box.style.setProperty('--resources-delay', (delayMs || 0) + 'ms');
+      var data = ELEMENT_THEMES[currentSegment.id];
+      var names = [
+        normaliseElementName((data && data.title) || currentSegment.lines.join(' ')),
+        normaliseElementName(currentSegment.id)
+      ];
+      var links = (SITE_CONTENT.resources || []).filter(function (r) {
+        return names.indexOf(normaliseElementName(r.element)) >= 0 && /^https?:\/\//i.test(r.url);
+      });
+      box.innerHTML = links.length
+        ? '<h3 class="element-resources-title">Element Resources</h3>' +
+          '<div class="element-resources-links">' + links.map(function (r) {
+            return '<a class="element-resource-link" href="' + escapeHtml(r.url) + '" target="_blank" rel="noopener">' +
+              escapeHtml(r.label) + '</a>';
+          }).join('') + '</div>'
+        : '';
     }
 
     // Reflects a Theme's current grade onto its outer card, live, without a
@@ -1613,18 +1816,15 @@
     function syncCard(cardEl, theme) {
       if (!cardEl) return;
       var g = GRADES[theme.grade] || GRADES.ungraded;
-      var indicators = cardEl.querySelector('.theme-card-indicators');
-      var pill = cardEl.querySelector('.theme-card-grade-pill');
-      if (indicators) {
-        indicators.style.setProperty('--grade-pill-color', g.color);
-        indicators.style.setProperty('--grade-pill-shadow', darkenHex(g.color, 0.22));
-      }
-      if (pill) pill.textContent = g.label;
+      cardEl.style.setProperty('--grade-color', gradeCardColor(g));
+      cardEl.classList.toggle('is-ungraded', g === GRADES.ungraded);
+      var gradeEl = cardEl.querySelector('.theme-card-grade');
+      if (gradeEl) gradeEl.textContent = g.label;
       var count = (theme.evidence || []).length;
       var badge = cardEl.querySelector('.theme-card-evidence-badge');
       if (badge) {
         badge.setAttribute('title', count + ' evidence piece' + (count === 1 ? '' : 's'));
-        badge.innerHTML = attachmentGlyph() + (count > 0 ? '<span>' + count + '</span>' : '');
+        badge.innerHTML = evidenceBadgeHtml(count);
       }
       updateDotRingColors(); // this Theme's overview dot needs the same colour update
     }
@@ -1716,6 +1916,8 @@
     // content and toggles visibility, so listeners are attached once too
     // (delegated on the rubric grid / grade dropdown containers).
 
+    var MAX_EVIDENCE_TITLE = 150; // matches Code.gs
+
     var modalOverlay = document.createElement('div');
     modalOverlay.className = 'theme-modal-overlay';
     modalOverlay.innerHTML =
@@ -1748,7 +1950,10 @@
                   '<span>Add Evidence</span>' +
                 '</button>' +
                 '<div class="evidence-compose" style="display:none">' +
-                  '<textarea class="evidence-compose-textarea" placeholder="Describe this evidence\u2026"></textarea>' +
+                  '<label class="evidence-compose-label" for="evidence-compose-title">Evidence title</label>' +
+                  '<input type="text" id="evidence-compose-title" class="evidence-compose-title" maxlength="' + MAX_EVIDENCE_TITLE + '" placeholder="A few words describing this evidence" autocomplete="off">' +
+                  '<label class="evidence-compose-label" for="evidence-compose-details">Details</label>' +
+                  '<textarea id="evidence-compose-details" class="evidence-compose-textarea" placeholder="Give a full description of this evidence\u2026"></textarea>' +
                   '<div class="evidence-compose-attachments"></div>' +
                   '<div class="evidence-compose-notice" style="display:none"></div>' +
                   '<p class="evidence-compose-error" style="display:none"></p>' +
@@ -1777,6 +1982,7 @@
     var evidenceListScrollEl = modalOverlay.querySelector('.evidence-list-scroll');
     var evidenceAddBtn = modalOverlay.querySelector('.evidence-add-btn');
     var evidenceComposeEl = modalOverlay.querySelector('.evidence-compose');
+    var evidenceTitleInput = modalOverlay.querySelector('.evidence-compose-title');
     var evidenceTextarea = modalOverlay.querySelector('.evidence-compose-textarea');
     var evidenceComposeAttachmentsEl = modalOverlay.querySelector('.evidence-compose-attachments');
     var evidenceComposeErrorEl = modalOverlay.querySelector('.evidence-compose-error');
@@ -1791,10 +1997,11 @@
     var composeAttachments = []; // staged for the evidence currently being composed
     var editingNumber = null;    // set while editing an existing entry; null while composing a new one
 
-    function renderRubricHeader(theme) {
+    // The level names above the rubric columns. The theme's current grade
+    // isn't highlighted here: the Grade badge shows it.
+    function renderRubricHeader() {
       return RUBRIC_LEVELS.map(function (key) {
-        var isCurrent = theme.grade === key;
-        return '<div class="rubric-header-cell' + (isCurrent ? ' is-current' : '') + '">' + GRADES[key].label + '</div>';
+        return '<div class="rubric-header-cell">' + GRADES[key].label + '</div>';
       }).join('');
     }
 
@@ -1812,7 +2019,9 @@
             return;
           }
           var isSel = row.selected === key;
+          // --level-rgb tints the cell in its level's grade colour when selected.
           html += '<div class="rubric-cell' + (isSel ? ' is-selected' : '') + '" tabindex="0" role="button"' +
+            ' style="--level-rgb:' + hexToRgbString(GRADES[key].color) + '"' +
             ' aria-pressed="' + isSel + '" data-row="' + rowIdx + '" data-level="' + key + '">' +
             '<span class="rubric-cell-level">' + GRADES[key].label + '</span>' +
             escapeHtml(cellText) +
@@ -1860,6 +2069,11 @@
       return null;
     }
 
+    // Entries saved before titles existed fall back to their number.
+    function evidenceDisplayTitle(item) {
+      return item.title || ('Evidence ' + item.number);
+    }
+
     // Keeps whichever entry is open across re-renders (background saves
     // re-render the list); `openNumber` forces a specific entry open.
     function renderEvidenceList(theme, openNumber) {
@@ -1884,16 +2098,17 @@
     function renderAccordionItem(item, isOpen) {
       var attachments = item.attachments || [];
       var copying = attachments.some(function (a) { return a.pickedId; });
-      var meta = [item.date];
-      if (attachments.length) meta.push(attachments.length + ' attachment' + (attachments.length === 1 ? '' : 's'));
+      var meta = [item.date]; // the attachment count is the pill beside the title
       if (item.pending) meta.push(copying ? 'Copying files…' : 'Saving…');
       else if (item.saveError) meta.push('Not saved');
       var attachmentsHtml = attachments.map(function (a) {
-        var label = escapeHtml(a.name) + attachmentIcon(a.kind || inferAttachmentKind(a.mimeType));
+        var label = '<span class="evidence-attachment-name">' + escapeHtml(a.name) + '</span>' +
+          attachmentIcon(a.kind || inferAttachmentKind(a.mimeType));
+        var tooltip = ' title="' + escapeHtml(a.error ? a.name + ' — ' + a.error : a.name) + '"';
         if (a.url && !a.pickedId) {
-          return '<a class="evidence-attachment" href="' + escapeHtml(a.url) + '" target="_blank" rel="noopener">' + label + '</a>';
+          return '<a class="evidence-attachment" href="' + escapeHtml(a.url) + '" target="_blank" rel="noopener"' + tooltip + '>' + label + '</a>';
         }
-        return '<div class="evidence-attachment' + (a.error ? ' is-error' : ' is-pending') + '">' + label + '</div>';
+        return '<div class="evidence-attachment' + (a.error ? ' is-error' : ' is-pending') + '"' + tooltip + '>' + label + '</div>';
       }).join('');
       var status = '';
       var actions;
@@ -1918,15 +2133,18 @@
       return '<div class="evidence-accordion-item' + (isOpen ? ' is-open' : '') + stateClass + '" data-number="' + item.number + '">' +
         '<div class="evidence-accordion-header" tabindex="0" role="button" aria-expanded="' + (isOpen ? 'true' : 'false') + '">' +
           '<span class="evidence-accordion-title">' +
-            '<span class="evidence-accordion-number">Evidence ' + item.number + '</span>' +
+            '<span class="evidence-accordion-number" title="' + escapeHtml(evidenceDisplayTitle(item)) + '">' +
+              escapeHtml(evidenceDisplayTitle(item)) + '</span>' +
             '<span class="evidence-accordion-meta">' + escapeHtml(meta.join(' · ')) + '</span>' +
           '</span>' +
+          '<span class="evidence-accordion-pill" title="' + attachments.length + ' attachment' +
+            (attachments.length === 1 ? '' : 's') + '">' + attachmentGlyph() + '<span>' + attachments.length + '</span></span>' +
           '<svg class="evidence-accordion-chevron" viewBox="0 0 10 6" fill="none" xmlns="http://www.w3.org/2000/svg">' +
             '<path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
         '</div>' +
         '<div class="evidence-accordion-body"><div class="evidence-accordion-body-inner">' +
           status +
-          '<p class="evidence-item-text">' + escapeHtml(item.text || '') + '</p>' +
+          (item.text ? '<p class="evidence-item-text">' + escapeHtml(item.text) + '</p>' : '') +
           (attachmentsHtml ? '<p class="evidence-attachments-label">Attachments</p>' + attachmentsHtml : '') +
           (actions ? '<div class="evidence-item-actions">' + actions + '</div>' : '') +
         '</div></div>' +
@@ -1971,8 +2189,12 @@
         // backend in the first place — nothing to delete server-side.
         if (removed && removed.entryId && SCHOOL_NAME) {
           google.script.run
+            .withSuccessHandler(function (result) {
+              if (result && result.stale) reloadAfterRestore();
+              else if (result && result.ok) markUpdatedByMe();
+            })
             .withFailureHandler(function (err) { console.error('Failed to delete evidence entry:', err); })
-            .deleteEvidenceEntry(removed.entryId);
+            .deleteEvidenceEntry(removed.entryId, STATE_VERSION);
         }
         return;
       }
@@ -2033,7 +2255,8 @@
       evidenceComposeAttachmentsEl.innerHTML = composeAttachments.map(function (a, i) {
         var status = a.error || (a.pickedId ? 'Copied to your school’s evidence folder when you submit' : '');
         return '<div class="evidence-staged-attachment' + (a.error ? ' is-error' : '') + '">' +
-          '<span class="evidence-staged-name">' + escapeHtml(a.name) +
+          '<span class="evidence-staged-name" title="' + escapeHtml(a.name) + '">' +
+            '<span class="evidence-staged-filename">' + escapeHtml(a.name) + '</span>' +
             (status ? '<span class="evidence-staged-status">' + escapeHtml(status) + '</span>' : '') +
           '</span>' +
           '<button type="button" class="evidence-staged-remove" data-index="' + i + '" aria-label="Remove attachment">&times;</button></div>';
@@ -2078,13 +2301,14 @@
       hideComposeError();
       hideComposeNotice();
       setEvidenceMode('compose');
-      evidenceTextarea.focus();
+      evidenceTitleInput.focus();
       prefetchPickerAuth();
     }
 
     function enterComposeMode() {
       editingNumber = null;
       composeAttachments = [];
+      evidenceTitleInput.value = '';
       evidenceTextarea.value = '';
       openCompose();
     }
@@ -2094,6 +2318,7 @@
       if (!item || item.pending) return;
       editingNumber = number;
       composeAttachments = (item.attachments || []).map(function (a) { return Object.assign({}, a); });
+      evidenceTitleInput.value = item.title || '';
       evidenceTextarea.value = item.text || '';
       openCompose();
     }
@@ -2344,19 +2569,60 @@
       syncCard(card, theme); // grade AND evidence count/icon both stay in sync
     }
 
+    // One toast per entry, reused if it's retried or edited and saved again.
+    var entryToasts = new WeakMap();
+
+    function entryToast(entry) {
+      var toast = entryToasts.get(entry);
+      if (!toast) { toast = createToast(); entryToasts.set(entry, toast); }
+      return toast;
+    }
+
     function saveEntryInBackground(theme, card, entry) {
       entry.pending = true;
       entry.saveError = '';
       savesInFlight++;
       refreshEvidenceViews(theme, card);
+      var toast = entryToast(entry);
+      var toastDetail = '“' + evidenceDisplayTitle(entry) + '” · ' + theme.title;
+      var fileCount = entry.attachments.filter(function (a) { return a.pickedId; }).length;
+      toast.update('busy', fileCount
+        ? 'Copying ' + fileCount + ' file' + (fileCount === 1 ? '' : 's') + ' to your school’s evidence folder…'
+        : 'Saving evidence…', toastDetail);
+      function toastFailed() {
+        toast.update('error', 'Evidence not saved', toastDetail + ' — open this Theme to try again.');
+      }
       google.script.run
         .withSuccessHandler(function (result) {
           savesInFlight--;
           entry.pending = false;
+          if (result && result.stale) {
+            handleStaleEntrySave(theme, card, entry, toast, toastDetail);
+            return;
+          }
           if (result && result.ok) {
             entry.entryId = result.entryId;
             entry.attachments = result.attachments || [];
             delete entry.lastSaved;
+            markUpdatedByMe();
+            // A reload after a restore may have fetched the school's state
+            // before this save landed, leaving this entry out of the list.
+            theme.evidence = theme.evidence || [];
+            if (theme.evidence.indexOf(entry) < 0 &&
+                !theme.evidence.some(function (e) { return e.entryId === entry.entryId; })) {
+              theme.evidence.push(entry);
+            }
+            toast.update('success', fileCount
+              ? 'Evidence copied to your school’s evidence folder'
+              : 'Evidence saved', toastDetail, 5000);
+          } else if (result && result.gone) {
+            // Deleted by someone else while this was being edited: offer
+            // to save it again as a new entry. Attachments that were on the
+            // deleted entry are in ARCHIVE now, so only new picks carry over.
+            entry.entryId = null;
+            delete entry.lastSaved;
+            entry.attachments = entry.attachments.filter(function (a) { return a.pickedId; });
+            entry.saveError = 'This evidence was deleted by someone else, so your changes weren’t saved. Choose Try again to add it as new evidence, or Discard.';
           } else if (result && result.needsAuth) {
             pickerAuth = null;
             entry.saveError = 'Your Google Drive connection needs renewing. Choose Edit, click Attach Files to reconnect, then save again.';
@@ -2366,6 +2632,7 @@
             entry.attachments.forEach(function (a) { if (a.pickedId && errorsById[a.pickedId]) a.error = errorsById[a.pickedId]; });
             entry.saveError = 'Some files couldn’t be copied. Choose Edit to remove them, then save again.';
           }
+          if (entry.saveError) toastFailed();
           refreshEvidenceViews(theme, card);
         })
         .withFailureHandler(function (err) {
@@ -2373,6 +2640,7 @@
           savesInFlight--;
           entry.pending = false;
           entry.saveError = 'Your evidence wasn’t saved. Please try again.';
+          toastFailed();
           refreshEvidenceViews(theme, card);
         })
         .saveEvidenceEntry(theme.id, {
@@ -2380,18 +2648,42 @@
           number: entry.number,
           type: entry.type,
           date: entry.date,
+          title: entry.title,
           text: entry.text,
           themeTitle: theme.title,
+          stateVersion: STATE_VERSION,
           attachments: entry.attachments.map(function (a) {
             return a.pickedId ? { pickedId: a.pickedId, name: a.name } : { fileId: a.fileId };
           })
         });
     }
 
+    // The school was restored to an earlier point, so the server refused
+    // this save. New evidence is kept as a "Not saved" entry (Try again
+    // saves it on top of the restored state); an edit is dropped, since
+    // the entry it edited may not even exist any more.
+    function handleStaleEntrySave(theme, card, entry, toast, toastDetail) {
+      var isNew = !entry.entryId;
+      toast.update('error', 'Evidence not saved', toastDetail + (isNew
+        ? ' — your school’s work was restored to an earlier point. Open this Theme to try again.'
+        : ' — your school’s work was restored to an earlier point, so your changes were discarded.'));
+      reloadAfterRestore(function () {
+        if (!isNew) return;
+        theme.evidence = theme.evidence || [];
+        entry.number = theme.evidence.reduce(function (max, e) { return Math.max(max, e.number || 0); }, 0) + 1;
+        entry.saveError = 'Not saved: your school’s work was restored to an earlier point while you were adding this. Choose Try again to add it now.';
+        theme.evidence.push(entry);
+        syncCard(card, theme);
+      });
+    }
+
     // Undoes a failed save: a never-saved entry is removed; an edit of a
     // saved entry goes back to what's actually stored.
     function discardFailedEntry(theme, entry) {
+      var toast = entryToasts.get(entry);
+      if (toast) toast.dismiss();
       if (entry.lastSaved) {
+        entry.title = entry.lastSaved.title;
         entry.text = entry.lastSaved.text;
         entry.attachments = entry.lastSaved.attachments;
         delete entry.lastSaved;
@@ -2411,9 +2703,15 @@
         showComposeError('Remove the files marked in red before submitting.');
         return;
       }
+      var title = evidenceTitleInput.value.trim();
       var text = evidenceTextarea.value.trim();
+      if (!title) {
+        showComposeError('Give this evidence a title before submitting.');
+        evidenceTitleInput.focus();
+        return;
+      }
       if (!text && composeAttachments.length === 0) {
-        showComposeError('Add a note or attach a file before submitting.');
+        showComposeError('Add some details or attach a file before submitting.');
         return;
       }
       var theme = currentModalTheme;
@@ -2421,7 +2719,7 @@
       var entry = editingNumber !== null ? findEvidenceByNumber(theme, editingNumber) : null;
       if (entry) {
         if (entry.entryId && !entry.lastSaved) {
-          entry.lastSaved = { text: entry.text, attachments: entry.attachments.slice() };
+          entry.lastSaved = { title: entry.title, text: entry.text, attachments: entry.attachments.slice() };
         }
       } else {
         entry = {
@@ -2433,6 +2731,7 @@
         theme.evidence = theme.evidence || [];
         theme.evidence.push(entry);
       }
+      entry.title = title;
       entry.text = text;
       entry.attachments = composeAttachments.map(stagedToEntryAttachment);
       exitComposeMode();
@@ -2442,13 +2741,25 @@
     });
 
     function refreshRubricAndBadge(theme) {
-      rubricHeaderEl.innerHTML = renderRubricHeader(theme);
+      rubricHeaderEl.innerHTML = renderRubricHeader();
       rubricGridEl.innerHTML = renderRubricGrid(theme);
       var grade = GRADES[theme.grade] || GRADES.ungraded;
       gradeBadgeText.textContent = grade.label;
       gradeBadgeBtn.style.setProperty('--grade-color', grade.color); // CSS transitions the fade
       gradeBadgeBtn.style.setProperty('--grade-shadow', darkenHex(grade.color, 0.22));
       gradeDropdownEl.innerHTML = renderGradeDropdown(theme);
+    }
+
+    // After a reload re-renders the Theme cards, points the open modal at
+    // the new card for its theme and redraws its rubric and evidence (a
+    // draft being composed is left alone).
+    function refreshOpenModal() {
+      if (!currentModalTheme || !modalOverlay.classList.contains('is-open')) return;
+      var idx = currentThemes ? currentThemes.indexOf(currentModalTheme) : -1;
+      var card = idx >= 0 && detailEl.querySelector('.theme-card[data-theme-index="' + idx + '"]');
+      if (card) currentModalCard = card;
+      refreshRubricAndBadge(currentModalTheme);
+      if (evidenceComposeEl.style.display === 'none') renderEvidenceList(currentModalTheme);
     }
 
     function openThemeModal(theme, cardEl) {
@@ -2495,7 +2806,7 @@
       currentModalTheme.grade = computeAverageGrade(currentModalTheme);
       refreshRubricAndBadge(currentModalTheme);
       syncCard(currentModalCard, currentModalTheme);
-      scheduleSaveRatings();
+      scheduleSaveRatings(currentModalTheme);
     });
     rubricGridEl.addEventListener('keydown', function (e) {
       if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
@@ -2517,7 +2828,7 @@
       gradeBadgeWrap.classList.remove('is-open');
       refreshRubricAndBadge(currentModalTheme); // rubric selections untouched; header highlight still needs refreshing
       syncCard(currentModalCard, currentModalTheme);
-      scheduleSaveRatings();
+      scheduleSaveRatings(currentModalTheme);
     });
     document.addEventListener('click', function (e) {
       if (gradeBadgeWrap.classList.contains('is-open') && !gradeBadgeWrap.contains(e.target)) {

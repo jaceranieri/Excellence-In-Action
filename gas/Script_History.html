@@ -1,0 +1,663 @@
+<script>
+    // =======================================================================
+    // School history panel (GAS build only)
+    // =======================================================================
+    // Opened from the banner's History button. Lists the school's history
+    // newest first (Code.gs's getSchoolHistory()); each entry expands to
+    // its changes (getHistoryEntryChanges()), and any entry but the latest
+    // can be restored to, after a preview (previewRestore() then
+    // restoreToPoint()). "Save checkpoint" names the current state
+    // (saveCheckpoint()). Styles are in Stylesheet_History.html.
+    //
+    // Uses Script_App.html's globals: SCHOOL_NAME, STATE_VERSION,
+    // THEME_BY_ID, GRADES, escapeHtml, createToast, whenRatingsSaved,
+    // loadSchoolState, refreshOpenModal, reloadAfterRestore, savesInFlight,
+    // dirtyThemeIds and ratingsSaveTimer.
+
+    var HISTORY_PAGE_SIZE = 50;
+    var MAX_CHECKPOINT_LABEL = 80; // matches Code.gs
+
+    var HISTORY_ICONS = {
+      auto: '<svg viewBox="0 0 24 24" fill="none"><path d="M4 20h4L19 9l-4-4L4 16v4Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>',
+      checkpoint: '<svg viewBox="0 0 24 24" fill="none"><path d="M6 21V4m0 0h11l-2 4 2 4H6" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+      restore: '<svg viewBox="0 0 24 24" fill="none"><path d="M3.5 12a8.5 8.5 0 1 0 2.5-6" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/><path d="M3 4.5V9h4.5" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+      baseline: '<svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" fill="currentColor"/></svg>'
+    };
+
+    var historyOpenBtn = document.getElementById('history-open-btn');
+    var historyOverlay = document.createElement('div');
+    historyOverlay.className = 'history-overlay';
+    historyOverlay.innerHTML =
+      '<div class="history-panel" role="dialog" aria-modal="false" aria-labelledby="history-title">' +
+        '<div class="history-header">' +
+          '<div>' +
+            '<h2 class="history-title" id="history-title">History</h2>' +
+            '<p class="history-subtitle"></p>' +
+          '</div>' +
+          '<button type="button" class="history-close" aria-label="Close">&times;</button>' +
+        '</div>' +
+        '<div class="history-toolbar"></div>' +
+        '<div class="history-body" aria-live="polite"></div>' +
+      '</div>';
+    document.body.appendChild(historyOverlay);
+
+    var historyPanelEl = historyOverlay.querySelector('.history-panel');
+    var historySubtitleEl = historyOverlay.querySelector('.history-subtitle');
+    var historyCloseBtn = historyOverlay.querySelector('.history-close');
+    var historyToolbarEl = historyOverlay.querySelector('.history-toolbar');
+    var historyBodyEl = historyOverlay.querySelector('.history-body');
+
+    // Not `history`: at the top level that's window.history, which can't be replaced.
+    var historyUi = {
+      entries: [],
+      total: 0,
+      latestId: '',
+      loading: false,
+      error: '',
+      expanded: {},     // entry id -> true while its changes are shown
+      changes: {},      // entry id -> { changes, changeCount } once fetched
+      view: 'list',     // 'list' | 'confirm'
+      preview: null,    // previewRestore() result while confirming
+      busy: false       // a checkpoint save or restore is running
+    };
+    var historyLastFocus = null;
+
+    // -- Formatting ----------------------------------------------------------
+
+    function historyTime(ms) {
+      return new Date(ms).toLocaleTimeString('en-AU', { hour: 'numeric', minute: '2-digit' });
+    }
+
+    function historyDay(ms) {
+      var d = new Date(ms);
+      var today = new Date();
+      var yesterday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
+      if (d.toDateString() === today.toDateString()) return 'Today';
+      if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
+      return d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
+    }
+
+    function historyWhen(ms) {
+      return historyDay(ms) + ', ' + historyTime(ms);
+    }
+
+    // "Today, 2:15 pm" or, for a session of changes, "Today, 2:15 pm – 2:40 pm".
+    function historyWhenRange(entry) {
+      var start = entry.startedAt || entry.updatedAt;
+      var end = entry.updatedAt || start;
+      if (entry.kind !== 'auto' || end - start < 60000) return historyWhen(end);
+      if (historyDay(start) === historyDay(end)) return historyWhen(start) + ' – ' + historyTime(end);
+      return historyWhen(start) + ' – ' + historyWhen(end);
+    }
+
+    function plural(n, one, many) {
+      return n + ' ' + (n === 1 ? one : many);
+    }
+
+    // For a restore entry, evidence "added" was brought back, "deleted"
+    // was archived, and "edited" went back to an earlier version.
+    function historySummaryText(summary, kind) {
+      if (!summary) return '';
+      var restore = kind === 'restore';
+      var parts = [];
+      if (summary.ratings) parts.push('Ratings changed in ' + plural(summary.ratings, 'theme', 'themes'));
+      if (summary.added) parts.push(summary.added + ' evidence ' + (restore ? 'brought back' : 'added'));
+      if (summary.edited) parts.push(summary.edited + ' evidence ' + (restore ? 'returned to an earlier version' : 'edited'));
+      if (summary.deleted) parts.push(summary.deleted + ' evidence ' + (restore ? 'archived' : 'deleted'));
+      return parts.join(' · ');
+    }
+
+    // How a restore target is described: a checkpoint by its name, anything
+    // else by when it happened.
+    function historyTargetName(entry) {
+      if (entry.kind === 'checkpoint' && entry.label) return '“' + entry.label + '”';
+      if (entry.kind === 'baseline') return 'when history started';
+      return historyWhen(entry.updatedAt) + (entry.actorName ? ' (' + entry.actorName + ')' : '');
+    }
+
+    function themeTitle(themeId) {
+      var theme = THEME_BY_ID[themeId];
+      return theme ? theme.title : themeId + ' (no longer in the app)';
+    }
+
+    function gradeLabel(key) {
+      return key && GRADES[key] ? GRADES[key].label : 'Not selected';
+    }
+
+    function filesNote(c) {
+      return c.files ? ' (' + plural(c.files, 'file', 'files') + ')' : '';
+    }
+
+    // Evidence lines for what a restore will do (the preview) and did (a
+    // restore entry's changes), in place of "Added" / "Deleted" / "Edited".
+    var RESTORE_PREVIEW_VERBS = {
+      'evidence-add': function (c) { return 'Brings back evidence ' + evidenceName(c) + filesNote(c); },
+      'evidence-delete': function (c) { return 'Archives evidence ' + evidenceName(c); },
+      'evidence-edit': function (c) { return 'Returns evidence ' + evidenceName(c) + ' to an earlier version'; }
+    };
+    var RESTORED_VERBS = {
+      'evidence-add': function (c) { return 'Brought back evidence ' + evidenceName(c) + filesNote(c); },
+      'evidence-delete': function (c) { return 'Archived evidence ' + evidenceName(c); },
+      'evidence-edit': function (c) { return 'Returned evidence ' + evidenceName(c) + ' to an earlier version'; }
+    };
+
+    function evidenceName(c) {
+      return '“' + (c.title || ('Evidence ' + c.number)) + '”';
+    }
+
+    function describeChange(c) {
+      switch (c.t) {
+        case 'grade':
+          return 'Grade: ' + gradeLabel(c.from) + ' → ' + gradeLabel(c.to);
+        case 'rubric':
+          return 'Criterion ' + (c.row + 1) + ': ' + gradeLabel(c.from) + ' → ' + gradeLabel(c.to);
+        case 'evidence-add':
+          return 'Added evidence ' + evidenceName(c) + (c.files ? ' (' + plural(c.files, 'file', 'files') + ')' : '');
+        case 'evidence-delete':
+          return 'Deleted evidence ' + evidenceName(c) + (c.files ? ' (' + plural(c.files, 'file', 'files') + ' archived)' : '');
+        case 'evidence-edit':
+          var parts = [];
+          if (c.fields && c.fields.indexOf('title') >= 0) parts.push('title');
+          if (c.fields && c.fields.indexOf('details') >= 0) parts.push('details');
+          if (c.filesAdded) parts.push(plural(c.filesAdded, 'file', 'files') + ' added');
+          if (c.filesRemoved) parts.push(plural(c.filesRemoved, 'file', 'files') + ' removed');
+          return 'Edited evidence ' + evidenceName(c) + (parts.length ? ': ' + parts.join(', ') : '');
+        default:
+          return '';
+      }
+    }
+
+    // Changes grouped by theme, in the order each theme first appears.
+    // `verbs` rewords evidence lines for the restore preview ("Will come
+    // back" rather than "Added").
+    function renderChanges(changes, changeCount, verbs) {
+      var groups = [];
+      var byTheme = {};
+      var restoreLine = '';
+      changes.forEach(function (c) {
+        if (c.t === 'restore') {
+          restoreLine = '<p class="history-change-theme">Restored the whole school to ' +
+            escapeHtml(historyTargetName({ kind: c.targetKind, label: c.targetLabel, updatedAt: c.targetTime,
+              actorName: c.targetActorName })) + '</p>';
+          return;
+        }
+        var text = verbs && verbs[c.t] ? verbs[c.t](c) : describeChange(c);
+        if (!text) return;
+        if (!byTheme[c.theme]) {
+          byTheme[c.theme] = [];
+          groups.push(c.theme);
+        }
+        byTheme[c.theme].push(text);
+      });
+      var shown = changes.filter(function (c) { return c.t !== 'restore'; }).length;
+      var html = restoreLine + groups.map(function (themeId) {
+        return '<div class="history-change-group">' +
+          '<p class="history-change-theme">' + escapeHtml(themeTitle(themeId)) + '</p>' +
+          '<ul class="history-change-list">' + byTheme[themeId].map(function (t) {
+            return '<li>' + escapeHtml(t) + '</li>';
+          }).join('') + '</ul></div>';
+      }).join('');
+      if (changeCount > shown) {
+        html += '<p class="history-change-note">…and ' + plural(changeCount - shown, 'more change', 'more changes') + '.</p>';
+      }
+      return html || '<p class="history-change-note">No changes remained by the end of this session.</p>';
+    }
+
+    // -- Rendering -----------------------------------------------------------
+
+    function renderHistoryToolbar() {
+      if (historyUi.view !== 'list') {
+        historyToolbarEl.style.display = 'none';
+        return;
+      }
+      historyToolbarEl.style.display = '';
+      if (historyToolbarEl.getAttribute('data-mode') === 'form') return; // keep what's being typed
+      historyToolbarEl.setAttribute('data-mode', 'button');
+      historyToolbarEl.innerHTML =
+        '<button type="button" class="history-btn is-checkpoint" data-action="checkpoint-form"' + (historyUi.busy ? ' disabled' : '') + '>' +
+          HISTORY_ICONS.checkpoint + 'Save checkpoint</button>';
+    }
+
+    function showCheckpointForm() {
+      historyToolbarEl.setAttribute('data-mode', 'form');
+      historyToolbarEl.innerHTML =
+        '<form class="history-checkpoint-form">' +
+          '<label class="history-checkpoint-label" for="history-checkpoint-input">Checkpoint name</label>' +
+          '<input id="history-checkpoint-input" class="history-checkpoint-input" type="text" maxlength="' + MAX_CHECKPOINT_LABEL + '"' +
+            ' placeholder="e.g. End of Term 3 review" autocomplete="off" required>' +
+          '<div class="history-checkpoint-actions">' +
+            '<button type="button" class="history-btn is-secondary" data-action="checkpoint-cancel">Cancel</button>' +
+            '<button type="submit" class="history-btn is-checkpoint">Save checkpoint</button>' +
+          '</div>' +
+        '</form>';
+      historyToolbarEl.querySelector('input').focus();
+    }
+
+    function hideCheckpointForm() {
+      historyToolbarEl.removeAttribute('data-mode');
+      renderHistoryToolbar();
+    }
+
+    function renderHistoryItem(entry) {
+      var isCurrent = entry.id === historyUi.latestId;
+      var title;
+      var meta = historyWhenRange(entry);
+      if (entry.kind === 'checkpoint') {
+        title = entry.label || 'Checkpoint';
+        meta = 'Checkpoint · ' + (entry.actorName ? entry.actorName + ' · ' : '') + meta;
+      } else if (entry.kind === 'restore') {
+        title = entry.label || 'Restored to an earlier point';
+        if (entry.actorName) meta = entry.actorName + ' · ' + meta;
+      } else if (entry.kind === 'baseline') {
+        title = 'History started';
+      } else {
+        title = entry.actorName || 'Someone at your school';
+      }
+      var summary = entry.kind === 'baseline'
+        ? 'Your school’s work as it was when history began.'
+        : entry.kind === 'checkpoint'
+          ? ''
+          : (historySummaryText(entry.summary, entry.kind) || (entry.kind === 'auto' ? 'No changes remained by the end of this session.' : ''));
+      var hasChanges = entry.kind === 'restore' || entry.changeCount > 0;
+      var expanded = !!historyUi.expanded[entry.id];
+      var changesHtml = '';
+      if (expanded) {
+        var loaded = historyUi.changes[entry.id];
+        changesHtml = loaded
+          ? renderChanges(loaded.changes, loaded.changeCount, entry.kind === 'restore' ? RESTORED_VERBS : null)
+          : '<p class="history-change-note">Loading changes…</p>';
+      }
+      var actions = [];
+      if (hasChanges) {
+        actions.push('<button type="button" class="history-link-btn" data-action="toggle" data-id="' + escapeHtml(entry.id) +
+          '" aria-expanded="' + expanded + '">' + (expanded ? 'Hide changes' : 'Show changes') + '</button>');
+      }
+      if (!isCurrent) {
+        actions.push('<button type="button" class="history-link-btn is-restore" data-action="restore" data-id="' +
+          escapeHtml(entry.id) + '"' + (historyUi.busy ? ' disabled' : '') + '>Restore to this point</button>');
+      }
+      return '<li class="history-item kind-' + escapeHtml(entry.kind) + '">' +
+        '<span class="history-item-icon" aria-hidden="true">' + (HISTORY_ICONS[entry.kind] || HISTORY_ICONS.auto) + '</span>' +
+        '<div class="history-item-content">' +
+          '<p class="history-item-title">' + escapeHtml(title) + (isCurrent ? '<span class="history-current">Current</span>' : '') + '</p>' +
+          '<p class="history-item-meta">' + escapeHtml(meta) + '</p>' +
+          (summary ? '<p class="history-item-summary">' + escapeHtml(summary) + '</p>' : '') +
+          (actions.length ? '<div class="history-item-actions">' + actions.join('') + '</div>' : '') +
+          (expanded ? '<div class="history-changes">' + changesHtml + '</div>' : '') +
+        '</div>' +
+      '</li>';
+    }
+
+    function renderHistoryList() {
+      if (historyUi.error && !historyUi.entries.length) {
+        historyBodyEl.innerHTML = '<p class="history-message is-error">' + escapeHtml(historyUi.error) + '</p>' +
+          '<button type="button" class="history-btn is-secondary" data-action="reload">Try again</button>';
+        return;
+      }
+      if (!historyUi.entries.length) {
+        historyBodyEl.innerHTML = '<p class="history-message">' + (historyUi.loading
+          ? 'Loading history…'
+          : 'Nothing has been recorded yet. Changes to ratings and evidence appear here from now on, and you can save a checkpoint at any time.') + '</p>';
+        return;
+      }
+      historyBodyEl.innerHTML =
+        '<ul class="history-list">' + historyUi.entries.map(renderHistoryItem).join('') + '</ul>' +
+        (historyUi.entries.length < historyUi.total
+          ? '<button type="button" class="history-btn is-secondary" data-action="more"' + (historyUi.loading ? ' disabled' : '') + '>' +
+              (historyUi.loading ? 'Loading…' : 'Show older') + '</button>'
+          : '') +
+        (historyUi.error ? '<p class="history-message is-error">' + escapeHtml(historyUi.error) + '</p>' : '');
+    }
+
+    function renderRestoreConfirm() {
+      var p = historyUi.preview;
+      var html = '<button type="button" class="history-link-btn history-back" data-action="back">← Back to history</button>';
+      if (!p) {
+        historyBodyEl.innerHTML = html + '<p class="history-message">Working out what would change…</p>';
+        return;
+      }
+      html += '<h3 class="history-confirm-heading">Restore to ' + escapeHtml(historyTargetName(p.target)) + '?</h3>';
+      if (p.target.kind === 'checkpoint') {
+        html += '<p class="history-confirm-when">Checkpoint saved ' + escapeHtml(historyWhen(p.target.updatedAt)) +
+          (p.target.actorName ? ' by ' + escapeHtml(p.target.actorName) : '') + '</p>';
+      }
+      if (p.nothingToChange) {
+        historyBodyEl.innerHTML = html +
+          '<p class="history-message">Your school’s work already matches this point, so there’s nothing to restore.</p>';
+        return;
+      }
+      var s = p.summary || {};
+      var lines = [];
+      if (s.ratings) lines.push('Ratings will change in ' + plural(s.ratings, 'theme', 'themes'));
+      if (s.added) lines.push(plural(s.added, 'evidence entry', 'evidence entries') + ' will come back');
+      if (s.edited) lines.push(plural(s.edited, 'evidence entry', 'evidence entries') +
+        (s.edited === 1 ? ' goes' : ' go') + ' back to an earlier version');
+      if (s.deleted) lines.push(plural(s.deleted, 'evidence entry', 'evidence entries') + ' added since then will be archived');
+      html +=
+        '<ul class="history-confirm-summary">' + lines.map(function (l) { return '<li>' + escapeHtml(l) + '</li>'; }).join('') + '</ul>' +
+        '<p class="history-confirm-warning">This changes the whole school, including anyone else’s work since then. ' +
+          'Archived evidence stays in your school’s ARCHIVE folder, and you can undo the restore afterwards from this history.</p>' +
+        '<button type="button" class="history-link-btn" data-action="toggle-preview" aria-expanded="' + !!historyUi.previewExpanded + '">' +
+          (historyUi.previewExpanded ? 'Hide details' : 'Show details') + '</button>' +
+        (historyUi.previewExpanded
+          ? '<div class="history-changes">' + renderChanges(p.changes, p.changeCount, RESTORE_PREVIEW_VERBS) + '</div>'
+          : '') +
+        '<div class="history-confirm-actions">' +
+          '<button type="button" class="history-btn is-secondary" data-action="back">Cancel</button>' +
+          '<button type="button" class="history-btn is-warning" data-action="confirm-restore"' + (historyUi.busy ? ' disabled' : '') + '>' +
+            (historyUi.busy ? 'Restoring…' : 'Restore') + '</button>' +
+        '</div>';
+      historyBodyEl.innerHTML = html;
+    }
+
+    function renderHistory() {
+      renderHistoryToolbar();
+      if (historyUi.view === 'confirm') renderRestoreConfirm();
+      else renderHistoryList();
+    }
+
+    // -- Loading ---------------------------------------------------------------
+
+    function loadHistory(reset) {
+      if (historyUi.loading) return;
+      historyUi.loading = true;
+      historyUi.error = '';
+      if (reset) {
+        historyUi.entries = [];
+        historyUi.total = 0;
+      }
+      renderHistory();
+      google.script.run
+        .withSuccessHandler(function (page) {
+          historyUi.loading = false;
+          var seen = {};
+          historyUi.entries.forEach(function (e) { seen[e.id] = true; });
+          page.entries.forEach(function (e) {
+            if (!seen[e.id]) historyUi.entries.push(e);
+          });
+          historyUi.total = page.total;
+          historyUi.latestId = page.latestId;
+          renderHistory();
+        })
+        .withFailureHandler(function (err) {
+          console.error('Failed to load history:', err);
+          historyUi.loading = false;
+          historyUi.error = 'Couldn’t load the history. Please try again.';
+          renderHistory();
+        })
+        .getSchoolHistory(reset ? 0 : historyUi.entries.length, HISTORY_PAGE_SIZE);
+    }
+
+    function toggleEntry(id) {
+      historyUi.expanded[id] = !historyUi.expanded[id];
+      if (historyUi.expanded[id] && !historyUi.changes[id]) {
+        google.script.run
+          .withSuccessHandler(function (result) {
+            historyUi.changes[id] = result && result.ok
+              ? { changes: result.changes, changeCount: result.changeCount }
+              : { changes: [], changeCount: 0 };
+            renderHistory();
+          })
+          .withFailureHandler(function (err) {
+            console.error('Failed to load history changes:', err);
+            historyUi.expanded[id] = false;
+            renderHistory();
+          })
+          .getHistoryEntryChanges(id);
+      }
+      renderHistory();
+    }
+
+    // -- Open / close ------------------------------------------------------------
+
+    // Side panels (this History panel, and Messages in Script_Messages.html)
+    // sit beside the main container when the window has room for both (the
+    // container slides left: body.side-panel-alongside in
+    // Stylesheet_History.html), otherwise over the container's right side.
+    // Only one is open at a time. Keep these in step with #app-root's max
+    // width and the body padding in Index.html, and the panel width in
+    // Stylesheet_History.html.
+    var APP_MAX_WIDTH = 1160;
+    var PAGE_PADDING = 32;
+    var SIDE_PANEL_WIDTH = 400;
+    var SIDE_PANEL_GAP = 24;
+
+    function layoutSidePanel(panelEl) {
+      var content = document.body.clientWidth - 2 * PAGE_PADDING;
+      var pair = APP_MAX_WIDTH + SIDE_PANEL_GAP + SIDE_PANEL_WIDTH;
+      var alongside = content >= pair;
+      document.body.classList.toggle('side-panel-alongside', alongside);
+      panelEl.style.left = alongside
+        ? (PAGE_PADDING + (content - pair) / 2 + APP_MAX_WIDTH + SIDE_PANEL_GAP) + 'px'
+        : '';
+      panelEl.style.right = alongside ? 'auto' : '';
+      // Overlapping the container, the panel starts below its banner, so
+      // the History and Messages buttons stay visible and clickable.
+      var banner = document.querySelector('.app-banner');
+      panelEl.style.top = !alongside && banner
+        ? Math.max(12, Math.round(banner.getBoundingClientRect().bottom + 10)) + 'px'
+        : '';
+    }
+
+    // True for a click on a side panel's banner button (History, Messages):
+    // those open and close panels themselves.
+    function isSidePanelButton(target) {
+      return !!(target.closest && target.closest('.app-banner-panel-btn'));
+    }
+
+    function openHistory() {
+      if (!SCHOOL_NAME) return;
+      historyLastFocus = document.activeElement;
+      historySubtitleEl.textContent = SCHOOL_NAME;
+      historyUi.view = 'list';
+      historyUi.preview = null;
+      historyUi.expanded = {};
+      historyToolbarEl.removeAttribute('data-mode');
+      if (typeof closeMessages === 'function') closeMessages(true, true);
+      layoutSidePanel(historyPanelEl);
+      historyOverlay.classList.add('is-open');
+      historyOpenBtn.setAttribute('aria-expanded', 'true');
+      historyCloseBtn.focus();
+      // Pending rating changes first, so the list (and "Current") includes them.
+      historyUi.loading = false;
+      historyUi.entries = [];
+      renderHistory();
+      whenRatingsSaved(function () { loadHistory(true); });
+    }
+
+    // `keepFocus`: closed by a click elsewhere, so leave focus where that
+    // click put it. `keepLayout`: another side panel is opening in its
+    // place, so the main container stays where it is.
+    function closeHistory(keepFocus, keepLayout) {
+      if (!historyOverlay.classList.contains('is-open')) return;
+      historyOverlay.classList.remove('is-open');
+      if (!keepLayout) document.body.classList.remove('side-panel-alongside');
+      historyOpenBtn.setAttribute('aria-expanded', 'false');
+      if (!keepFocus && historyLastFocus && typeof historyLastFocus.focus === 'function') historyLastFocus.focus();
+    }
+
+    // -- Checkpoints ---------------------------------------------------------------
+
+    function saveHistoryCheckpoint(label) {
+      label = label.replace(/\s+/g, ' ').trim();
+      if (!label || historyUi.busy) return;
+      historyUi.busy = true;
+      var toast = createToast();
+      toast.update('busy', 'Saving checkpoint…', '“' + label + '”');
+      hideCheckpointForm();
+      whenRatingsSaved(function () {
+        google.script.run
+          .withSuccessHandler(function (result) {
+            historyUi.busy = false;
+            if (result && result.stale) {
+              toast.dismiss();
+              reloadAfterRestore(function () { loadHistory(true); });
+              return;
+            }
+            toast.update('success', 'Checkpoint saved', '“' + label + '”', 4000);
+            loadHistory(true);
+          })
+          .withFailureHandler(function (err) {
+            console.error('Failed to save checkpoint:', err);
+            historyUi.busy = false;
+            toast.update('error', 'Checkpoint not saved', (err && err.message) || 'Please try again.');
+            renderHistory();
+          })
+          .saveCheckpoint(label, STATE_VERSION);
+      });
+    }
+
+    // -- Restore ---------------------------------------------------------------------
+
+    function startRestore(id) {
+      if (historyUi.busy) return;
+      if (savesInFlight > 0) {
+        var wait = createToast();
+        wait.update('info', 'Evidence is still saving', 'Wait until it has finished, then try the restore again.', 6000);
+        return;
+      }
+      historyUi.view = 'confirm';
+      historyUi.preview = null;
+      historyUi.previewExpanded = false;
+      historyUi.previewId = id;
+      renderHistory();
+      whenRatingsSaved(function () {
+        google.script.run
+          .withSuccessHandler(function (result) {
+            if (historyUi.view !== 'confirm' || historyUi.previewId !== id) return;
+            if (!result || !result.ok) {
+              historyUi.view = 'list';
+              historyUi.error = 'That point can no longer be found. The history has been refreshed.';
+              loadHistory(true);
+              return;
+            }
+            historyUi.preview = result;
+            renderHistory();
+          })
+          .withFailureHandler(function (err) {
+            console.error('Failed to preview restore:', err);
+            if (historyUi.view !== 'confirm' || historyUi.previewId !== id) return;
+            historyUi.view = 'list';
+            renderHistory();
+            createToast().update('error', 'Can’t restore to that point', (err && err.message) || 'Please try again.');
+          })
+          .previewRestore(id);
+      });
+    }
+
+    function confirmRestore() {
+      var preview = historyUi.preview;
+      if (!preview || historyUi.busy) return;
+      historyUi.busy = true;
+      renderHistory();
+      var targetName = historyTargetName(preview.target);
+      var toast = createToast();
+      toast.update('busy', 'Restoring your school…', 'Back to ' + targetName + '. Files are being moved, so this can take a minute.');
+      google.script.run
+        .withSuccessHandler(function (result) {
+          if (result && result.stale) {
+            historyUi.busy = false;
+            toast.dismiss();
+            historyUi.view = 'list';
+            reloadAfterRestore(function () { loadHistory(true); });
+            return;
+          }
+          if (!result || !result.ok) {
+            historyUi.busy = false;
+            toast.update('error', 'Restore didn’t run', 'That point can no longer be found.');
+            historyUi.view = 'list';
+            loadHistory(true);
+            return;
+          }
+          // Anything typed just before is dropped: the restore replaced it.
+          dirtyThemeIds = {};
+          clearTimeout(ratingsSaveTimer);
+          loadSchoolState(function () {
+            historyUi.busy = false;
+            refreshOpenModal();
+            if (result.nothingToChange) {
+              toast.update('info', 'Nothing to restore', 'Your school’s work already matched ' + targetName + '.', 6000);
+            } else {
+              toast.update('success', 'Restored to ' + targetName, 'Your school’s ratings and evidence are back as they were.', 6000);
+            }
+            if (result.missingFiles && result.missingFiles.length) {
+              createToast().update('error', plural(result.missingFiles.length, 'file', 'files') + ' couldn’t be brought back',
+                result.missingFiles.join(', ') + ' — deleted permanently from Drive. The evidence was restored without ' +
+                (result.missingFiles.length === 1 ? 'it' : 'them') + '.');
+            }
+            historyUi.view = 'list';
+            historyUi.preview = null;
+            loadHistory(true);
+          }, function () {
+            historyUi.busy = false;
+            toast.update('error', 'Restored, but the page couldn’t refresh', 'Reload the page to see your school’s restored work.');
+          });
+        })
+        .withFailureHandler(function (err) {
+          console.error('Restore failed:', err);
+          historyUi.busy = false;
+          toast.update('error', 'Restore failed', ((err && err.message) || 'Something went wrong.') +
+            ' Some files may have moved; running the restore again will finish it.');
+          renderHistory();
+        })
+        .restoreToPoint(preview.target.id, STATE_VERSION);
+    }
+
+    // -- Events ------------------------------------------------------------------------
+
+    historyOpenBtn.addEventListener('click', function () {
+      if (historyOverlay.classList.contains('is-open')) closeHistory();
+      else openHistory();
+    });
+    historyCloseBtn.addEventListener('click', function () { closeHistory(); });
+    // Nothing behind the panel is dimmed or blocked, so a click anywhere
+    // outside it (except the side panel buttons, which toggle panels, and
+    // the toasts) closes it.
+    document.addEventListener('pointerdown', function (e) {
+      if (!historyOverlay.classList.contains('is-open')) return;
+      if (historyPanelEl.contains(e.target) || isSidePanelButton(e.target) ||
+          (e.target.closest && e.target.closest('.eia-toasts'))) return;
+      closeHistory(true);
+    });
+    window.addEventListener('resize', function () {
+      if (historyOverlay.classList.contains('is-open')) layoutSidePanel(historyPanelEl);
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key !== 'Escape' || !historyOverlay.classList.contains('is-open')) return;
+      if (historyUi.view === 'confirm' && !historyUi.busy) {
+        historyUi.view = 'list';
+        renderHistory();
+      } else if (historyToolbarEl.getAttribute('data-mode') === 'form') {
+        hideCheckpointForm();
+      } else {
+        closeHistory();
+      }
+    });
+
+    historyToolbarEl.addEventListener('click', function (e) {
+      var btn = e.target.closest('[data-action]');
+      if (!btn) return;
+      var action = btn.getAttribute('data-action');
+      if (action === 'checkpoint-form') showCheckpointForm();
+      else if (action === 'checkpoint-cancel') hideCheckpointForm();
+    });
+    historyToolbarEl.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var input = historyToolbarEl.querySelector('input');
+      if (input) saveHistoryCheckpoint(input.value);
+    });
+
+    historyBodyEl.addEventListener('click', function (e) {
+      var btn = e.target.closest('[data-action]');
+      if (!btn || btn.disabled) return;
+      var action = btn.getAttribute('data-action');
+      var id = btn.getAttribute('data-id');
+      if (action === 'toggle') toggleEntry(id);
+      else if (action === 'restore') startRestore(id);
+      else if (action === 'more') loadHistory(false);
+      else if (action === 'reload') loadHistory(true);
+      else if (action === 'back' && !historyUi.busy) { historyUi.view = 'list'; renderHistory(); }
+      else if (action === 'toggle-preview') { historyUi.previewExpanded = !historyUi.previewExpanded; renderHistory(); }
+      else if (action === 'confirm-restore') confirmRestore();
+    });
+</script>

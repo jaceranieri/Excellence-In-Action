@@ -1,0 +1,193 @@
+<script>
+    // =======================================================================
+    // Team messages (GAS build only)
+    // =======================================================================
+    // Messages come from the Users spreadsheet's Messages tab (Code.gs's
+    // getSiteContent(), loaded into SITE_CONTENT by Script_App.html):
+    //   - The newest active message this person hasn't hidden shows in a box
+    //     at the top of the main screen, with its optional call-to-action
+    //     button and a × that hides it (dismissMessage(), remembered on the
+    //     server, so it stays hidden on any device). Hiding one shows the
+    //     next active message, if any.
+    //   - The bell in the banner opens the Messages panel, which lists every
+    //     message, newest first. Its badge counts active messages not yet
+    //     hidden; "Mark as read" in the panel hides one too.
+    // The panel reuses the History panel's card, placement and behaviour
+    // (layoutSidePanel() and closeHistory() in Script_History.html); only
+    // one side panel is open at a time. Styles: Stylesheet_Messages.html.
+
+    var messagesOpenBtn = document.getElementById('messages-open-btn');
+    var messagesBadgeEl = messagesOpenBtn.querySelector('.app-banner-badge');
+    var teamMessageSlot = document.getElementById('team-message-slot');
+
+    var messagesOverlay = document.createElement('div');
+    messagesOverlay.className = 'history-overlay messages-overlay';
+    messagesOverlay.innerHTML =
+      '<div class="history-panel" role="dialog" aria-modal="false" aria-labelledby="messages-title">' +
+        '<div class="history-header">' +
+          '<div>' +
+            '<h2 class="history-title" id="messages-title">Messages</h2>' +
+            '<p class="history-subtitle">From the Excellence in Action team</p>' +
+          '</div>' +
+          '<button type="button" class="history-close" aria-label="Close">&times;</button>' +
+        '</div>' +
+        '<div class="history-body messages-body" aria-live="polite"></div>' +
+      '</div>';
+    document.body.appendChild(messagesOverlay);
+
+    var messagesPanelEl = messagesOverlay.querySelector('.history-panel');
+    var messagesCloseBtn = messagesOverlay.querySelector('.history-close');
+    var messagesBodyEl = messagesOverlay.querySelector('.messages-body');
+    var messagesLastFocus = null;
+    var hiddenMessageIds = {}; // message id -> true, for messages this person has hidden
+
+    function isUnreadMessage(m) {
+      return m.active && !hiddenMessageIds[m.id];
+    }
+
+    function messageCtaHtml(m, className) {
+      if (!m.buttonUrl || !/^https?:\/\//i.test(m.buttonUrl)) return '';
+      return '<a class="' + className + '" href="' + escapeHtml(m.buttonUrl) + '" target="_blank" rel="noopener">' +
+        escapeHtml(m.buttonLabel || 'Open link') + '</a>';
+    }
+
+    function messagePostedDate(ms) {
+      return ms ? new Date(ms).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+    }
+
+    function renderMessagesBadge() {
+      var count = (SITE_CONTENT.messages || []).filter(isUnreadMessage).length;
+      messagesBadgeEl.textContent = count > 9 ? '9+' : String(count);
+      messagesBadgeEl.hidden = !count;
+      messagesOpenBtn.setAttribute('aria-label', count ? 'Messages (' + count + ' new)' : 'Messages');
+    }
+
+    // The message box animates open and closed (Stylesheet_Messages.html):
+    // a different message first closes the one showing, then opens.
+    var TEAM_MESSAGE_CLOSE_MS = 380;
+    var shownTeamMessageId = null;
+    var teamMessageClosing = false;
+
+    function renderTeamMessage() {
+      if (teamMessageClosing) return; // runs again once the close finishes
+      var m = (SITE_CONTENT.messages || []).filter(isUnreadMessage)[0];
+      var id = m ? m.id : null;
+      if (id === shownTeamMessageId) return;
+      if (shownTeamMessageId) {
+        teamMessageClosing = true;
+        teamMessageSlot.classList.remove('is-open');
+        setTimeout(function () {
+          teamMessageClosing = false;
+          shownTeamMessageId = null;
+          teamMessageSlot.innerHTML = '';
+          renderTeamMessage();
+        }, TEAM_MESSAGE_CLOSE_MS);
+        return;
+      }
+      if (!m) return;
+      shownTeamMessageId = id;
+      teamMessageSlot.innerHTML = '<div class="team-message-inner">' +
+        '<section class="team-message" aria-label="Message from the team">' +
+          '<div class="team-message-body">' +
+            '<h2 class="team-message-title">' + escapeHtml(m.title || 'A message from the team') + '</h2>' +
+            (m.text ? '<p class="team-message-text">' + escapeHtml(m.text) + '</p>' : '') +
+          '</div>' +
+          messageCtaHtml(m, 'team-message-cta') +
+          '<button type="button" class="team-message-close" data-id="' + escapeHtml(m.id) + '"' +
+            ' aria-label="Hide this message" title="Hide this message">&times;</button>' +
+        '</section></div>';
+      void teamMessageSlot.offsetHeight; // lay it out closed first, so opening animates
+      teamMessageSlot.classList.add('is-open');
+    }
+
+    function renderMessagesPanel() {
+      var list = SITE_CONTENT.messages || [];
+      if (!list.length) {
+        messagesBodyEl.innerHTML = '<p class="history-message">There are no messages from the team yet.</p>';
+        return;
+      }
+      messagesBodyEl.innerHTML = '<ul class="messages-list">' + list.map(function (m) {
+        var unread = isUnreadMessage(m);
+        var actions = messageCtaHtml(m, 'messages-item-cta') +
+          (unread ? '<button type="button" class="history-link-btn" data-action="read" data-id="' + escapeHtml(m.id) + '">Mark as read</button>' : '');
+        return '<li class="messages-item' + (unread ? ' is-unread' : '') + '">' +
+          '<h3 class="messages-item-title">' + escapeHtml(m.title || 'A message from the team') +
+            (unread ? '<span class="messages-new">New</span>' : '') + '</h3>' +
+          (m.postedAt ? '<p class="messages-item-date">' + escapeHtml(messagePostedDate(m.postedAt)) + '</p>' : '') +
+          (m.text ? '<p class="messages-item-text">' + escapeHtml(m.text) + '</p>' : '') +
+          '<div class="messages-item-actions">' + actions + '</div>' +
+        '</li>';
+      }).join('') + '</ul>';
+    }
+
+    function renderMessages() {
+      renderTeamMessage();
+      renderMessagesBadge();
+      if (messagesOverlay.classList.contains('is-open')) renderMessagesPanel();
+    }
+
+    // Hides a message for this person: straight away on the page, then on
+    // the server. If saving fails it's only hidden until the next visit.
+    function hideTeamMessage(id) {
+      if (!id || hiddenMessageIds[id]) return;
+      hiddenMessageIds[id] = true;
+      renderMessages();
+      google.script.run
+        .withFailureHandler(function (err) { console.error('Failed to hide message:', err); })
+        .dismissMessage(id);
+    }
+
+    // Called by Script_App.html's loadSiteContent() once SITE_CONTENT arrives.
+    window.onSiteContentLoaded = function () {
+      hiddenMessageIds = {};
+      (SITE_CONTENT.dismissed || []).forEach(function (id) { hiddenMessageIds[id] = true; });
+      renderMessages();
+    };
+
+    // -- Open / close (same behaviour as the History panel) -----------------
+
+    function openMessages() {
+      messagesLastFocus = document.activeElement;
+      if (typeof closeHistory === 'function') closeHistory(true, true);
+      layoutSidePanel(messagesPanelEl);
+      renderMessagesPanel();
+      messagesOverlay.classList.add('is-open');
+      messagesOpenBtn.setAttribute('aria-expanded', 'true');
+      messagesCloseBtn.focus();
+    }
+
+    // Same arguments as closeHistory().
+    function closeMessages(keepFocus, keepLayout) {
+      if (!messagesOverlay.classList.contains('is-open')) return;
+      messagesOverlay.classList.remove('is-open');
+      if (!keepLayout) document.body.classList.remove('side-panel-alongside');
+      messagesOpenBtn.setAttribute('aria-expanded', 'false');
+      if (!keepFocus && messagesLastFocus && typeof messagesLastFocus.focus === 'function') messagesLastFocus.focus();
+    }
+
+    messagesOpenBtn.addEventListener('click', function () {
+      if (messagesOverlay.classList.contains('is-open')) closeMessages();
+      else openMessages();
+    });
+    messagesCloseBtn.addEventListener('click', function () { closeMessages(); });
+    document.addEventListener('pointerdown', function (e) {
+      if (!messagesOverlay.classList.contains('is-open')) return;
+      if (messagesPanelEl.contains(e.target) || isSidePanelButton(e.target) ||
+          (e.target.closest && e.target.closest('.eia-toasts'))) return;
+      closeMessages(true);
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && messagesOverlay.classList.contains('is-open')) closeMessages();
+    });
+    window.addEventListener('resize', function () {
+      if (messagesOverlay.classList.contains('is-open')) layoutSidePanel(messagesPanelEl);
+    });
+    messagesBodyEl.addEventListener('click', function (e) {
+      var btn = e.target.closest('[data-action="read"]');
+      if (btn) hideTeamMessage(btn.getAttribute('data-id'));
+    });
+    teamMessageSlot.addEventListener('click', function (e) {
+      var btn = e.target.closest('.team-message-close');
+      if (btn) hideTeamMessage(btn.getAttribute('data-id'));
+    });
+</script>

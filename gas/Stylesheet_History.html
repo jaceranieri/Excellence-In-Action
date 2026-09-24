@@ -1,0 +1,511 @@
+<style>
+/*!
+ * School history (GAS build only): the side panel opened by the banner's
+ * History button (the button itself is styled in Stylesheet_AppBanner).
+ * Logic is in Script_History.html; the server side is the "School
+ * history" sections of Code.gs.
+ *
+ * The panel is its own card (white, black outline, no shadow), like the
+ * main container. When the window is wide enough, the main container
+ * slides left and the panel sits beside it (body.side-panel-alongside, set
+ * by layoutSidePanel() in Script_History.html); otherwise it overlaps
+ * the container's right side. Nothing behind it is dimmed, and a click
+ * anywhere outside it closes it. It sits above the Theme modal (z-index
+ * 1100) but below the toasts (9999), so restore progress stays visible.
+ * Colours follow the rest of the app:
+ * navy #1c1f4f for structure, the banner's blue #2f8fd1 for checkpoints,
+ * and the Delivering orange #F2994A for restores.
+ */
+
+/* Panel ------------------------------------------------------------------*/
+
+/* A transparent, click-through layer: only the panel itself takes clicks.
+   Clicks outside it close it (see Script_History.html). */
+.history-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  pointer-events: none;
+  visibility: hidden;
+  transition: visibility 0s linear 0.25s;
+}
+
+.history-overlay.is-open {
+  visibility: visible;
+  transition: none;
+}
+
+/* 400px wide, the same top/bottom margins as the main container (the
+   body's 32px padding). `left` is set from script when it sits beside
+   the container. */
+.history-panel {
+  position: absolute;
+  top: 32px;
+  bottom: 32px;
+  right: 32px;
+  width: 400px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border: 2.5px solid #000000;
+  border-radius: 36px;
+  overflow: hidden;
+  pointer-events: auto;
+  opacity: 0;
+  transform: translateX(40px);
+  transition: transform 0.25s ease, opacity 0.2s ease;
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+  color: #2a2c38;
+}
+
+.history-overlay.is-open .history-panel {
+  opacity: 1;
+  transform: none;
+}
+
+/* Beside the container: the container gives up the panel's width plus a
+   24px gap on its right, so the pair is centred together. */
+#app-root {
+  transition: margin-right 0.25s ease;
+}
+
+body.side-panel-alongside #app-root {
+  margin-right: 424px;
+}
+
+@media (max-width: 560px) {
+  /* left/right rather than a 100vw width: 100vw includes the reserved
+     scrollbar gutter, which would push the panel off the left edge. */
+  .history-panel {
+    top: 12px;
+    bottom: 12px;
+    left: 12px;
+    right: 12px;
+    width: auto;
+    border-radius: 24px;
+  }
+}
+
+.history-header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 88px; /* same as the main banner, so the black rules line up side by side */
+  box-sizing: border-box;
+  padding: 14px 24px 14px 28px;
+  border-bottom: 2.5px solid #000000;
+}
+
+.history-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 800;
+  color: #1c1f4f;
+}
+
+.history-subtitle {
+  margin: 3px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #2f8fd1;
+}
+
+.history-close {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: 50%;
+  background: #f1f2f6;
+  color: #3d3f4a;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.history-close:hover,
+.history-close:focus-visible {
+  background: #e4e6ee;
+  outline: none;
+}
+
+.history-toolbar {
+  flex: none;
+  padding: 18px 28px 22px;
+  border-bottom: 1px solid #eef0f5;
+}
+
+.history-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 28px 28px;
+}
+
+.history-message {
+  margin: 12px 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #6a6d7a;
+}
+
+.history-message.is-error {
+  color: #c94f4f;
+}
+
+/* Buttons */
+
+.history-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 16px;
+  border: none;
+  border-radius: 9px;
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.1s ease, box-shadow 0.1s ease, background-color 0.15s ease;
+}
+
+.history-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* Save checkpoint: large, sky blue, black outline and hard shadow. */
+.history-btn.is-checkpoint {
+  min-height: 48px;
+  padding: 0 20px;
+  border: 2.5px solid #000000;
+  border-radius: 10px;
+  background: #38B6FF;
+  color: #000000;
+  font-size: 15px;
+  font-weight: 800;
+  box-shadow: 5px 5px 0 0 #000000;
+}
+
+.history-toolbar > .history-btn.is-checkpoint {
+  width: calc(100% - 5px); /* the shadow stays inside the toolbar */
+}
+
+.history-btn.is-checkpoint svg {
+  width: 18px;
+  height: 18px;
+}
+
+.history-btn.is-checkpoint:hover:not(:disabled) {
+  background: #5cc3ff;
+}
+
+.history-btn.is-checkpoint:active:not(:disabled) {
+  transform: translate(3px, 3px);
+  box-shadow: 2px 2px 0 0 #000000;
+}
+
+.history-btn.is-primary {
+  background: #1c1f4f;
+  color: #fff;
+  box-shadow: 0 3px 0 0 #05060c;
+}
+
+.history-btn.is-primary:active:not(:disabled) {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 0 #05060c;
+}
+
+.history-btn.is-warning,
+.history-btn.is-secondary {
+  border: 2px solid #000000;
+  box-shadow: 3px 3px 0 0 #000000;
+}
+
+.history-btn.is-warning:active:not(:disabled),
+.history-btn.is-secondary:active:not(:disabled) {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 0 #000000;
+}
+
+.history-btn.is-warning {
+  background: #FF914D;
+  color: #000000;
+}
+
+.history-btn.is-secondary {
+  background: #ffffff;
+  color: #000000;
+}
+
+.history-btn.is-secondary:hover:not(:disabled) {
+  background: #f1f1f1;
+}
+
+.history-link-btn {
+  padding: 0;
+  border: none;
+  background: none;
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  color: #1c1f4f;
+  cursor: pointer;
+}
+
+.history-link-btn:hover,
+.history-link-btn:focus-visible {
+  text-decoration: underline;
+  outline: none;
+}
+
+.history-link-btn.is-restore {
+  color: #c46f24;
+}
+
+/* Checkpoint form */
+
+.history-checkpoint-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.history-checkpoint-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #6a6d7a;
+}
+
+.history-checkpoint-input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 2px solid #000000;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+  font-size: 13px;
+  color: #2a2c38;
+  outline: none;
+}
+
+.history-checkpoint-input:focus {
+  box-shadow: 3px 3px 0 0 #000000;
+}
+
+.history-checkpoint-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 2px 5px 5px 0; /* room for the buttons' shadows */
+}
+
+/* Entries */
+
+.history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.history-item {
+  position: relative;
+  display: flex;
+  gap: 12px;
+  padding: 0 0 18px;
+}
+
+/* The line joining one entry's icon to the next */
+.history-item:not(:last-child)::before {
+  content: '';
+  position: absolute;
+  left: 15px;
+  top: 34px;
+  bottom: 0;
+  width: 2px;
+  background: #eef0f5;
+}
+
+.history-item-icon {
+  position: relative;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #eef0f5;
+  color: #1c1f4f;
+}
+
+.history-item-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.history-item.kind-checkpoint .history-item-icon {
+  background: #2f8fd1;
+  color: #fff;
+}
+
+.history-item.kind-restore .history-item-icon {
+  background: #F2994A;
+  color: #fff;
+}
+
+.history-item.kind-baseline .history-item-icon {
+  background: transparent;
+  border: 2px dashed #c4c7d4;
+  box-sizing: border-box;
+}
+
+.history-item-content {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-top: 5px;
+}
+
+.history-item-title {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #2a2c38;
+  overflow-wrap: anywhere;
+}
+
+.history-item.kind-checkpoint .history-item-title {
+  color: #1d6fa8;
+}
+
+.history-current {
+  flex: none;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: #e6f4ec;
+  color: #1E8E4F;
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+.history-item-meta,
+.history-item-summary {
+  margin: 3px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #8a8d99;
+}
+
+.history-item-summary {
+  color: #4a4d5a;
+}
+
+.history-item-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 8px;
+}
+
+/* Change details (expanded entry, and the restore preview) */
+
+.history-changes {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid #eef0f5;
+  border-radius: 10px;
+  background: #fafbfd;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #3d3f4a;
+}
+
+.history-changes[hidden] {
+  display: none;
+}
+
+.history-change-group + .history-change-group {
+  margin-top: 10px;
+}
+
+.history-change-theme {
+  margin: 0 0 3px;
+  font-weight: 700;
+  color: #1c1f4f;
+}
+
+.history-change-list {
+  margin: 0;
+  padding-left: 16px;
+}
+
+.history-change-list li + li {
+  margin-top: 2px;
+}
+
+.history-change-note {
+  margin: 8px 0 0;
+  color: #8a8d99;
+}
+
+/* Restore confirmation */
+
+.history-confirm-heading {
+  margin: 4px 0 6px;
+  font-size: 17px;
+  font-weight: 800;
+  color: #1c1f4f;
+  overflow-wrap: anywhere;
+}
+
+.history-confirm-when {
+  margin: 0 0 14px;
+  font-size: 12.5px;
+  color: #8a8d99;
+}
+
+.history-confirm-summary {
+  margin: 0 0 14px;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.history-confirm-warning {
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #fff4ea;
+  color: #8a4a12;
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.history-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 18px;
+  padding: 0 4px 4px 0; /* room for the buttons' shadows */
+}
+
+.history-back {
+  margin-bottom: 8px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .history-overlay,
+  .history-panel {
+    transition: none;
+  }
+}
+</style>

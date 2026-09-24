@@ -1,0 +1,237 @@
+<style>
+/*!
+ * Team messages (GAS build only): the message box at the top of the main
+ * screen and the list in the Messages panel. The panel itself reuses the
+ * History panel's card (.history-overlay / .history-panel and friends in
+ * Stylesheet_History.html); the bell button is in Stylesheet_AppBanner.
+ * Logic is in Script_Messages.html; the messages come from the Users
+ * spreadsheet's Messages tab (Code.gs's getSiteContent()).
+ */
+
+/* Message box ------------------------------------------------------------*/
+
+/* The slot opens and closes smoothly (its one grid row animates between
+   0fr and 1fr), so the wheel below slides down or up rather than jumping
+   when a message arrives or is hidden. The message fades in once there's
+   room, and fades out straight away when leaving. Script_Messages.html
+   toggles .is-open. */
+#team-message-slot {
+  width: 100%;
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.35s ease;
+}
+
+#team-message-slot.is-open {
+  grid-template-rows: 1fr;
+}
+
+.team-message-inner {
+  min-height: 0;
+  overflow: hidden; /* the message's margins leave room for its shadow */
+}
+
+.team-message {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  gap: 24px;
+  margin: 0 6px 38px 0; /* right: room for the hard shadow */
+  padding: 18px 22px 18px 22px;
+  background: #eeeeee;
+  border: 2.5px solid #000000;
+  border-radius: 10px;
+  box-shadow: 6px 6px 0 0 #000000;
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+  color: #000000;
+  opacity: 0;
+  transform: translateY(-10px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+#team-message-slot.is-open .team-message {
+  opacity: 1;
+  transform: none;
+  transition-delay: 0.15s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #team-message-slot,
+  .team-message {
+    transition: none;
+  }
+}
+
+.team-message-body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.team-message-title {
+  margin: 0 0 8px;
+  padding-right: 28px; /* clear of the close button */
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.team-message-text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-line; /* keep the line breaks typed in the sheet */
+  overflow-wrap: anywhere;
+}
+
+/* The call-to-action button: black, like Add Evidence. */
+.team-message-cta,
+.messages-item-cta {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 2.5px solid #000000;
+  border-radius: 8px;
+  background: #000000;
+  color: #ffffff;
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+  font-weight: 800;
+  text-decoration: none;
+  box-shadow: 4px 4px 0 0 #b3b3b3;
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+
+.team-message-cta {
+  min-width: 118px;
+  padding: 8px 22px;
+  font-size: 15px;
+}
+
+.team-message-cta:active,
+.messages-item-cta:active {
+  transform: translate(3px, 3px);
+  box-shadow: 1px 1px 0 0 #b3b3b3;
+}
+
+.team-message-cta:focus-visible,
+.messages-item-cta:focus-visible {
+  outline: 3px solid #17458f;
+  outline-offset: 2px;
+}
+
+.team-message-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: #000000;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.team-message-close:hover,
+.team-message-close:focus-visible {
+  background: rgba(0, 0, 0, 0.1);
+  outline: none;
+}
+
+@media (max-width: 1279.98px) {
+  .team-message { margin-bottom: 30px; }
+}
+
+@media (max-width: 640px) {
+  .team-message {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 14px;
+    padding: 16px;
+  }
+  .team-message-cta {
+    align-self: flex-end;
+  }
+}
+
+/* Messages panel -----------------------------------------------------------*/
+
+.messages-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.messages-item {
+  padding: 16px 0 18px;
+  border-bottom: 1px solid #eef0f5;
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+}
+
+.messages-item:first-child {
+  padding-top: 4px;
+}
+
+.messages-item:last-child {
+  border-bottom: none;
+}
+
+.messages-item-title {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  font-size: 15px;
+  font-weight: 800;
+  color: #000000;
+  overflow-wrap: anywhere;
+}
+
+.messages-new {
+  flex: none;
+  padding: 0 8px;
+  border: 2px solid #000000;
+  border-radius: 999px;
+  background: #38B6FF;
+  color: #000000;
+  font-size: 10.5px;
+  font-weight: 800;
+  line-height: 16px;
+}
+
+.messages-item-date {
+  margin: 3px 0 0;
+  font-size: 12px;
+  color: #8a8d99;
+}
+
+.messages-item-text {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #2a2c38;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.messages-item-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 18px;
+  margin-top: 12px;
+  padding: 0 4px 4px 0; /* room for the button's shadow */
+}
+
+.messages-item-actions:empty {
+  display: none;
+}
+
+.messages-item-cta {
+  padding: 6px 16px;
+  font-size: 13px;
+}
+</style>

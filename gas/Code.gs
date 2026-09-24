@@ -43,22 +43,58 @@ function requireProp_(key) {
   return value;
 }
 
-// Sheet tab names are just structure, not secrets — fine to hardcode.
-var TABS = { USERS: 'Users', SCHOOLS: 'Schools', RATINGS: 'Ratings', EVIDENCE: 'EvidenceLog' };
+// Shown small in the bottom-right corner of the app. Bump it with each
+// release you deploy (and in example.html's static copy).
+var APP_VERSION = '1.0.0';
 
-var RATINGS_HEADERS = ['SchoolName', 'RatingsJSON', 'LastUpdatedBy', 'LastUpdatedAt'];
-var EVIDENCE_HEADERS = ['EntryId', 'SchoolName', 'ThemeId', 'EntryNumber', 'Type', 'Date', 'Text', 'Attachments', 'CreatedBy', 'CreatedAt', 'UpdatedAt'];
+// Sheet tab names are just structure, not secrets — fine to hardcode.
+var TABS = {
+  USERS: 'Users', SCHOOLS: 'Schools', RESOURCES: 'Resources', MESSAGES: 'Messages', // Users spreadsheet
+  RATINGS: 'Ratings', EVIDENCE: 'EvidenceLog', HISTORY: 'History', EVIDENCE_VERSIONS: 'EvidenceVersions' // data spreadsheet
+};
+
+// Columns added after launch always go at the end, so existing rows keep
+// working (ensureSheet_() labels the new headers on existing tabs).
+// RestoreCount / LastHistoryId / LastHistoryRow are history bookkeeping —
+// see "School history" below.
+// LastUpdatedBy/At/ByName record the school's latest change of any kind
+// (ratings, evidence or a restore) for the banner's "Last Updated".
+var RATINGS_HEADERS = ['SchoolName', 'RatingsJSON', 'LastUpdatedBy', 'LastUpdatedAt',
+  'RestoreCount', 'LastHistoryId', 'LastHistoryRow', 'LastUpdatedByName'];
+// Rows saved before Title existed have none, and the client shows
+// "Evidence <number>" for them. VersionId points at this entry's current
+// row in EvidenceVersions.
+var EVIDENCE_HEADERS = ['EntryId', 'SchoolName', 'ThemeId', 'EntryNumber', 'Type', 'Date', 'Text',
+  'Attachments', 'CreatedBy', 'CreatedAt', 'UpdatedAt', 'Title', 'VersionId'];
+var EVIDENCE_VERSION_HEADERS = ['VersionId', 'EntryId', 'SchoolName', 'ThemeId', 'EntryNumber', 'Type',
+  'Date', 'Title', 'Text', 'Attachments', 'SavedBy', 'SavedAt'];
+var HISTORY_HEADERS = ['HistoryId', 'SchoolName', 'Kind', 'Label', 'Actor', 'ActorName',
+  'StartedAt', 'UpdatedAt', 'ChangeCount', 'ChangesJSON', 'SnapshotJSON', 'Summary'];
+
+/** { HeaderName: 1-based column } for a headers array. */
+function columns_(headers) {
+  var map = {};
+  headers.forEach(function (h, i) { map[h] = i + 1; });
+  return map;
+}
+var RATINGS_COL = columns_(RATINGS_HEADERS);
+var EVIDENCE_COL = columns_(EVIDENCE_HEADERS);
+var HISTORY_COL = columns_(HISTORY_HEADERS);
+
+var GRADE_KEYS = ['ungraded', 'pre-delivering', 'delivering', 'sustaining', 'excelling'];
 
 var ARCHIVE_FOLDER_NAME = 'ARCHIVE';
 var ARCHIVED_PREFIX = 'ARCHIVED – ';
 var MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 var MAX_EVIDENCE_TEXT = 20000;
+var MAX_EVIDENCE_TITLE = 150; // matches Script_App.html
 
 function doGet(e) {
   if (isOAuthRedirect_(e)) return handleOAuthRedirect_(e);
   var access = getCurrentUserAccess();
   var tpl = HtmlService.createTemplateFromFile('Index');
   tpl.access = access;
+  tpl.appVersion = APP_VERSION;
   return tpl.evaluate()
     .setTitle('Excellence in Action')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1')
@@ -182,17 +218,27 @@ function getSchoolFolderId_(schoolName) {
 //   - EvidenceLog: one row per evidence entry, across all schools/themes.
 //     Attachments is a JSON array of {fileId, name, mimeType, url}; every
 //     fileId is a copy this app made inside the school's EvidenceFolder.
+//   - History / EvidenceVersions: see "School history" below.
 //
 // All writes take the script lock so concurrent saves never interleave.
-// Ratings are last-write-wins per school (see HANDOFF.md).
+// A ratings save only sends the themes that changed, and they're merged
+// into the school's saved ratings, so two people editing different themes
+// don't overwrite each other. The same theme is still last-write-wins.
+
+// Opened once per server call: a save touches several tabs.
+var dataSpreadsheet_ = null;
 
 function ensureSheet_(tabName, headers) {
-  var ss = SpreadsheetApp.openById(requireProp_('DATA_SHEET_ID'));
+  var ss = dataSpreadsheet_ || (dataSpreadsheet_ = SpreadsheetApp.openById(requireProp_('DATA_SHEET_ID')));
   var sheet = ss.getSheetByName(tabName);
   if (!sheet) {
     sheet = ss.insertSheet(tabName);
     sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
     sheet.setFrozenRows(1);
+  } else if (sheet.getLastColumn() < headers.length) {
+    // Tab created before a column was added: label the new header cells.
+    var have = sheet.getLastColumn();
+    sheet.getRange(1, have + 1, 1, headers.length - have).setValues([headers.slice(have)]);
   }
   return sheet;
 }
@@ -206,6 +252,19 @@ function findRowByValue_(sheet, colIndex1Based, value) {
     if (String(values[i][0]) === String(value)) return i + 2;
   }
   return -1;
+}
+
+/**
+ * Makes Sheets store `value` exactly as typed. Without this, text starting
+ * with "=" is run as a formula (saving its result or an error instead),
+ * and text like "0012" or "1/2" turns into a number or a date. A leading
+ * apostrophe marks the cell as plain text; Sheets hides it, and
+ * getValue() returns the text without it. Use it for every user-typed
+ * string written to a sheet.
+ */
+function asText_(value) {
+  var s = value === null || value === undefined ? '' : String(value);
+  return s ? "'" + s : s;
 }
 
 function parseAttachments_(raw) {
@@ -225,6 +284,7 @@ function readSchoolEvidence_(schoolName) {
         number: row[3],
         type: row[4],
         date: row[5],
+        title: String(row[11] || ''),
         text: row[6],
         attachments: parseAttachments_(row[7])
       };
@@ -232,37 +292,134 @@ function readSchoolEvidence_(schoolName) {
 }
 
 /**
+ * The school's Ratings row, which also carries its history bookkeeping:
+ *   { sheet, row, ratings, restoreCount, lastHistoryId, lastHistoryRow }
+ * With `create`, a school with no row yet gets one; otherwise row is -1.
+ */
+function readSchoolRow_(schoolName, create) {
+  var sheet = ensureSheet_(TABS.RATINGS, RATINGS_HEADERS);
+  var row = findRowByValue_(sheet, RATINGS_COL.SchoolName, schoolName);
+  if (row < 0 && create) {
+    sheet.appendRow([schoolName, '{}', '', '', 0, '', '']);
+    row = sheet.getLastRow();
+  }
+  var state = { sheet: sheet, row: row, ratings: {}, restoreCount: 0, lastHistoryId: '', lastHistoryRow: 0, lastUpdated: null };
+  if (row < 0) return state;
+  var v = sheet.getRange(row, 1, 1, RATINGS_HEADERS.length).getValues()[0];
+  var updatedAt = toMillis_(v[RATINGS_COL.LastUpdatedAt - 1]);
+  if (updatedAt) {
+    state.lastUpdated = {
+      email: String(v[RATINGS_COL.LastUpdatedBy - 1] || ''),
+      name: String(v[RATINGS_COL.LastUpdatedByName - 1] || ''),
+      at: updatedAt
+    };
+  }
+  try { state.ratings = v[RATINGS_COL.RatingsJSON - 1] ? JSON.parse(v[RATINGS_COL.RatingsJSON - 1]) : {}; } catch (e) { state.ratings = {}; }
+  state.restoreCount = parseInt(v[RATINGS_COL.RestoreCount - 1], 10) || 0;
+  state.lastHistoryId = String(v[RATINGS_COL.LastHistoryId - 1] || '');
+  state.lastHistoryRow = parseInt(v[RATINGS_COL.LastHistoryRow - 1], 10) || 0;
+  return state;
+}
+
+/** Records `access` as the person who made the school's latest change, now. */
+function markSchoolUpdated_(access, state) {
+  var now = new Date().toISOString();
+  state.sheet.getRange(state.row, RATINGS_COL.LastUpdatedBy, 1, 2).setValues([[access.email, now]]);
+  state.sheet.getRange(state.row, RATINGS_COL.LastUpdatedByName).setValue(asText_(access.name));
+}
+
+/** A Users-tab name for `email`, or '' (for rows saved before names were recorded). */
+function nameForEmail_(email) {
+  if (!email) return '';
+  try {
+    var ss = SpreadsheetApp.openById(requireProp_('USERS_SHEET_ID'));
+    var rows = (ss.getSheetByName(TABS.USERS) || ss.getSheets()[0]).getDataRange().getValues();
+    for (var i = 1; i < rows.length; i++) {
+      if (String(rows[i][0] || '').toLowerCase().trim() === email.toLowerCase()) return String(rows[i][1] || '').trim();
+    }
+  } catch (e) {
+    console.warn('Could not look up a name for ' + email + ': ' + e);
+  }
+  return '';
+}
+
+/**
+ * True when a save comes from a page loaded before the school was last
+ * restored to an earlier point, so it must not be applied on top of the
+ * restore. Pages from before this check existed send no version at all;
+ * they're only refused once the school has actually been restored.
+ */
+function isStaleSave_(state, clientVersion) {
+  if (clientVersion === undefined || clientVersion === null || clientVersion === '') return state.restoreCount > 0;
+  return Number(clientVersion) !== state.restoreCount;
+}
+
+/**
  * Loads the visitor's school's saved state. A school with no Ratings row
  * yet gets {} back and the client keeps ELEMENT_THEMES' defaults.
- * Returns { ratings: {<themeId>: {grade, rubric}}, evidence: [entries] }.
+ * Returns { ratings: {<themeId>: {grade, rubric}}, evidence: [entries],
+ * stateVersion } — the page sends stateVersion back with every save.
  */
 function getSchoolState() {
   var access = requireActiveUser_();
-  var ratingsSheet = ensureSheet_(TABS.RATINGS, RATINGS_HEADERS);
-  var ratings = {};
-  var rowIdx = findRowByValue_(ratingsSheet, 1, access.schoolName);
-  if (rowIdx > 0) {
-    var raw = ratingsSheet.getRange(rowIdx, 2).getValue();
-    try { ratings = raw ? JSON.parse(raw) : {}; } catch (e) { ratings = {}; }
+  var state = readSchoolRow_(access.schoolName, false);
+  var lastUpdated = null;
+  if (state.lastUpdated) {
+    lastUpdated = {
+      name: state.lastUpdated.name || nameForEmail_(state.lastUpdated.email) || state.lastUpdated.email,
+      at: state.lastUpdated.at
+    };
   }
-  return { ratings: ratings, evidence: readSchoolEvidence_(access.schoolName) };
+  return {
+    ratings: state.ratings,
+    evidence: readSchoolEvidence_(access.schoolName),
+    stateVersion: state.restoreCount,
+    lastUpdated: lastUpdated // { name, at (ms) } or null
+  };
 }
 
-/** Overwrites the school's whole RatingsJSON blob (last-write-wins). */
-function saveRatings(ratingsJson) {
+/** Throws unless `obj` is {themeId: {grade, rubric: [level|null, ...]}}. */
+function sanitizeRatings_(obj) {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) throw new Error('Invalid ratings.');
+  var out = {};
+  Object.keys(obj).forEach(function (themeId) {
+    var r = obj[themeId];
+    if (!/^[A-Za-z0-9_]+$/.test(themeId) || !r || typeof r !== 'object') throw new Error('Invalid ratings.');
+    var grade = GRADE_KEYS.indexOf(r.grade) >= 0 ? r.grade : 'ungraded';
+    var rubric = Array.isArray(r.rubric) ? r.rubric.slice(0, 100) : [];
+    out[themeId] = {
+      grade: grade,
+      rubric: rubric.map(function (level) { return GRADE_KEYS.indexOf(level) > 0 ? level : null; })
+    };
+  });
+  return out;
+}
+
+/**
+ * Merges the changed themes (`changesJson`, {themeId: {grade, rubric}})
+ * into the school's saved ratings and records the change in its history.
+ * Returns { ok: true } or { ok: false, stale: true } (see isStaleSave_()).
+ * Pages from before per-theme saves send every theme; that still works.
+ */
+function saveRatings(changesJson, stateVersion) {
   var access = requireActiveUser_();
-  JSON.parse(ratingsJson); // reject garbage before it reaches the sheet
+  var changed = sanitizeRatings_(JSON.parse(changesJson));
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
-    var sheet = ensureSheet_(TABS.RATINGS, RATINGS_HEADERS);
-    var rowIdx = findRowByValue_(sheet, 1, access.schoolName);
-    var now = new Date().toISOString();
-    if (rowIdx > 0) {
-      sheet.getRange(rowIdx, 2, 1, 3).setValues([[ratingsJson, access.email, now]]);
-    } else {
-      sheet.appendRow([access.schoolName, ratingsJson, access.email, now]);
-    }
+    var state = readSchoolRow_(access.schoolName, true);
+    if (isStaleSave_(state, stateVersion)) return { ok: false, stale: true };
+    var before = state.ratings;
+    var after = {};
+    Object.keys(before).forEach(function (id) { after[id] = before[id]; });
+    Object.keys(changed).forEach(function (id) { after[id] = changed[id]; });
+    var changes = diffRatings_(before, after, Object.keys(changed));
+    if (!changes.length) return { ok: true };
+
+    ensureHistoryBaseline_(access, state);
+    state.sheet.getRange(state.row, RATINGS_COL.RatingsJSON).setValue(JSON.stringify(after));
+    markSchoolUpdated_(access, state);
+    recordHistory_(access, state, changes, after);
     return { ok: true };
   } finally {
     lock.releaseLock();
@@ -302,15 +459,26 @@ function normalizeAttachments_(list, folderId) {
  * All copies are made before anything is written. If any copy fails, the
  * ones that worked are trashed and nothing is saved, so the visitor can
  * fix the problem and submit again. Attachments dropped from a saved entry
- * are archived. Returns
+ * are archived. Every save also writes a row to EvidenceVersions and is
+ * recorded in the school's history. Returns
  *   { ok: true, entryId, attachments }
  *   { ok: false, errors: [{ pickedId, error }], needsAuth }
+ *   { ok: false, stale: true }  page is older than the school's last restore
+ *   { ok: false, gone: true }   the entry being edited no longer exists
  */
 function saveEvidenceEntry(themeId, entry) {
   var access = requireActiveUser_();
   if (!/^[A-Za-z0-9_]+$/.test(String(themeId || ''))) throw new Error('Invalid theme.');
   entry = entry || {};
   var list = entry.attachments || [];
+
+  // Checked again under the lock below; checking first as well means
+  // files aren't copied for a save that's going to be refused.
+  if (isStaleSave_(readSchoolRow_(access.schoolName, false), entry.stateVersion)) return { ok: false, stale: true };
+  var evidenceSheet = ensureSheet_(TABS.EVIDENCE, EVIDENCE_HEADERS);
+  if (entry.entryId && schoolEvidenceRow_(evidenceSheet, entry.entryId, access.schoolName) < 0) {
+    return { ok: false, gone: true };
+  }
   // Looked up lazily so text-only evidence still saves for a school whose
   // EvidenceFolder hasn't been set up yet.
   var folderId = null;
@@ -341,6 +509,7 @@ function saveEvidenceEntry(themeId, entry) {
 
   var attachments = kept.concat(copied);
   var attachmentsJson = JSON.stringify(attachments);
+  var title = String(entry.title || '').trim().slice(0, MAX_EVIDENCE_TITLE);
   var text = String(entry.text || '').slice(0, MAX_EVIDENCE_TEXT);
   var number = parseInt(entry.number, 10) || 0;
   var type = String(entry.type || 'note').slice(0, 40);
@@ -349,27 +518,48 @@ function saveEvidenceEntry(themeId, entry) {
   var lock = LockService.getScriptLock();
   try {
     lock.waitLock(30000);
-    var sheet = ensureSheet_(TABS.EVIDENCE, EVIDENCE_HEADERS);
+    var state = readSchoolRow_(access.schoolName, true);
+    if (isStaleSave_(state, entry.stateVersion)) {
+      trashFiles_(copied);
+      return { ok: false, stale: true };
+    }
+    var sheet = evidenceSheet;
     var now = new Date().toISOString();
     var rowIdx = -1;
     if (entry.entryId) {
-      var candidate = findRowByValue_(sheet, 1, entry.entryId);
-      if (candidate > 0 && String(sheet.getRange(candidate, 2).getValue()) === access.schoolName) {
-        rowIdx = candidate;
+      rowIdx = schoolEvidenceRow_(sheet, entry.entryId, access.schoolName);
+      if (rowIdx < 0) {
+        trashFiles_(copied);
+        return { ok: false, gone: true };
       }
     }
+    ensureHistoryBaseline_(access, state);
+    var versionId = newVersionId_();
+    var change;
+    var entryId;
     if (rowIdx > 0) {
+      var old = sheet.getRange(rowIdx, 1, 1, EVIDENCE_HEADERS.length).getValues()[0];
+      var oldAttachments = parseAttachments_(old[EVIDENCE_COL.Attachments - 1]);
       var keptIds = {};
       attachments.forEach(function (a) { keptIds[a.fileId] = true; });
-      var removed = parseAttachments_(sheet.getRange(rowIdx, 8).getValue())
-        .filter(function (a) { return a && a.fileId && !keptIds[a.fileId]; });
+      var removed = oldAttachments.filter(function (a) { return a && a.fileId && !keptIds[a.fileId]; });
       if (removed.length) archiveEvidenceFiles_(removed, schoolFolderId());
-      sheet.getRange(rowIdx, 5, 1, 4).setValues([[type, date, text, attachmentsJson]]);
-      sheet.getRange(rowIdx, 11).setValue(now);
-      return { ok: true, entryId: entry.entryId, attachments: attachments };
+      entryId = entry.entryId;
+      themeId = String(old[EVIDENCE_COL.ThemeId - 1]);
+      number = parseInt(old[EVIDENCE_COL.EntryNumber - 1], 10) || 0;
+      appendEvidenceVersion_(versionId, entryId, access, themeId, number, type, date, title, text, attachmentsJson, now);
+      sheet.getRange(rowIdx, EVIDENCE_COL.Type, 1, 4).setValues([[asText_(type), asText_(date), asText_(text), attachmentsJson]]);
+      sheet.getRange(rowIdx, EVIDENCE_COL.UpdatedAt, 1, 3).setValues([[now, asText_(title), versionId]]);
+      change = evidenceEditChange_(themeId, entryId, number, old, title, text, oldAttachments, attachments);
+    } else {
+      entryId = Utilities.getUuid();
+      appendEvidenceVersion_(versionId, entryId, access, themeId, number, type, date, title, text, attachmentsJson, now);
+      sheet.appendRow([entryId, access.schoolName, themeId, number, asText_(type), asText_(date), asText_(text),
+        attachmentsJson, access.email, now, now, asText_(title), versionId]);
+      change = { t: 'evidence-add', theme: themeId, entry: entryId, number: number, title: title, files: attachments.length };
     }
-    var entryId = Utilities.getUuid();
-    sheet.appendRow([entryId, access.schoolName, themeId, number, type, date, text, attachmentsJson, access.email, now, now]);
+    if (change) markSchoolUpdated_(access, state);
+    recordHistory_(access, state, change ? [change] : [], state.ratings);
     return { ok: true, entryId: entryId, attachments: attachments };
   } catch (e) {
     trashFiles_(copied); // never leave copies behind for an entry that didn't save
@@ -379,22 +569,866 @@ function saveEvidenceEntry(themeId, entry) {
   }
 }
 
-/** Deletes one of the visitor's school's evidence rows and archives its files. */
-function deleteEvidenceEntry(entryId) {
+/** Row of `entryId` in EvidenceLog if it belongs to `schoolName`, else -1. */
+function schoolEvidenceRow_(sheet, entryId, schoolName) {
+  var row = findRowByValue_(sheet, EVIDENCE_COL.EntryId, entryId);
+  if (row < 0 || String(sheet.getRange(row, EVIDENCE_COL.SchoolName).getValue()) !== schoolName) return -1;
+  return row;
+}
+
+/** The history change for an edit, or null if nothing actually changed. */
+function evidenceEditChange_(themeId, entryId, number, oldRow, title, text, oldAttachments, attachments) {
+  var fields = [];
+  if (String(oldRow[EVIDENCE_COL.Title - 1] || '') !== title) fields.push('title');
+  if (String(oldRow[EVIDENCE_COL.Text - 1] || '') !== text) fields.push('details');
+  var oldIds = {};
+  oldAttachments.forEach(function (a) { if (a && a.fileId) oldIds[a.fileId] = true; });
+  var newIds = {};
+  attachments.forEach(function (a) { newIds[a.fileId] = true; });
+  var filesAdded = attachments.filter(function (a) { return !oldIds[a.fileId]; }).length;
+  var filesRemoved = Object.keys(oldIds).filter(function (id) { return !newIds[id]; }).length;
+  if (!fields.length && !filesAdded && !filesRemoved) return null;
+  return { t: 'evidence-edit', theme: themeId, entry: entryId, number: number, title: title,
+    fields: fields, filesAdded: filesAdded, filesRemoved: filesRemoved };
+}
+
+/**
+ * Deletes one of the visitor's school's evidence rows, archives its files
+ * and records the deletion in the school's history. Its EvidenceVersions
+ * rows stay, so a restore can bring it back.
+ * Returns { ok }, or { ok: false, stale: true } (see isStaleSave_()).
+ */
+function deleteEvidenceEntry(entryId, stateVersion) {
   var access = requireActiveUser_();
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
+    var state = readSchoolRow_(access.schoolName, true);
+    if (isStaleSave_(state, stateVersion)) return { ok: false, stale: true };
     var sheet = ensureSheet_(TABS.EVIDENCE, EVIDENCE_HEADERS);
-    var rowIdx = findRowByValue_(sheet, 1, entryId);
-    if (rowIdx < 0 || String(sheet.getRange(rowIdx, 2).getValue()) !== access.schoolName) return { ok: false };
-    var attachments = parseAttachments_(sheet.getRange(rowIdx, 8).getValue());
+    var rowIdx = schoolEvidenceRow_(sheet, entryId, access.schoolName);
+    if (rowIdx < 0) return { ok: false };
+    ensureHistoryBaseline_(access, state);
+    var old = sheet.getRange(rowIdx, 1, 1, EVIDENCE_HEADERS.length).getValues()[0];
+    var attachments = parseAttachments_(old[EVIDENCE_COL.Attachments - 1]);
     if (attachments.length) archiveEvidenceFiles_(attachments, getSchoolFolderId_(access.schoolName));
     sheet.deleteRow(rowIdx);
+    markSchoolUpdated_(access, state);
+    recordHistory_(access, state, [{
+      t: 'evidence-delete', theme: String(old[EVIDENCE_COL.ThemeId - 1]), entry: entryId,
+      number: parseInt(old[EVIDENCE_COL.EntryNumber - 1], 10) || 0,
+      title: String(old[EVIDENCE_COL.Title - 1] || ''), files: attachments.length
+    }], state.ratings);
     return { ok: true };
   } finally {
     lock.releaseLock();
   }
+}
+
+// ===========================================================================
+// School history
+// ===========================================================================
+//
+// Every ratings or evidence change is recorded on the History tab, one row
+// per history entry:
+//   - Kind: 'baseline' (the school's state when history started — written
+//     just before its first recorded change), 'auto' (a group of changes),
+//     and later 'checkpoint' / 'restore'.
+//   - ChangesJSON: what changed, as a list of
+//       { t: 'grade',  theme, from, to }
+//       { t: 'rubric', theme, row, from, to }          (row is 0-based)
+//       { t: 'evidence-add',    theme, entry, number, title, files }
+//       { t: 'evidence-edit',   theme, entry, number, title, fields, filesAdded, filesRemoved }
+//       { t: 'evidence-delete', theme, entry, number, title, files }
+//     capped at MAX_HISTORY_CHANGES (ChangeCount keeps the true total).
+//   - SnapshotJSON: the whole school's state once the entry's changes were
+//     made — { ratings, evidence: [versionId, ...] }. That's what a
+//     restore puts back.
+//   - Summary: counts for the collapsed history list (summarizeChanges_()),
+//     so listing history never has to read the (larger) ChangesJSON.
+//
+// Grouping: a change joins the school's latest entry if it's an 'auto'
+// entry by the same person, last updated within HISTORY_GROUP_MINUTES.
+// Otherwise it starts a new entry. Opposite changes within one entry
+// cancel out (a rubric cell clicked on and off again leaves no trace).
+//
+// Evidence in a snapshot is a list of EvidenceVersions ids: every save of
+// an entry writes a new, never-changed version row, and EvidenceLog's
+// VersionId column says which version is current. Short ids keep even a
+// large school's snapshot far below Sheets' 50,000-character cell limit.
+//
+// RestoreCount (on the school's Ratings row) goes up by one on every
+// restore. Pages send the value they loaded with each save, and saves from
+// pages older than the last restore are refused (isStaleSave_()).
+//
+// History bookkeeping never blocks a save: if writing history fails, the
+// change is still saved, the error is logged, and the change is folded
+// into the next entry's snapshot instead.
+
+var HISTORY_GROUP_MINUTES = 30;
+var MAX_HISTORY_CHANGES = 200;
+
+function newVersionId_() {
+  return 'v' + Utilities.getUuid().replace(/-/g, '').slice(0, 16);
+}
+
+function appendEvidenceVersion_(versionId, entryId, access, themeId, number, type, date, title, text, attachmentsJson, savedAt) {
+  ensureSheet_(TABS.EVIDENCE_VERSIONS, EVIDENCE_VERSION_HEADERS).appendRow([
+    versionId, entryId, access.schoolName, themeId, number, asText_(type), asText_(date), asText_(title),
+    asText_(text), attachmentsJson, access.email, savedAt]);
+}
+
+/**
+ * Current version ids of every one of the school's evidence entries.
+ * Entries saved before history existed have no version yet; one is
+ * written for each of them first.
+ */
+function currentEvidenceVersionIds_(schoolName) {
+  var sheet = ensureSheet_(TABS.EVIDENCE, EVIDENCE_HEADERS);
+  var last = sheet.getLastRow();
+  if (last < 2) return [];
+  var schools = sheet.getRange(2, EVIDENCE_COL.SchoolName, last - 1, 1).getValues();
+  var versions = sheet.getRange(2, EVIDENCE_COL.VersionId, last - 1, 1).getValues();
+  var ids = [];
+  var missing = [];
+  for (var i = 0; i < schools.length; i++) {
+    if (String(schools[i][0]) !== schoolName) continue;
+    var v = String(versions[i][0] || '');
+    if (v) ids.push(v); else missing.push(i + 2);
+  }
+  if (missing.length) {
+    var versionSheet = ensureSheet_(TABS.EVIDENCE_VERSIONS, EVIDENCE_VERSION_HEADERS);
+    var rows = missing.map(function (rowIdx) {
+      var r = sheet.getRange(rowIdx, 1, 1, EVIDENCE_HEADERS.length).getValues()[0];
+      var versionId = newVersionId_();
+      sheet.getRange(rowIdx, EVIDENCE_COL.VersionId).setValue(versionId);
+      ids.push(versionId);
+      return [versionId, r[EVIDENCE_COL.EntryId - 1], schoolName, r[EVIDENCE_COL.ThemeId - 1],
+        r[EVIDENCE_COL.EntryNumber - 1], asText_(r[EVIDENCE_COL.Type - 1]), asText_(r[EVIDENCE_COL.Date - 1]),
+        asText_(r[EVIDENCE_COL.Title - 1]), asText_(r[EVIDENCE_COL.Text - 1]), r[EVIDENCE_COL.Attachments - 1],
+        r[EVIDENCE_COL.CreatedBy - 1], r[EVIDENCE_COL.UpdatedAt - 1] || r[EVIDENCE_COL.CreatedAt - 1]];
+    });
+    versionSheet.getRange(versionSheet.getLastRow() + 1, 1, rows.length, EVIDENCE_VERSION_HEADERS.length).setValues(rows);
+  }
+  return ids;
+}
+
+/** { ratings: themes with rating changes, added, edited, deleted } for a change list. */
+function summarizeChanges_(changes) {
+  var themes = {};
+  var summary = { ratings: 0, added: 0, edited: 0, deleted: 0 };
+  changes.forEach(function (c) {
+    if (c.t === 'grade' || c.t === 'rubric') themes[c.theme] = true;
+    else if (c.t === 'evidence-add') summary.added++;
+    else if (c.t === 'evidence-edit') summary.edited++;
+    else if (c.t === 'evidence-delete') summary.deleted++;
+  });
+  summary.ratings = Object.keys(themes).length;
+  return summary;
+}
+
+/** grade/rubric changes between two ratings blobs, for the given themes. */
+function diffRatings_(before, after, themeIds) {
+  var out = [];
+  themeIds.forEach(function (id) {
+    var b = before[id] || {};
+    var a = after[id] || {};
+    var bGrade = b.grade || 'ungraded';
+    var aGrade = a.grade || 'ungraded';
+    if (bGrade !== aGrade) out.push({ t: 'grade', theme: id, from: bGrade, to: aGrade });
+    var bRubric = b.rubric || [];
+    var aRubric = a.rubric || [];
+    for (var i = 0; i < Math.max(bRubric.length, aRubric.length); i++) {
+      var from = bRubric[i] || null;
+      var to = aRubric[i] || null;
+      if (from !== to) out.push({ t: 'rubric', theme: id, row: i, from: from, to: to });
+    }
+  });
+  return out;
+}
+
+/**
+ * Adds `incoming` changes to an entry's existing list, collapsing repeats:
+ * a later grade/rubric change to the same cell updates the earlier one
+ * (and disappears if it's back where it started); edits to evidence added
+ * in the same entry fold into the add; deleting it drops both.
+ */
+function mergeChanges_(existing, incoming) {
+  var list = existing.slice();
+  function findIndex(pred) {
+    for (var i = 0; i < list.length; i++) if (pred(list[i])) return i;
+    return -1;
+  }
+  incoming.forEach(function (c) {
+    var i;
+    if (c.t === 'grade' || c.t === 'rubric') {
+      i = findIndex(function (e) { return e.t === c.t && e.theme === c.theme && e.row === c.row; });
+      if (i < 0) { list.push(c); return; }
+      list[i] = Object.assign({}, list[i], { to: c.to });
+      if (list[i].from === list[i].to) list.splice(i, 1);
+      return;
+    }
+    var addIdx = findIndex(function (e) { return e.t === 'evidence-add' && e.entry === c.entry; });
+    var editIdx = findIndex(function (e) { return e.t === 'evidence-edit' && e.entry === c.entry; });
+    if (c.t === 'evidence-edit') {
+      if (addIdx >= 0) {
+        list[addIdx] = Object.assign({}, list[addIdx], {
+          title: c.title, files: list[addIdx].files + c.filesAdded - c.filesRemoved });
+      } else if (editIdx >= 0) {
+        var prev = list[editIdx];
+        var fields = prev.fields.slice();
+        c.fields.forEach(function (f) { if (fields.indexOf(f) < 0) fields.push(f); });
+        list[editIdx] = Object.assign({}, prev, { title: c.title, fields: fields,
+          filesAdded: prev.filesAdded + c.filesAdded, filesRemoved: prev.filesRemoved + c.filesRemoved });
+      } else {
+        list.push(c);
+      }
+      return;
+    }
+    if (c.t === 'evidence-delete') {
+      if (editIdx >= 0) list.splice(editIdx, 1);
+      addIdx = findIndex(function (e) { return e.t === 'evidence-add' && e.entry === c.entry; });
+      if (addIdx >= 0) { list.splice(addIdx, 1); return; }
+    }
+    list.push(c);
+  });
+  return list;
+}
+
+/** The school's latest history row, or null: { row, kind, actor, updatedAt (ms), changeCount, changes }. */
+function latestHistoryEntry_(sheet, state) {
+  if (!state.lastHistoryId) return null;
+  var row = state.lastHistoryRow;
+  // The row number is a hint (someone may have sorted the tab by hand);
+  // the id is what's trusted.
+  if (!(row >= 2 && row <= sheet.getLastRow() &&
+        String(sheet.getRange(row, HISTORY_COL.HistoryId).getValue()) === state.lastHistoryId)) {
+    row = findRowByValue_(sheet, HISTORY_COL.HistoryId, state.lastHistoryId);
+  }
+  if (row < 0) return null;
+  var v = sheet.getRange(row, 1, 1, HISTORY_HEADERS.length).getValues()[0];
+  var changes;
+  try { changes = JSON.parse(v[HISTORY_COL.ChangesJSON - 1] || '[]'); } catch (e) { changes = []; }
+  var updated = v[HISTORY_COL.UpdatedAt - 1]; // Sheets may have turned the ISO text into a Date
+  return {
+    row: row,
+    kind: String(v[HISTORY_COL.Kind - 1]),
+    actor: String(v[HISTORY_COL.Actor - 1]),
+    updatedAt: updated instanceof Date ? updated.getTime() : Date.parse(String(updated)),
+    changeCount: parseInt(v[HISTORY_COL.ChangeCount - 1], 10) || 0,
+    changes: changes
+  };
+}
+
+function appendHistoryRow_(sheet, access, state, kind, label, changes, changeCount, snapshot) {
+  var id = Utilities.getUuid();
+  var now = new Date().toISOString();
+  sheet.appendRow([id, access.schoolName, kind, asText_(label), access.email, asText_(access.name), now, now,
+    changeCount, JSON.stringify(changes), JSON.stringify(snapshot), JSON.stringify(summarizeChanges_(changes))]);
+  var row = sheet.getLastRow();
+  state.sheet.getRange(state.row, RATINGS_COL.LastHistoryId, 1, 2).setValues([[id, row]]);
+  state.lastHistoryId = id;
+  state.lastHistoryRow = row;
+  return id;
+}
+
+/**
+ * Before a school's first recorded change, saves its current state as the
+ * 'baseline' entry, so there's always a point to restore to from the day
+ * history started. Call it before making the change.
+ */
+function ensureHistoryBaseline_(access, state) {
+  if (state.lastHistoryId) return;
+  try {
+    var sheet = ensureSheet_(TABS.HISTORY, HISTORY_HEADERS);
+    var snapshot = { ratings: state.ratings, evidence: currentEvidenceVersionIds_(access.schoolName) };
+    appendHistoryRow_(sheet, { schoolName: access.schoolName, email: '', name: '' }, state,
+      'baseline', 'History started', [], 0, snapshot);
+  } catch (e) {
+    console.error('Could not write history baseline for ' + access.schoolName + ': ' + (e && e.stack || e));
+  }
+}
+
+/**
+ * Records `changes` (already made) in the school's history, with a
+ * snapshot of the school's state after them. `ratings` is the school's
+ * ratings after the change.
+ */
+function recordHistory_(access, state, changes, ratings) {
+  if (!changes.length) return;
+  try {
+    var sheet = ensureSheet_(TABS.HISTORY, HISTORY_HEADERS);
+    var snapshot = { ratings: ratings, evidence: currentEvidenceVersionIds_(access.schoolName) };
+    var latest = latestHistoryEntry_(sheet, state);
+    var now = new Date();
+    if (latest && latest.kind === 'auto' && latest.actor === access.email &&
+        now.getTime() - latest.updatedAt <= HISTORY_GROUP_MINUTES * 60 * 1000) {
+      var stored = latest.changes.length;
+      var merged = mergeChanges_(latest.changes, changes);
+      var overflow = Math.max(0, latest.changeCount - stored); // changes already past the cap
+      var count = merged.length + overflow;
+      if (merged.length > MAX_HISTORY_CHANGES) merged = merged.slice(0, MAX_HISTORY_CHANGES);
+      sheet.getRange(latest.row, HISTORY_COL.UpdatedAt, 1, 5).setValues([[
+        now.toISOString(), count, JSON.stringify(merged), JSON.stringify(snapshot),
+        JSON.stringify(summarizeChanges_(merged))]]);
+      return;
+    }
+    appendHistoryRow_(sheet, access, state, 'auto', '', changes.slice(0, MAX_HISTORY_CHANGES),
+      changes.length, snapshot);
+  } catch (e) {
+    console.error('Could not record history for ' + access.schoolName + ': ' + (e && e.stack || e));
+  }
+}
+
+// ===========================================================================
+// School history: listing, checkpoints and restore
+// ===========================================================================
+//
+// Everyone at a school can list its history, save checkpoints and restore.
+// A restore puts the whole school back to a history entry's snapshot:
+//   - ratings are replaced with the snapshot's;
+//   - evidence deleted since then comes back (its files move out of
+//     ARCHIVE and lose the "ARCHIVED – " prefix; binned files are taken out
+//     of the bin);
+//   - evidence edited since then goes back to that version, and evidence
+//     added since then is archived like a normal delete.
+// The restore is recorded as its own 'restore' entry, so it can be undone
+// by restoring to the entry just before it. RestoreCount goes up by one, so
+// any page still showing the old state has its next save refused and
+// reloads (isStaleSave_()).
+//
+// File moves happen before any sheet write, so a Drive failure part-way
+// leaves the sheets untouched and the restore can simply be run again.
+// Files already where they should be are left alone.
+
+var MAX_CHECKPOINT_LABEL = 80;
+
+/** A sheet timestamp (ISO text, or a Date if Sheets converted it) in ms. */
+function toMillis_(value) {
+  if (value instanceof Date) return value.getTime();
+  var ms = Date.parse(String(value || ''));
+  return isNaN(ms) ? 0 : ms;
+}
+
+/** Public fields of a History row, for the page. */
+function describeHistoryRow_(v, summary) {
+  return {
+    id: String(v[HISTORY_COL.HistoryId - 1]),
+    kind: String(v[HISTORY_COL.Kind - 1]),
+    label: String(v[HISTORY_COL.Label - 1] || ''),
+    actorName: String(v[HISTORY_COL.ActorName - 1] || v[HISTORY_COL.Actor - 1] || ''),
+    startedAt: toMillis_(v[HISTORY_COL.StartedAt - 1]),
+    updatedAt: toMillis_(v[HISTORY_COL.UpdatedAt - 1]),
+    changeCount: parseInt(v[HISTORY_COL.ChangeCount - 1], 10) || 0,
+    summary: summary || null
+  };
+}
+
+/** Row number and values of one of the school's history entries, or null. */
+function findSchoolHistoryRow_(sheet, historyId, schoolName) {
+  if (!/^[A-Za-z0-9-]{8,64}$/.test(String(historyId || ''))) return null;
+  var row = findRowByValue_(sheet, HISTORY_COL.HistoryId, historyId);
+  if (row < 0) return null;
+  var v = sheet.getRange(row, 1, 1, HISTORY_HEADERS.length).getValues()[0];
+  if (String(v[HISTORY_COL.SchoolName - 1]) !== schoolName) return null;
+  return { row: row, values: v };
+}
+
+/**
+ * One page of the visitor's school's history, newest first:
+ *   { entries: [{ id, kind, label, actorName, startedAt, updatedAt,
+ *                 changeCount, summary }], total, latestId, stateVersion }
+ * startedAt/updatedAt are ms since the epoch. `offset` pages through it
+ * (a page can repeat an entry if new ones arrive meanwhile; de-dupe by id).
+ */
+function getSchoolHistory(offset, limit) {
+  var access = requireActiveUser_();
+  offset = Math.max(0, parseInt(offset, 10) || 0);
+  limit = Math.min(100, Math.max(1, parseInt(limit, 10) || 50));
+  var state = readSchoolRow_(access.schoolName, false);
+  var sheet = ensureSheet_(TABS.HISTORY, HISTORY_HEADERS);
+  var last = sheet.getLastRow();
+  var rows = [];
+  if (last >= 2) {
+    var main = sheet.getRange(2, 1, last - 1, HISTORY_COL.ChangeCount).getValues();
+    var summaries = sheet.getRange(2, HISTORY_COL.Summary, last - 1, 1).getValues();
+    for (var i = 0; i < main.length; i++) {
+      if (String(main[i][HISTORY_COL.SchoolName - 1]) === access.schoolName) {
+        rows.push({ row: i + 2, values: main[i], summary: summaries[i][0] });
+      }
+    }
+  }
+  rows.sort(function (a, b) {
+    return toMillis_(b.values[HISTORY_COL.StartedAt - 1]) - toMillis_(a.values[HISTORY_COL.StartedAt - 1]) || b.row - a.row;
+  });
+  var entries = rows.slice(offset, offset + limit).map(function (r) {
+    var summary = null;
+    try { summary = r.summary ? JSON.parse(r.summary) : null; } catch (e) { summary = null; }
+    if (!summary) {
+      // Written before the Summary column existed: work it out once here.
+      var changes;
+      try { changes = JSON.parse(sheet.getRange(r.row, HISTORY_COL.ChangesJSON).getValue() || '[]'); } catch (e) { changes = []; }
+      summary = summarizeChanges_(changes);
+    }
+    return describeHistoryRow_(r.values, summary);
+  });
+  return { entries: entries, total: rows.length, latestId: state.lastHistoryId, stateVersion: state.restoreCount };
+}
+
+/** The full change list of one history entry (for expanding it in the list). */
+function getHistoryEntryChanges(historyId) {
+  var access = requireActiveUser_();
+  var found = findSchoolHistoryRow_(ensureSheet_(TABS.HISTORY, HISTORY_HEADERS), historyId, access.schoolName);
+  if (!found) return { ok: false };
+  var changes;
+  try { changes = JSON.parse(found.values[HISTORY_COL.ChangesJSON - 1] || '[]'); } catch (e) { changes = []; }
+  return { ok: true, changes: changes, changeCount: parseInt(found.values[HISTORY_COL.ChangeCount - 1], 10) || 0 };
+}
+
+/**
+ * Saves the school's current state as a named checkpoint.
+ * Returns { ok, entry } or { ok: false, stale: true }.
+ */
+function saveCheckpoint(label, stateVersion) {
+  var access = requireActiveUser_();
+  label = String(label || '').replace(/\s+/g, ' ').trim().slice(0, MAX_CHECKPOINT_LABEL);
+  if (!label) throw new Error('Give the checkpoint a name.');
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var state = readSchoolRow_(access.schoolName, true);
+    if (isStaleSave_(state, stateVersion)) return { ok: false, stale: true };
+    var sheet = ensureSheet_(TABS.HISTORY, HISTORY_HEADERS);
+    var snapshot = { ratings: state.ratings, evidence: currentEvidenceVersionIds_(access.schoolName) };
+    var id = appendHistoryRow_(sheet, access, state, 'checkpoint', label, [], 0, snapshot);
+    return { ok: true, entry: describeHistoryRow_(sheet.getRange(state.lastHistoryRow, 1, 1, HISTORY_HEADERS.length).getValues()[0],
+      summarizeChanges_([])), id: id };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** The school's live evidence rows: [{ row, entryId, versionId, values, attachments }]. */
+function readSchoolEvidenceRows_(schoolName) {
+  var sheet = ensureSheet_(TABS.EVIDENCE, EVIDENCE_HEADERS);
+  var last = sheet.getLastRow();
+  if (last < 2) return [];
+  var out = [];
+  sheet.getRange(2, 1, last - 1, EVIDENCE_HEADERS.length).getValues().forEach(function (v, i) {
+    if (String(v[EVIDENCE_COL.SchoolName - 1]) !== schoolName) return;
+    out.push({
+      row: i + 2,
+      entryId: String(v[EVIDENCE_COL.EntryId - 1]),
+      versionId: String(v[EVIDENCE_COL.VersionId - 1] || ''),
+      values: v,
+      attachments: parseAttachments_(v[EVIDENCE_COL.Attachments - 1])
+    });
+  });
+  return out;
+}
+
+/** Reads EvidenceVersions rows by version id: { versionId: {...row fields} }. */
+function readEvidenceVersions_(versionIds, schoolName) {
+  var wanted = {};
+  versionIds.forEach(function (id) { wanted[id] = true; });
+  var out = {};
+  if (!versionIds.length) return out;
+  var sheet = ensureSheet_(TABS.EVIDENCE_VERSIONS, EVIDENCE_VERSION_HEADERS);
+  var last = sheet.getLastRow();
+  if (last < 2) return out;
+  var ids = sheet.getRange(2, 1, last - 1, 1).getValues();
+  for (var i = 0; i < ids.length; i++) {
+    var id = String(ids[i][0]);
+    if (!wanted[id] || out[id]) continue;
+    var v = sheet.getRange(i + 2, 1, 1, EVIDENCE_VERSION_HEADERS.length).getValues()[0];
+    if (String(v[2]) !== schoolName) continue;
+    out[id] = {
+      versionId: id, entryId: String(v[1]), themeId: String(v[3]), number: parseInt(v[4], 10) || 0,
+      type: String(v[5] || 'note'), date: String(v[6] || ''), title: String(v[7] || ''), text: String(v[8] || ''),
+      attachments: parseAttachments_(v[9]), savedBy: String(v[10] || ''), savedAt: v[11]
+    };
+  }
+  return out;
+}
+
+/**
+ * Works out what restoring to `historyId` would change, without changing
+ * anything. Null if the entry isn't one of this school's.
+ */
+function planRestore_(access, state, historyId) {
+  var historySheet = ensureSheet_(TABS.HISTORY, HISTORY_HEADERS);
+  var found = findSchoolHistoryRow_(historySheet, historyId, access.schoolName);
+  if (!found) return null;
+  var snapshot;
+  try { snapshot = JSON.parse(found.values[HISTORY_COL.SnapshotJSON - 1]); } catch (e) { snapshot = null; }
+  if (!snapshot || !snapshot.ratings || !Array.isArray(snapshot.evidence)) {
+    throw new Error('That history entry can’t be restored: its saved state is unreadable.');
+  }
+
+  currentEvidenceVersionIds_(access.schoolName); // versions any evidence that has none yet
+  var current = readSchoolEvidenceRows_(access.schoolName);
+  var currentByEntry = {};
+  current.forEach(function (c) { currentByEntry[c.entryId] = c; });
+
+  var versions = readEvidenceVersions_(snapshot.evidence, access.schoolName);
+  var targetByEntry = {};
+  var unreadable = 0;
+  snapshot.evidence.forEach(function (vid) {
+    if (versions[vid]) targetByEntry[versions[vid].entryId] = versions[vid];
+    else unreadable++;
+  });
+  // Without those rows there's no telling which entries they were, and
+  // carrying on would archive live evidence that should stay.
+  if (unreadable) {
+    throw new Error('That point can’t be restored: ' + unreadable + ' evidence version' +
+      (unreadable === 1 ? ' is' : 's are') + ' missing from the EvidenceVersions tab.');
+  }
+
+  var toRemove = current.filter(function (c) { return !targetByEntry[c.entryId]; });
+  var toRestore = [];
+  Object.keys(targetByEntry).forEach(function (entryId) {
+    var target = targetByEntry[entryId];
+    var cur = currentByEntry[entryId] || null;
+    if (!cur || cur.versionId !== target.versionId) toRestore.push({ target: target, current: cur });
+  });
+
+  var themeIds = {};
+  Object.keys(state.ratings).forEach(function (id) { themeIds[id] = true; });
+  Object.keys(snapshot.ratings).forEach(function (id) { themeIds[id] = true; });
+  var ratingChanges = diffRatings_(state.ratings, snapshot.ratings, Object.keys(themeIds));
+
+  var evidenceChanges = [];
+  toRestore.forEach(function (r) {
+    var t = r.target;
+    if (!r.current) {
+      evidenceChanges.push({ t: 'evidence-add', theme: t.themeId, entry: t.entryId, number: t.number,
+        title: t.title, files: t.attachments.length });
+      return;
+    }
+    var edit = evidenceEditChange_(t.themeId, t.entryId, t.number, r.current.values, t.title, t.text,
+      r.current.attachments, t.attachments);
+    if (edit) evidenceChanges.push(edit);
+  });
+  toRemove.forEach(function (c) {
+    evidenceChanges.push({ t: 'evidence-delete', theme: String(c.values[EVIDENCE_COL.ThemeId - 1]), entry: c.entryId,
+      number: parseInt(c.values[EVIDENCE_COL.EntryNumber - 1], 10) || 0,
+      title: String(c.values[EVIDENCE_COL.Title - 1] || ''), files: c.attachments.length });
+  });
+
+  return {
+    target: describeHistoryRow_(found.values),
+    targetRatings: snapshot.ratings,
+    toRemove: toRemove,
+    toRestore: toRestore,
+    changes: ratingChanges.concat(evidenceChanges)
+  };
+}
+
+/**
+ * What restoring to `historyId` would change, for the confirmation dialog:
+ *   { ok, target, changes, summary, nothingToChange, stateVersion }
+ * `changes` uses the same format as a history entry's changes.
+ */
+function previewRestore(historyId) {
+  var access = requireActiveUser_();
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var state = readSchoolRow_(access.schoolName, false);
+    var plan = planRestore_(access, state, historyId);
+    if (!plan) return { ok: false, notFound: true };
+    return {
+      ok: true,
+      target: plan.target,
+      changes: plan.changes.slice(0, MAX_HISTORY_CHANGES),
+      changeCount: plan.changes.length,
+      summary: summarizeChanges_(plan.changes),
+      nothingToChange: !plan.changes.length && !plan.toRestore.length && !plan.toRemove.length,
+      stateVersion: state.restoreCount
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * Brings files back from the school's ARCHIVE (or the bin) into the school
+ * folder, dropping the "ARCHIVED – " prefix. Only files in the school
+ * folder or its ARCHIVE are touched. Returns { attachments, missing } —
+ * missing lists the names of files that no longer exist.
+ */
+function unarchiveEvidenceFiles_(attachments, folderId) {
+  var out = { attachments: [], missing: [] };
+  if (!attachments.length) return out;
+  var schoolFolder = DriveApp.getFolderById(folderId);
+  var archives = schoolFolder.getFoldersByName(ARCHIVE_FOLDER_NAME);
+  var archiveId = archives.hasNext() ? archives.next().getId() : null;
+  attachments.forEach(function (a) {
+    try {
+      var file = DriveApp.getFileById(a.fileId);
+      var inSchool = isInFolder_(file, folderId);
+      if (!inSchool && !(archiveId && isInFolder_(file, archiveId))) {
+        throw new Error('not in the school folder or its ARCHIVE');
+      }
+      if (file.isTrashed()) file.setTrashed(false);
+      if (!inSchool) file.moveTo(schoolFolder);
+      var name = file.getName();
+      if (name.indexOf(ARCHIVED_PREFIX) === 0) {
+        name = name.slice(ARCHIVED_PREFIX.length);
+        file.setName(name);
+      }
+      out.attachments.push({ fileId: a.fileId, name: name, mimeType: file.getMimeType(), url: file.getUrl() });
+    } catch (e) {
+      console.error('Could not restore file ' + a.fileId + ' (' + a.name + '): ' + e);
+      out.missing.push(a.name || a.fileId);
+    }
+  });
+  return out;
+}
+
+/** Formats a history entry for a restore label, e.g. "End of Term 3" or "24 Sep 2026, 2:15 pm". */
+function restoreTargetLabel_(target) {
+  if (target.kind === 'checkpoint' && target.label) return '“' + target.label + '”';
+  if (target.kind === 'baseline') return 'when history started';
+  var when = Utilities.formatDate(new Date(target.updatedAt), Session.getScriptTimeZone(), 'd MMM yyyy, h:mm a');
+  return when + (target.actorName ? ' (' + target.actorName + ')' : '');
+}
+
+/**
+ * Restores the whole school to history entry `historyId` (see the section
+ * comment above). Returns
+ *   { ok: true, stateVersion, historyId, missingFiles: [names], nothingToChange }
+ *   { ok: false, stale: true }     page is older than the school's last restore
+ *   { ok: false, notFound: true }
+ */
+function restoreToPoint(historyId, stateVersion) {
+  var access = requireActiveUser_();
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var state = readSchoolRow_(access.schoolName, true);
+    if (isStaleSave_(state, stateVersion)) return { ok: false, stale: true };
+    var plan = planRestore_(access, state, historyId);
+    if (!plan) return { ok: false, notFound: true };
+    if (!plan.changes.length && !plan.toRestore.length && !plan.toRemove.length) {
+      return { ok: true, nothingToChange: true, stateVersion: state.restoreCount, missingFiles: [] };
+    }
+
+    // 1. Files. Nothing on the sheets changes until these are done.
+    var folderId = null;
+    function schoolFolderId() { return folderId || (folderId = getSchoolFolderId_(access.schoolName)); }
+    var missingFiles = [];
+    plan.toRemove.forEach(function (c) {
+      if (c.attachments.length) archiveEvidenceFiles_(c.attachments, schoolFolderId());
+    });
+    plan.toRestore.forEach(function (r) {
+      var currentIds = {};
+      var currentById = {};
+      (r.current ? r.current.attachments : []).forEach(function (a) { currentIds[a.fileId] = true; currentById[a.fileId] = a; });
+      var targetIds = {};
+      r.target.attachments.forEach(function (a) { targetIds[a.fileId] = true; });
+      var dropped = (r.current ? r.current.attachments : []).filter(function (a) { return !targetIds[a.fileId]; });
+      if (dropped.length) archiveEvidenceFiles_(dropped, schoolFolderId());
+      var back = r.target.attachments.filter(function (a) { return !currentIds[a.fileId]; });
+      var result = back.length ? unarchiveEvidenceFiles_(back, schoolFolderId()) : { attachments: [], missing: [] };
+      var restoredById = {};
+      result.attachments.forEach(function (a) { restoredById[a.fileId] = a; });
+      missingFiles = missingFiles.concat(result.missing);
+      r.attachments = r.target.attachments
+        .map(function (a) { return currentById[a.fileId] || restoredById[a.fileId]; })
+        .filter(Boolean);
+      r.lostFiles = r.attachments.length !== r.target.attachments.length;
+    });
+
+    // 2. Evidence rows: updates first, then re-added entries (appended at
+    //    the end), then deletions from the bottom up, so row numbers
+    //    captured by the plan stay valid.
+    var sheet = ensureSheet_(TABS.EVIDENCE, EVIDENCE_HEADERS);
+    var now = new Date().toISOString();
+    plan.toRestore.forEach(function (r) {
+      var t = r.target;
+      var attachmentsJson = JSON.stringify(r.attachments);
+      var versionId = t.versionId;
+      if (r.lostFiles) {
+        // Some files are gone for good, so the entry no longer matches
+        // that version exactly: save what it really is now as a new one.
+        versionId = newVersionId_();
+        appendEvidenceVersion_(versionId, t.entryId, access, t.themeId, t.number, t.type, t.date, t.title, t.text, attachmentsJson, now);
+      }
+      if (r.current) {
+        sheet.getRange(r.current.row, EVIDENCE_COL.ThemeId, 1, 6)
+          .setValues([[t.themeId, t.number, asText_(t.type), asText_(t.date), asText_(t.text), attachmentsJson]]);
+        sheet.getRange(r.current.row, EVIDENCE_COL.UpdatedAt, 1, 3).setValues([[now, asText_(t.title), versionId]]);
+      } else {
+        sheet.appendRow([t.entryId, access.schoolName, t.themeId, t.number, asText_(t.type), asText_(t.date),
+          asText_(t.text), attachmentsJson, t.savedBy,
+          toMillis_(t.savedAt) ? new Date(toMillis_(t.savedAt)).toISOString() : now, now, asText_(t.title), versionId]);
+      }
+    });
+    plan.toRemove.map(function (c) { return c.row; })
+      .sort(function (a, b) { return b - a; })
+      .forEach(function (row) { sheet.deleteRow(row); });
+
+    // 3. Ratings, and the restore counter that makes other open pages reload.
+    var restoreCount = state.restoreCount + 1;
+    state.sheet.getRange(state.row, RATINGS_COL.RatingsJSON).setValue(JSON.stringify(plan.targetRatings));
+    state.sheet.getRange(state.row, RATINGS_COL.RestoreCount).setValue(restoreCount);
+    markSchoolUpdated_(access, state);
+    state.restoreCount = restoreCount;
+    state.ratings = plan.targetRatings;
+
+    // 4. The restore's own history entry.
+    var restoreChange = { t: 'restore', target: plan.target.id, targetKind: plan.target.kind,
+      targetLabel: plan.target.label, targetActorName: plan.target.actorName, targetTime: plan.target.updatedAt };
+    var changes = [restoreChange].concat(plan.changes);
+    var historyId = null;
+    try {
+      var historySheet = ensureSheet_(TABS.HISTORY, HISTORY_HEADERS);
+      var snapshot = { ratings: plan.targetRatings, evidence: currentEvidenceVersionIds_(access.schoolName) };
+      historyId = appendHistoryRow_(historySheet, access, state, 'restore', 'Restored to ' + restoreTargetLabel_(plan.target),
+        changes.slice(0, MAX_HISTORY_CHANGES), plan.changes.length, snapshot);
+    } catch (e) {
+      console.error('Could not record restore for ' + access.schoolName + ': ' + (e && e.stack || e));
+    }
+    return { ok: true, stateVersion: restoreCount, historyId: historyId, missingFiles: missingFiles };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// ===========================================================================
+// Element resources and team messages (Users spreadsheet)
+// ===========================================================================
+//
+// Two tabs in the Users spreadsheet that the project team edits by hand.
+// Both are created, with their header row, the first time the app reads
+// them. Columns are found by header name, so their order doesn't matter.
+//   - Resources: one row per link.
+//       Element  the Element's name as shown in the app, e.g. "Data
+//                Analysis and Decision Making" (or its wheel id)
+//       Label    the button text, e.g. "Position Paper"
+//       URL      the link (opens in a new tab)
+//     An Element can have any number of rows; they show in row order.
+//   - Messages: one row per message.
+//       Title, Message          the message itself (line breaks are kept)
+//       ButtonLabel, ButtonURL  optional call-to-action button
+//       Active                  tick to show it at the top of everyone's
+//                               screen (newest first, one at a time)
+//       Posted                  a date, for ordering (newest first);
+//                               without one, lower rows count as newer
+//     The Messages panel lists every row, active or not.
+// A message's id is a hash of its title and text: someone who hid a
+// message sees it again if its wording is edited. Hidden message ids are
+// kept per person in Script Properties (eia.dismissedMessages.<hash>).
+// Links must start with http:// or https://; anything else is ignored.
+
+var RESOURCES_HEADERS = ['Element', 'Label', 'URL'];
+var MESSAGES_HEADERS = ['Title', 'Message', 'ButtonLabel', 'ButtonURL', 'Active', 'Posted'];
+var MAX_DISMISSED_MESSAGES = 200;
+
+/** A tab of the Users spreadsheet, created with `headers` if it's missing. */
+function usersTab_(tabName, headers) {
+  var ss = SpreadsheetApp.openById(requireProp_('USERS_SHEET_ID'));
+  var sheet = ss.getSheetByName(tabName);
+  if (!sheet) {
+    sheet = ss.insertSheet(tabName);
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    sheet.setFrozenRows(1);
+  }
+  return sheet;
+}
+
+/** A tab's rows as objects keyed by lower-cased header name. */
+function readTabObjects_(sheet) {
+  var rows = sheet.getDataRange().getValues();
+  if (rows.length < 2) return [];
+  var header = rows[0].map(function (h) { return String(h).trim().toLowerCase(); });
+  return rows.slice(1).map(function (row) {
+    var o = {};
+    header.forEach(function (h, i) { if (h) o[h] = row[i]; });
+    return o;
+  });
+}
+
+/** `value` if it's an http(s) link, otherwise ''. */
+function safeUrl_(value) {
+  var url = String(value || '').trim();
+  return /^https?:\/\/[^\s"'<>]+$/i.test(url) ? url : '';
+}
+
+function isTicked_(value) {
+  return value === true || /^(true|yes|y|1)$/i.test(String(value === undefined ? '' : value).trim());
+}
+
+function dismissedMessagesKey_(email) { return 'eia.dismissedMessages.' + shortHash_(email); }
+
+function readDismissedMessages_(email) {
+  try {
+    var list = JSON.parse(PropertiesService.getScriptProperties().getProperty(dismissedMessagesKey_(email)) || '[]');
+    return Array.isArray(list) ? list : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+/**
+ * The Element resources and team messages, plus the messages this visitor
+ * has hidden:
+ *   { resources: [{ element, label, url }],
+ *     messages:  [{ id, title, text, buttonLabel, buttonUrl, active, postedAt }]  newest first,
+ *     dismissed: [messageId] }
+ * A problem with either tab is logged and leaves that part empty, so it
+ * never stops the app loading.
+ */
+function getSiteContent() {
+  var access = requireActiveUser_();
+  var out = { resources: [], messages: [], dismissed: readDismissedMessages_(access.email) };
+  try {
+    out.resources = readTabObjects_(usersTab_(TABS.RESOURCES, RESOURCES_HEADERS)).map(function (r) {
+      return { element: String(r.element || '').trim(), label: String(r.label || '').trim(), url: safeUrl_(r.url) };
+    }).filter(function (r) { return r.element && r.label && r.url; });
+  } catch (e) {
+    console.error('Could not read the Resources tab: ' + e);
+  }
+  try {
+    out.messages = readTabObjects_(usersTab_(TABS.MESSAGES, MESSAGES_HEADERS)).map(function (m, i) {
+      var title = String(m.title || '').trim();
+      var text = String(m.message || '').trim();
+      var buttonUrl = safeUrl_(m.buttonurl);
+      return {
+        id: shortHash_(title + '\n' + text),
+        title: title,
+        text: text,
+        buttonLabel: buttonUrl ? (String(m.buttonlabel || '').trim() || 'Open link') : '',
+        buttonUrl: buttonUrl,
+        active: isTicked_(m.active),
+        postedAt: toMillis_(m.posted),
+        row: i
+      };
+    }).filter(function (m) {
+      return m.title || m.text;
+    }).sort(function (a, b) {
+      return (b.postedAt - a.postedAt) || (b.row - a.row);
+    }).map(function (m) {
+      delete m.row;
+      return m;
+    });
+  } catch (e) {
+    console.error('Could not read the Messages tab: ' + e);
+  }
+  return out;
+}
+
+/** Hides message `id` for the visitor (it stays in their Messages panel). */
+function dismissMessage(id) {
+  var access = requireActiveUser_();
+  id = String(id || '');
+  if (!/^[0-9a-f]{24}$/.test(id)) throw new Error('Invalid message.');
+  var list = readDismissedMessages_(access.email).filter(function (x) { return x !== id; });
+  list.push(id);
+  if (list.length > MAX_DISMISSED_MESSAGES) list = list.slice(list.length - MAX_DISMISSED_MESSAGES);
+  PropertiesService.getScriptProperties().setProperty(dismissedMessagesKey_(access.email), JSON.stringify(list));
+  return { ok: true };
 }
 
 // ===========================================================================
@@ -968,6 +2002,14 @@ function checkSetup() {
   } catch (e) {
     log(false, e.message);
   }
+  [[TABS.RESOURCES, RESOURCES_HEADERS], [TABS.MESSAGES, MESSAGES_HEADERS]].forEach(function (t) {
+    try {
+      var rows = usersTab_(t[0], t[1]).getLastRow() - 1;
+      log(true, t[0] + ' tab (Users spreadsheet): ' + rows + ' row' + (rows === 1 ? '' : 's'));
+    } catch (e) {
+      log(false, t[0] + ' tab: ' + e.message);
+    }
+  });
   var token = ScriptApp.getOAuthToken();
   schools.forEach(function (s) {
     var id = parseDriveId_(s.folderValue);
