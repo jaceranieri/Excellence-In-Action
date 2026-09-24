@@ -53,8 +53,10 @@ var TABS = {
 // working (ensureSheet_() labels the new headers on existing tabs).
 // RestoreCount / LastHistoryId / LastHistoryRow are history bookkeeping —
 // see "School history" below.
+// LastUpdatedBy/At/ByName record the school's latest change of any kind
+// (ratings, evidence or a restore) for the banner's "Last Updated".
 var RATINGS_HEADERS = ['SchoolName', 'RatingsJSON', 'LastUpdatedBy', 'LastUpdatedAt',
-  'RestoreCount', 'LastHistoryId', 'LastHistoryRow'];
+  'RestoreCount', 'LastHistoryId', 'LastHistoryRow', 'LastUpdatedByName'];
 // Rows saved before Title existed have none, and the client shows
 // "Evidence <number>" for them. VersionId points at this entry's current
 // row in EvidenceVersions.
@@ -296,14 +298,44 @@ function readSchoolRow_(schoolName, create) {
     sheet.appendRow([schoolName, '{}', '', '', 0, '', '']);
     row = sheet.getLastRow();
   }
-  var state = { sheet: sheet, row: row, ratings: {}, restoreCount: 0, lastHistoryId: '', lastHistoryRow: 0 };
+  var state = { sheet: sheet, row: row, ratings: {}, restoreCount: 0, lastHistoryId: '', lastHistoryRow: 0, lastUpdated: null };
   if (row < 0) return state;
   var v = sheet.getRange(row, 1, 1, RATINGS_HEADERS.length).getValues()[0];
+  var updatedAt = toMillis_(v[RATINGS_COL.LastUpdatedAt - 1]);
+  if (updatedAt) {
+    state.lastUpdated = {
+      email: String(v[RATINGS_COL.LastUpdatedBy - 1] || ''),
+      name: String(v[RATINGS_COL.LastUpdatedByName - 1] || ''),
+      at: updatedAt
+    };
+  }
   try { state.ratings = v[RATINGS_COL.RatingsJSON - 1] ? JSON.parse(v[RATINGS_COL.RatingsJSON - 1]) : {}; } catch (e) { state.ratings = {}; }
   state.restoreCount = parseInt(v[RATINGS_COL.RestoreCount - 1], 10) || 0;
   state.lastHistoryId = String(v[RATINGS_COL.LastHistoryId - 1] || '');
   state.lastHistoryRow = parseInt(v[RATINGS_COL.LastHistoryRow - 1], 10) || 0;
   return state;
+}
+
+/** Records `access` as the person who made the school's latest change, now. */
+function markSchoolUpdated_(access, state) {
+  var now = new Date().toISOString();
+  state.sheet.getRange(state.row, RATINGS_COL.LastUpdatedBy, 1, 2).setValues([[access.email, now]]);
+  state.sheet.getRange(state.row, RATINGS_COL.LastUpdatedByName).setValue(asText_(access.name));
+}
+
+/** A Users-tab name for `email`, or '' (for rows saved before names were recorded). */
+function nameForEmail_(email) {
+  if (!email) return '';
+  try {
+    var ss = SpreadsheetApp.openById(requireProp_('USERS_SHEET_ID'));
+    var rows = (ss.getSheetByName(TABS.USERS) || ss.getSheets()[0]).getDataRange().getValues();
+    for (var i = 1; i < rows.length; i++) {
+      if (String(rows[i][0] || '').toLowerCase().trim() === email.toLowerCase()) return String(rows[i][1] || '').trim();
+    }
+  } catch (e) {
+    console.warn('Could not look up a name for ' + email + ': ' + e);
+  }
+  return '';
 }
 
 /**
@@ -326,10 +358,18 @@ function isStaleSave_(state, clientVersion) {
 function getSchoolState() {
   var access = requireActiveUser_();
   var state = readSchoolRow_(access.schoolName, false);
+  var lastUpdated = null;
+  if (state.lastUpdated) {
+    lastUpdated = {
+      name: state.lastUpdated.name || nameForEmail_(state.lastUpdated.email) || state.lastUpdated.email,
+      at: state.lastUpdated.at
+    };
+  }
   return {
     ratings: state.ratings,
     evidence: readSchoolEvidence_(access.schoolName),
-    stateVersion: state.restoreCount
+    stateVersion: state.restoreCount,
+    lastUpdated: lastUpdated // { name, at (ms) } or null
   };
 }
 
@@ -372,8 +412,8 @@ function saveRatings(changesJson, stateVersion) {
     if (!changes.length) return { ok: true };
 
     ensureHistoryBaseline_(access, state);
-    state.sheet.getRange(state.row, RATINGS_COL.RatingsJSON, 1, 3)
-      .setValues([[JSON.stringify(after), access.email, new Date().toISOString()]]);
+    state.sheet.getRange(state.row, RATINGS_COL.RatingsJSON).setValue(JSON.stringify(after));
+    markSchoolUpdated_(access, state);
     recordHistory_(access, state, changes, after);
     return { ok: true };
   } finally {
@@ -513,6 +553,7 @@ function saveEvidenceEntry(themeId, entry) {
         attachmentsJson, access.email, now, now, asText_(title), versionId]);
       change = { t: 'evidence-add', theme: themeId, entry: entryId, number: number, title: title, files: attachments.length };
     }
+    if (change) markSchoolUpdated_(access, state);
     recordHistory_(access, state, change ? [change] : [], state.ratings);
     return { ok: true, entryId: entryId, attachments: attachments };
   } catch (e) {
@@ -567,6 +608,7 @@ function deleteEvidenceEntry(entryId, stateVersion) {
     var attachments = parseAttachments_(old[EVIDENCE_COL.Attachments - 1]);
     if (attachments.length) archiveEvidenceFiles_(attachments, getSchoolFolderId_(access.schoolName));
     sheet.deleteRow(rowIdx);
+    markSchoolUpdated_(access, state);
     recordHistory_(access, state, [{
       t: 'evidence-delete', theme: String(old[EVIDENCE_COL.ThemeId - 1]), entry: entryId,
       number: parseInt(old[EVIDENCE_COL.EntryNumber - 1], 10) || 0,
@@ -1224,8 +1266,9 @@ function restoreToPoint(historyId, stateVersion) {
 
     // 3. Ratings, and the restore counter that makes other open pages reload.
     var restoreCount = state.restoreCount + 1;
-    state.sheet.getRange(state.row, RATINGS_COL.RatingsJSON, 1, 4)
-      .setValues([[JSON.stringify(plan.targetRatings), access.email, now, restoreCount]]);
+    state.sheet.getRange(state.row, RATINGS_COL.RatingsJSON).setValue(JSON.stringify(plan.targetRatings));
+    state.sheet.getRange(state.row, RATINGS_COL.RestoreCount).setValue(restoreCount);
+    markSchoolUpdated_(access, state);
     state.restoreCount = restoreCount;
     state.ratings = plan.targetRatings;
 

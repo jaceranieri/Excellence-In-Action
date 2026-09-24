@@ -111,12 +111,57 @@ What step 3 added:
   apostrophe (`asText_()` in `Code.gs`). Values already damaged before
   this can't be recovered.
 
-**To deploy all three steps together:**
+**Neubrutalism restyle of the main screen, not yet confirmed live** (from
+the project owner's mockup):
+- **Container:** everything sits in a central white container with a
+  black outline and no shadow (`#app-root`).
+- **Header** at the top of the container, with a black rule under it:
+  - left: the login page's "Excellence in *Action*" branding;
+  - middle: the school crest (its name as text if there's no crest, or
+    the image fails to load);
+  - right: Last Updated, a round History button, and the avatar.
+- **Avatar colour:** a bright colour picked from the person's email, so
+  it's the same on every visit (`avatarColourFor()` in
+  `Script_LoginGate.html`).
+- **Last Updated:** the school's latest change of any kind, e.g.
+  "Jason Ranieri 10.12.26".
+  - Stored on the Ratings row (`LastUpdatedBy`, `LastUpdatedAt`, and a
+    new `LastUpdatedByName` column) whenever ratings, evidence or a
+    restore changes. Checkpoints don't count.
+  - `getSchoolState()` returns it. The page updates it straight away
+    after its own saves.
+  - Rows from before this have no name; the Users tab is used to find
+    one.
+- **Element header:** the icon circle is filled with the Element's
+  wheel colour, with a black border. The title is black, larger and
+  left-aligned.
+- **Theme cards:**
+  - Filled with the overall grade's colour; Ungraded cards are light
+    grey `#E9EAEE` with a black title.
+  - Black border and hard black shadow.
+  - Grade name in small black text, top left; evidence count in a
+    black pill with a paperclip, top right.
+  - Title left-aligned at the bottom (white; black on Ungraded).
+- **Brighter grade palette everywhere** (`GRADES`): Pre-Delivering
+  `#FF5F5E`, Delivering `#FF914D`, Sustaining `#F5B400`, Excelling
+  `#02BF63`. Cards, the wheel's indicator ring, the grade dropdown and
+  the modal badge all use it.
+- **Not restyled:** the Theme modal, History panel, toasts and login
+  page keep their look for now, by choice. The old dark-mode overrides
+  for the cards and banner were dropped, because the new design is
+  always light.
+- **Static build:** `example.html` mirrors all of this except the parts
+  that need the server (crest, Last Updated, History). It loads the
+  Winter Day font from `fonts/`.
+
+**To deploy everything (evidence titles, school history, restyle):**
 1. In the Apps Script editor, create two new HTML files named exactly
    `Script_History` and `Stylesheet_History`. Paste in
    `gas/Script_History.html` and `gas/Stylesheet_History.html`.
-2. Replace `Code.gs`, `Index.html`, `Script_App.html` and
-   `Stylesheet_ThemeModal.html` with the repo versions.
+2. Replace `Code.gs`, `Index.html`, `Script_App.html`,
+   `Script_LoginGate.html`, `Stylesheet_AppBanner.html`,
+   `Stylesheet_ThemeCards.html` and `Stylesheet_ThemeModal.html` with
+   the repo versions.
 3. Deploy → Manage deployments → Edit → New version.
 4. The History and EvidenceVersions tabs, and the new columns, create
    themselves on the first change.
@@ -164,7 +209,8 @@ parallel builds in this repo — keep reading, this matters.
   is duplicated into its own `.html` partial here (wrapped in
   `<style>`/`<script>` tags) and pulled into `Index.html` via
   `<?!= include('Filename'); ?>`. `gas/Index.html` also has the login
-  gate wrapper (`#app-root`, `.stage-area`) that `example.html` doesn't.
+  gate, which `example.html` doesn't (both now share the `#app-root`
+  container and `.stage-area`).
 
 **Whenever you change shared layout/logic** (the wheel+cards sizing,
 `onSelect` behavior, banner styling, theme-cards grid, etc.), the same
@@ -225,8 +271,8 @@ in `import-eia.py` itself; not run by the app.
   "Request Access from your Principal" button is **static/non-functional
   by design** (a deliberate decision, not an oversight — see git log
   "Add Users-sheet login gate").
-- On Continue, `enterApp()` fills in the real banner (crest image,
-  school name, user's initials in the avatar) and reveals `#app-root`,
+- On Continue, `enterApp()` fills in the real banner (crest image or
+  school name, user's initials and avatar colour) and reveals `#app-root`,
   then calls `window.onAppEntered(access)` (defined in `Script_App.html`)
   — this is what kicks off loading the school's saved ratings/evidence.
 
@@ -576,12 +622,15 @@ actually finding and fixing real bugs, not aesthetic guesses. Don't
 revert to an earlier-sounding approach without understanding why it was
 changed.
 
-- **Fixed pixel sizes per breakpoint, not fluid scaling.** Desktop
-  (≥1280px): wheel 580px, cards column 580px, 56px gap. Compact
-  (900–1279px): 380/380/32px gap. Stacked (<900px): column layout,
-  `min(x, 100%)` as an overflow safety net only. This was a deliberate
-  choice over `clamp()`/`vw` continuous scaling — see git log "Switch to
-  fixed per-breakpoint sizing."
+- **Fixed pixel sizes per breakpoint, not fluid scaling.**
+  - Desktop (≥1280px): wheel 520px, cards column 480px, 56px gap. The
+    wheel was 580px before the central container existed; this is the
+    size that fits inside the 1160px container.
+  - Compact (900–1279px): 380/380/32px gap.
+  - Stacked (<900px): column layout, with `min(x, 100%)` only as an
+    overflow safety net.
+  This was a deliberate choice over `clamp()`/`vw` continuous scaling —
+  see git log "Switch to fixed per-breakpoint sizing."
 - **`#wheel-host { margin: 0; }` is load-bearing.** `excellence-wheel.js`
   adds an `ew-host` class to its container, and `excellence-wheel.css`'s
   `.ew-host { margin: 0 auto; }` will silently re-apply auto-margins
@@ -591,7 +640,7 @@ changed.
   confirmed bug (see git log "Fix wheel/cards separation..."). If the
   cards ever drift away from the wheel again, check this first.
 - **`.main-layout` has a fixed `height` per tier** (matching
-  `#wheel-host`'s own height, e.g. 580px), not `height: auto`. The
+  `#wheel-host`'s own height, e.g. 520px), not `height: auto`. The
   cards column's height varies with how many Theme-card rows an Element
   has; if `.main-layout`'s height is left auto, `.stage-area`'s vertical
   centering (based on the tallest child) shifts the *wheel* up/down
@@ -615,10 +664,12 @@ changed.
   mis-centering bug"). Any time you add a new wrapper div around
   page-level content in `gas/Index.html`, ask whether it needs the same
   treatment.
-- **The banner is intentionally decoupled** from the wheel+cards row's
-  width — its own `width: min(960px, 100%)` in `app-banner.css`, never
-  tied to a shared variable. Don't reintroduce a shared `--stage-max-width`
-  between them; that was tried and explicitly reverted.
+- **`#app-root` is the central container:** `width: min(1160px, 100%)`,
+  a white fill and a black outline. The banner spans its full width at
+  the top, and `.stage-area` below has its own padding. The banner is a
+  three-column grid (`1fr auto 1fr`), so the crest stays centred however
+  wide the two sides are. Under 640px the crest moves to a second row.
+  `example.html` has the same `#app-root` wrapper.
 - **`html { overflow-y: scroll; scrollbar-gutter: stable; }`** is there
   to stop the vertical scrollbar's appearance/disappearance (as page
   height crosses the viewport height) from shifting the whole
@@ -626,9 +677,9 @@ changed.
 
 ## Testing gotcha — read before saying "verified locally"
 
-`example.html` has **no** `#app-root`/login-gate wrapper, so testing
-against it will not catch bugs that only exist in `gas/Index.html`'s
-extra wrapper structure (this is exactly how the banner mis-centering
+`example.html` now has the same `#app-root` container, but **no**
+login gate, Last Updated, History or server, so testing against it will
+not catch bugs that only exist in `gas/Index.html`'s extra structure (this is exactly how the banner mis-centering
 bug shipped once before it was caught). To actually test the GAS build
 end-to-end locally:
 

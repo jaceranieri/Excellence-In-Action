@@ -52,6 +52,26 @@
     return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
   }
 
+  // Bright avatar colours, each with the text colour that reads on it.
+  var AVATAR_COLOURS = [
+    { bg: '#24CDD6', text: '#ffffff' }, // teal
+    { bg: '#FF66C4', text: '#ffffff' }, // pink
+    { bg: '#8C52FF', text: '#ffffff' }, // purple
+    { bg: '#38B6FF', text: '#ffffff' }, // sky blue
+    { bg: '#FF914D', text: '#ffffff' }, // orange
+    { bg: '#7ED957', text: '#000000' }, // lime
+    { bg: '#FFDE59', text: '#000000' }, // yellow
+    { bg: '#FF5757', text: '#ffffff' }  // red
+  ];
+
+  // The same colour for a person on every visit: picked from their email.
+  function avatarColourFor(email) {
+    var hash = 0;
+    var s = String(email || '').toLowerCase();
+    for (var i = 0; i < s.length; i++) hash = (hash * 31 + s.charCodeAt(i)) >>> 0;
+    return AVATAR_COLOURS[hash % AVATAR_COLOURS.length];
+  }
+
   // Swap the login gate for the real app: this is also where the
   // banner picks up the signed-in user's real school/crest/name,
   // replacing the placeholders documented in app-banner.css/README as
@@ -59,18 +79,26 @@
   // that lookup is exactly what getCurrentUserAccess() now is.
   function enterApp() {
     var access = window.__ACCESS__;
-    var subtitleEl = document.querySelector('.app-banner-subtitle');
-    if (subtitleEl && access.schoolName) subtitleEl.textContent = access.schoolName;
-
-    var logoEl = document.querySelector('.app-banner-logo');
-    if (logoEl && access.crestUrl) {
-      // Unmasked, uncropped — sizing/fit comes from .app-banner-logo img
-      // in app-banner.css (object-fit: contain), not inline here.
-      logoEl.innerHTML = '<img src="' + escapeHtml(access.crestUrl) + '" alt="">';
+    // The school's crest (which usually includes its name), or just its
+    // name if it has none, or if the crest image fails to load.
+    var schoolEl = document.querySelector('.app-banner-school');
+    if (schoolEl) {
+      var nameHtml = '<span class="app-banner-school-name">' + escapeHtml(access.schoolName || '') + '</span>';
+      if (access.crestUrl) {
+        schoolEl.innerHTML = '<img src="' + escapeHtml(access.crestUrl) + '" alt="' + escapeHtml(access.schoolName || '') + '">';
+        schoolEl.querySelector('img').addEventListener('error', function () { schoolEl.innerHTML = nameHtml; });
+      } else {
+        schoolEl.innerHTML = nameHtml;
+      }
     }
 
     var avatarEl = document.querySelector('.app-banner-avatar');
     var initials = initialsFor(access.name);
+    if (avatarEl) {
+      var colour = avatarColourFor(access.email);
+      avatarEl.style.setProperty('--avatar-color', colour.bg);
+      avatarEl.style.setProperty('--avatar-text', colour.text);
+    }
     if (avatarEl && initials) {
       avatarEl.textContent = initials;
       avatarEl.setAttribute('title', access.name);

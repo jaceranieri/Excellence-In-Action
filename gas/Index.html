@@ -33,15 +33,17 @@
     min-height: 100vh;
     box-sizing: border-box;
     padding: 32px;
-    background: #f4f5f7;
+    background: #f1f1f1;
     font-family: 'Figtree', 'Segoe UI', sans-serif;
     display: flex;
     flex-direction: column;
     align-items: center;
   }
 
-  /* #app-root wraps the banner + wheel/cards row (see Script_LoginGate's
-     enterApp(), which un-hides it). It MUST be a flex column itself,
+  /* #app-root is the app's central container (neubrutalism style: white,
+     black outline, no shadow), holding the banner at its top and the
+     wheel/cards row below (see Script_LoginGate's enterApp(), which
+     un-hides it). It MUST be a flex column itself,
      not a plain block: a plain block's children (the banner especially,
      which has no margin:auto of its own) just left-align inside it
      instead of centering — that was a real bug, not a hypothetical one,
@@ -54,9 +56,13 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    width: 100%;
+    width: min(1160px, 100%);
+    box-sizing: border-box;
     flex: 1 1 auto;
-    gap: 40px; /* guaranteed minimum space between the banner and the centred row below, however that row is vertically positioned */
+    background: #ffffff;
+    border: 2.5px solid #000000;
+    border-radius: 36px;
+    overflow: hidden; /* keeps the banner's bottom rule inside the rounded corners */
   }
   /* #app-root's own `display: flex` above is an author rule and would
      otherwise beat the browser's default `[hidden] { display: none }`
@@ -74,6 +80,8 @@
     flex: 1 1 auto;
     min-height: 0;
     width: 100%;
+    box-sizing: border-box;
+    padding: 40px 48px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -115,12 +123,15 @@
        height, with overflow left visible (the default), decouples
        that: taller card content just extends past the box's bottom
        uneventfully instead of resizing the box centring is based on. */
-    height: 580px;
+    height: 520px;
     transition: gap 0.4s ease;
   }
+  /* Desktop sizes fit the central container (1160px wide, 48px padding
+     each side): 520 + 56 + 480. The wheel is the same design as before,
+     just smaller than its earlier 580px so both columns fit inside. */
   #wheel-host {
     flex: none;
-    width: 580px;
+    width: 520px;
     /* Overrides excellence-wheel.css's own .ew-host { margin: 0 auto }
        (added by the component itself via the ew-host class) — auto
        margins on a flex item absorb ALL the row's leftover space into
@@ -133,7 +144,7 @@
   }
   #detail {
     flex: none;
-    width: 580px;
+    width: 480px;
     min-height: 90px;
     box-sizing: border-box;
     overflow: hidden; /* only actually clips anything during the collapsed (.is-empty) state below — #detail's own height is otherwise auto/content-driven, so nothing here is ever cut off */
@@ -166,6 +177,7 @@
      fixed, still side by side — just a smaller designed size, not a
      scaled-down version of the desktop numbers above. */
   @media (max-width: 1279.98px) {
+    .stage-area { padding: 32px 20px; }
     .main-layout { gap: 32px; height: 380px; }
     #wheel-host { width: 380px; }
     #detail { width: 380px; }
@@ -181,6 +193,11 @@
     .main-layout { flex-direction: column; align-items: center; gap: 32px; height: auto; }
     #wheel-host { width: min(360px, 100%); }
     #detail { width: min(420px, 100%); }
+  }
+  @media (max-width: 560px) {
+    body { padding: 12px; }
+    #app-root { border-radius: 24px; }
+    .stage-area { padding: 24px 16px; }
   }
 </style>
 </head>
@@ -215,33 +232,39 @@
 
   <div id="app-root" hidden>
     <header class="app-banner">
-      <div class="app-banner-logo" aria-hidden="true">
-        <!-- Placeholder logo — replaced with the signed-in user's school
-             crest on entering the app, see enterApp() in Script_LoginGate.html -->
-        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <circle cx="12" cy="12" r="9.5" stroke="#1c1f4f" stroke-width="1.4"/>
-          <path d="M12 3.5 14 9 20 9 15 12.5 17 18.5 12 15 7 18.5 9 12.5 4 9 10 9Z" stroke="#1c1f4f" stroke-width="1.2" stroke-linejoin="round"/>
-        </svg>
+      <!-- Same branding as the login gate (Winter Day "Action" comes from
+           Stylesheet_LoginGate's @font-face). -->
+      <div class="app-banner-brand" aria-label="Excellence in Action">
+        <span class="app-banner-brand-top" aria-hidden="true">Excellence in</span>
+        <span class="app-banner-brand-script" aria-hidden="true">Action</span>
       </div>
-      <div class="app-banner-titles">
-        <p class="app-banner-title">Excellence in Action</p>
-        <p class="app-banner-subtitle">Placeholder School Name</p>
+      <!-- The school's crest, or its name if it has none — filled in by
+           enterApp() in Script_LoginGate.html. -->
+      <div class="app-banner-school">
+        <span class="app-banner-school-name"></span>
       </div>
-      <!-- Opens the school's history panel (Script_History.html). -->
-      <button type="button" class="app-banner-history-btn" id="history-open-btn" aria-haspopup="dialog">
-        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-          <path d="M3.5 12a8.5 8.5 0 1 0 2.5-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-          <path d="M3 4.5V9h4.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-          <path d="M12 7.5V12l3 2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-        <span class="app-banner-history-label">History</span>
-      </button>
-      <div class="app-banner-avatar" aria-hidden="true" title="Placeholder avatar">
-        <!-- Placeholder avatar — swap for the signed-in user's real photo/initials -->
-        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <circle cx="12" cy="8.5" r="3.5" fill="#fff"/>
-          <path d="M4.5 20c1.4-4 4.2-6 7.5-6s6.1 2 7.5 6" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/>
-        </svg>
+      <div class="app-banner-tools">
+        <!-- The school's latest change (Code.gs's getSchoolState()); see
+             showLastUpdated() in Script_App.html. -->
+        <div class="app-banner-updated" hidden>
+          <p class="app-banner-updated-label">Last Updated</p>
+          <p class="app-banner-updated-value"></p>
+        </div>
+        <!-- Opens the school's history panel (Script_History.html). -->
+        <button type="button" class="app-banner-history-btn" id="history-open-btn" aria-haspopup="dialog" aria-label="History" title="History">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M3.5 12a8.5 8.5 0 1 0 2.5-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+            <path d="M3 4.5V9h4.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M12 7.5V12l3 2" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+        <div class="app-banner-avatar" aria-hidden="true">
+          <!-- Placeholder avatar — enterApp() swaps in the user's initials and colour -->
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="12" cy="8.5" r="3.5" fill="#fff"/>
+            <path d="M4.5 20c1.4-4 4.2-6 7.5-6s6.1 2 7.5 6" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/>
+          </svg>
+        </div>
       </div>
     </header>
 

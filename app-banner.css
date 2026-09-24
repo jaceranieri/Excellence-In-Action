@@ -1,108 +1,170 @@
 /*!
- * App banner — the page header: a placeholder logo, "Excellence in
- * Action" as the fixed title, a school-name subtitle (placeholder text
- * for now — swap it for the real school name, ideally from the same
- * roster/session data that will eventually drive login), and a
- * placeholder avatar.
+ * App banner — the header along the top of the central container
+ * (#app-root in Index.html), neubrutalism style: flat white, black
+ * rules and outlines, no soft shadows.
  *
- * Part of the same hard-edge "colour shadow" visual language as
- * theme-cards.css / theme-modal.css — this one's shadow is a fixed
- * dark colour rather than a domain colour, since the banner isn't
- * scoped to any one Element/category the way the wheel's own UI is.
- *
- * The logo and avatar circles are deliberately NOT given the shadow
- * treatment — a bottom-edge band looks like a stray growth on a full
- * circle rather than a shadow, the same reasoning the close (×) button
- * and attachment-remove (×) buttons were excluded elsewhere.
+ * Three columns, with the school crest truly centred however wide the
+ * two sides are:
+ *   - left: the "Excellence in Action" branding from the login gate
+ *     ("Action" is Winter Day, embedded by Stylesheet_LoginGate);
+ *   - middle: the school's crest (or its name, if it has none) — set by
+ *     enterApp() in Script_LoginGate.html;
+ *   - right: Last Updated, the History button and the avatar, whose
+ *     colour enterApp() picks from the user's email.
+ * The History button's own behaviour is in Script_History.html.
  */
 
 .app-banner {
-  /* A fixed width of its own — independent of the wheel+cards row
-     below it (which has its own fixed sizes per breakpoint, see the
-     host page's <style>). The banner never stretches to match that
-     row, and never determines the page's overall width either way.
-     min() is only a safety net against overflow under 960px, not a
-     return to fluid/proportional sizing. */
-  width: min(960px, 100%);
+  width: 100%;
   box-sizing: border-box;
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  grid-template-areas: "brand school tools";
   align-items: center;
-  gap: 18px;
+  gap: 16px;
+  min-height: 88px;
+  padding: 14px 32px;
   background: #ffffff;
-  /* Same hard-edge ring + shadow-band language as .theme-card
-     (theme-cards.css) — a solid border plus a matching 2px box-shadow
-     ring, rather than the previous plain 1px hairline. */
-  border: 1px solid #1c1f4f;
-  border-radius: 14px;
-  padding: 18px 28px;
-  box-shadow: 0 0 0 2px #1c1f4f, 0 6px 0 0 #000000, 0 14px 28px rgba(0, 0, 0, 0.14);
+  border-bottom: 2.5px solid #000000;
 }
 
-.app-banner-logo {
-  flex: none;
-  width: 150px;
-  height: 52px;
-  border-radius: 8px;
-  /* No outline/border — a real crest's own artwork provides its edge;
-     this soft fill just gives the placeholder svg (pre-login) a slot
-     to sit in without one. */
-  background: #f7f8fa;
+/* Branding --------------------------------------------------------------*/
+
+.app-banner-brand {
+  grid-area: brand;
+  justify-self: start;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1;
+}
+
+.app-banner-brand-top {
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+  font-weight: 800;
+  font-size: 17px;
+  color: #17458f;
+}
+
+.app-banner-brand-script {
+  /* Same face and colour as the login gate's "Action". */
+  font-family: 'Winter Day', 'Pacifico', 'Segoe UI', cursive;
+  font-weight: 400;
+  font-size: 34px;
+  line-height: 0.9;
+  margin: 2px 0 0 12px;
+  color: #f5b400;
+}
+
+/* School ----------------------------------------------------------------*/
+
+.app-banner-school {
+  grid-area: school;
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: hidden;
+  min-width: 0;
 }
 
-.app-banner-logo svg {
-  width: 26px;
-  height: 26px;
-}
-
-/* A real school crest (typically ~300x80, landscape) shown unmasked and
-   uncropped — see enterApp() in Script_LoginGate.html, which swaps the
-   placeholder svg above for one of these once the user's school is
-   known. object-fit: contain (not cover) so nothing gets cropped. */
-.app-banner-logo img {
-  width: 100%;
-  height: 100%;
+/* A crest is typically landscape (~300x80) and often includes the
+   school's name, so it's shown whole: contained, never cropped. */
+.app-banner-school img {
+  display: block;
+  max-height: 54px;
+  max-width: 240px;
   object-fit: contain;
 }
 
-.app-banner-titles {
-  flex: 1 1 auto;
-  min-width: 0;
+.app-banner-school-name {
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+  font-weight: 800;
+  font-size: 16px;
+  color: #000000;
   text-align: center;
 }
 
-.app-banner-title {
+/* Last Updated, History, avatar ------------------------------------------*/
+
+.app-banner-tools {
+  grid-area: tools;
+  justify-self: end;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.app-banner-updated {
+  margin-right: 4px;
+  text-align: right;
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+}
+
+.app-banner-updated[hidden] {
+  display: none;
+}
+
+.app-banner-updated-label {
   margin: 0;
-  font-family: 'Figtree', 'Segoe UI', sans-serif;
+  font-size: 12.5px;
   font-weight: 800;
-  font-size: 21px;
-  color: #1c1f4f;
+  color: #17458f;
 }
 
-.app-banner-subtitle {
-  margin: 3px 0 0;
-  font-family: 'Figtree', 'Segoe UI', sans-serif;
-  font-weight: 600;
-  font-size: 14px;
-  color: #2f8fd1;
+.app-banner-updated-value {
+  margin: 2px 0 0;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #8a8d99;
+  white-space: nowrap;
 }
 
+.app-banner-history-btn,
 .app-banner-avatar {
   flex: none;
-  width: 44px;
-  height: 44px;
+  width: 46px;
+  height: 46px;
+  box-sizing: border-box;
+  border: 2.5px solid #000000;
   border-radius: 50%;
-  background: #1c1f4f;
-  color: #ffffff;
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.app-banner-history-btn {
+  padding: 0;
+  background: #ffffff;
+  color: #f5b400;
+  cursor: pointer;
+  transition: background-color 0.15s ease, transform 0.1s ease;
+}
+
+.app-banner-history-btn svg {
+  width: 24px;
+  height: 24px;
+}
+
+.app-banner-history-btn:hover,
+.app-banner-history-btn:focus-visible {
+  background: #fff6db;
+  outline: none;
+}
+
+.app-banner-history-btn:focus-visible {
+  box-shadow: 0 0 0 3px #17458f;
+}
+
+.app-banner-history-btn:active {
+  transform: translateY(1px);
+}
+
+.app-banner-avatar {
+  /* --avatar-color / --avatar-text are set per user by enterApp(). */
+  background: var(--avatar-color, #24cdd6);
+  color: var(--avatar-text, #ffffff);
   font-family: 'Figtree', 'Segoe UI', sans-serif;
-  font-weight: 700;
-  font-size: 15px;
+  font-weight: 800;
+  font-size: 16px;
   letter-spacing: 0.3px;
 }
 
@@ -111,35 +173,25 @@
   height: 20px;
 }
 
-@media (max-width: 560px) {
-  .app-banner { padding: 12px 16px; gap: 12px; }
-  .app-banner-title { font-size: 16px; }
-  .app-banner-subtitle { font-size: 12px; }
-  .app-banner-logo { width: 90px; height: 36px; }
-  .app-banner-avatar { width: 36px; height: 36px; font-size: 13px; }
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .app-banner {
-    background: #1e2030;
-    border-color: #2c2e42;
-    box-shadow: 0 6px 0 0 #05060c, 0 14px 28px rgba(0, 0, 0, 0.4);
+/* Small screens: branding and buttons on the first row, the crest on
+   its own row below. */
+@media (max-width: 640px) {
+  .app-banner {
+    grid-template-columns: auto 1fr;
+    grid-template-areas:
+      "brand tools"
+      "school school";
+    row-gap: 12px;
+    padding: 12px 16px;
   }
-  :root:not([data-theme="light"]) .app-banner-logo {
-    background: #262838;
-  }
-  :root:not([data-theme="light"]) .app-banner-title {
-    color: #eef0ff;
-  }
-}
-:root[data-theme="dark"] .app-banner {
-  background: #1e2030;
-  border-color: #2c2e42;
-  box-shadow: 0 6px 0 0 #05060c, 0 14px 28px rgba(0, 0, 0, 0.4);
-}
-:root[data-theme="dark"] .app-banner-logo {
-  background: #262838;
-}
-:root[data-theme="dark"] .app-banner-title {
-  color: #eef0ff;
+  .app-banner-brand-top { font-size: 14px; }
+  .app-banner-brand-script { font-size: 28px; margin-left: 10px; }
+  .app-banner-school img { max-height: 44px; }
+  .app-banner-tools { gap: 8px; }
+  .app-banner-updated { margin-right: 2px; }
+  .app-banner-updated-label { font-size: 11px; }
+  .app-banner-updated-value { font-size: 10px; }
+  .app-banner-history-btn,
+  .app-banner-avatar { width: 40px; height: 40px; }
+  .app-banner-avatar { font-size: 14px; }
 }

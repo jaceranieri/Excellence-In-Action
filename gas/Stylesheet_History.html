@@ -1,8 +1,9 @@
 <style>
 /*!
- * School history (GAS build only): the History button in the banner and
- * the side panel it opens. Logic is in Script_History.html; the server
- * side is the "School history" sections of Code.gs.
+ * School history (GAS build only): the side panel opened by the banner's
+ * History button (the button itself is styled in Stylesheet_AppBanner).
+ * Logic is in Script_History.html; the server side is the "School
+ * history" sections of Code.gs.
  *
  * The panel slides in from the right over a dimmed backdrop, above the
  * banner and Theme modal (z-index 1100) but below the toasts (9999), so
@@ -10,57 +11,6 @@
  * navy #1c1f4f for structure, the banner's blue #2f8fd1 for checkpoints,
  * and the Delivering orange #F2994A for restores.
  */
-
-/* Banner button ------------------------------------------------------------*/
-
-.app-banner-history-btn {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  height: 38px;
-  padding: 0 16px 0 13px;
-  margin-right: -6px; /* sits closer to the avatar than the banner's 18px gap */
-  border: 1.5px solid #1c1f4f;
-  border-radius: 999px;
-  background: #fff;
-  color: #1c1f4f;
-  font-family: 'Figtree', 'Segoe UI', sans-serif;
-  font-size: 13.5px;
-  font-weight: 700;
-  cursor: pointer;
-  box-shadow: 0 3px 0 0 #1c1f4f;
-  transition: background-color 0.15s ease, transform 0.1s ease, box-shadow 0.1s ease;
-}
-
-.app-banner-history-btn svg {
-  width: 17px;
-  height: 17px;
-}
-
-.app-banner-history-btn:hover,
-.app-banner-history-btn:focus-visible {
-  background: #f1f2f8;
-  outline: none;
-}
-
-.app-banner-history-btn:active {
-  transform: translateY(2px);
-  box-shadow: 0 1px 0 0 #1c1f4f;
-}
-
-@media (max-width: 560px) {
-  .app-banner-history-btn {
-    width: 36px;
-    height: 36px;
-    padding: 0;
-    margin-right: -4px;
-    justify-content: center;
-  }
-  .app-banner-history-label {
-    display: none;
-  }
-}
 
 /* Panel ------------------------------------------------------------------*/
 

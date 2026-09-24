@@ -3,17 +3,18 @@
     // Data
     // =======================================================================
 
-    // The 5 fixed grade levels. Pre-Delivering/Delivering colours are an
-    // interpolated guess between Ungraded (grey) and Sustaining/Excelling
-    // (sampled from your mockup, #F5B400 / #1E8E4F). Used for the outer
-    // cards' dot, the grade dropdown, and the modal's Grade badge itself
-    // (which fades between colours via CSS transition on change).
+    // The 5 fixed grade levels, in the brighter neubrutalism palette
+    // (Excelling / Sustaining / Pre-Delivering sampled from the mockup;
+    // Delivering is a matching bright orange). Used for the Theme cards,
+    // the wheel's indicator ring, the grade dropdown, and the modal's
+    // Grade badge (which fades between colours via CSS transition).
+    // `card` is the Theme card fill where it differs from `color`.
     var GRADES = {
-      'ungraded':       { label: 'Ungraded',       color: '#9AA0A6' },
-      'pre-delivering': { label: 'Pre-Delivering',  color: '#E2574C' },
-      'delivering':     { label: 'Delivering',      color: '#F2994A' },
+      'ungraded':       { label: 'Ungraded',       color: '#9AA0A6', card: '#E9EAEE' },
+      'pre-delivering': { label: 'Pre-Delivering',  color: '#FF5F5E' },
+      'delivering':     { label: 'Delivering',      color: '#FF914D' },
       'sustaining':     { label: 'Sustaining',      color: '#F5B400' },
-      'excelling':      { label: 'Excelling',       color: '#1E8E4F' }
+      'excelling':      { label: 'Excelling',       color: '#02BF63' }
     };
     var RUBRIC_LEVELS = ['pre-delivering', 'delivering', 'sustaining', 'excelling'];
 
@@ -1364,6 +1365,7 @@
 
     var SCHOOL_NAME = '';
     var USER_EMAIL = '';
+    var USER_NAME = '';
     // The school's restore count when its state was loaded (Code.gs's
     // getSchoolState()). Sent with every save; the server refuses saves
     // from a page loaded before the school was restored to an earlier
@@ -1382,6 +1384,7 @@
         theme.evidence = [];
       });
       STATE_VERSION = state.stateVersion || 0;
+      showLastUpdated(state.lastUpdated);
       Object.keys(state.ratings || {}).forEach(function (themeId) {
         var theme = THEME_BY_ID[themeId];
         if (!theme) return; // stale id from a since-removed theme — ignore, don't throw
@@ -1451,9 +1454,35 @@
 
     // Exposed for Script_LoginGate.html's enterApp() to call once the
     // visitor's access record (with schoolName/email) is known.
+    // -- Last Updated (banner) --------------------------------------------
+    // Who made the school's latest change and when (Code.gs's
+    // getSchoolState()), e.g. "Jason Ranieri 10.12.26". Loaded with the
+    // school's state; this page's own saves update it straight away.
+    // Other people's changes show on the next load.
+    function showLastUpdated(lastUpdated) {
+      var box = document.querySelector('.app-banner-updated');
+      if (!box) return;
+      if (!lastUpdated || !lastUpdated.at) {
+        box.hidden = true;
+        return;
+      }
+      var when = new Date(lastUpdated.at);
+      box.querySelector('.app-banner-updated-value').textContent =
+        (lastUpdated.name ? lastUpdated.name + ' ' : '') + formatDateDDMMYY(when);
+      box.setAttribute('title', 'Last changed ' + when.toLocaleString('en-AU', {
+        day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }) +
+        (lastUpdated.name ? ' by ' + lastUpdated.name : ''));
+      box.hidden = false;
+    }
+
+    function markUpdatedByMe() {
+      showLastUpdated({ name: USER_NAME, at: Date.now() });
+    }
+
     window.onAppEntered = function (access) {
       SCHOOL_NAME = access.schoolName || '';
       USER_EMAIL = access.email || '';
+      USER_NAME = access.name || '';
       loadSchoolState();
       // Gives this visitor view access to their school's evidence folder,
       // so attachment links open for everyone at the school.
@@ -1577,6 +1606,7 @@
             reloadAfterRestore();
           } else {
             showRatingsToast('success', 'Ratings saved', 1800);
+            markUpdatedByMe();
           }
           ratingsSaveSettled();
         })
@@ -1651,22 +1681,32 @@
         'stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
     }
 
-    function renderThemeCard(theme, idx, accentHex, accentRgb, shadowHex, delay) {
+    // Card fill for a grade (see GRADES and theme-cards.css).
+    function gradeCardColor(grade) {
+      return grade.card || grade.color;
+    }
+
+    function evidenceBadgeHtml(count) {
+      return attachmentGlyph() + '<span>' + count + '</span>';
+    }
+
+    // --card-accent/--card-accent-rgb (the Element's colour) aren't used by
+    // the card itself any more, but openThemeModal() reads them to colour
+    // the modal.
+    function renderThemeCard(theme, idx, accentHex, accentRgb, delay) {
       var grade = GRADES[theme.grade] || GRADES.ungraded;
       var count = (theme.evidence || []).length;
-      var gradePillShadow = darkenHex(grade.color, 0.22);
-      return '<div class="theme-card" tabindex="0" role="button"' +
-          ' data-theme-index="' + idx + '"' +
+      return '<div class="theme-card' + (theme.grade === 'ungraded' || !GRADES[theme.grade] ? ' is-ungraded' : '') +
+          '" tabindex="0" role="button" data-theme-index="' + idx + '"' +
           ' style="--card-accent:' + accentHex + ';--card-accent-rgb:' + accentRgb +
-          ';--card-shadow:' + shadowHex + ';animation-delay:' + delay + 'ms">' +
-        '<h3 class="theme-card-title">' + escapeHtml(theme.title) + '</h3>' +
-        '<div class="theme-card-indicators" style="--grade-pill-color:' + grade.color +
-            ';--grade-pill-shadow:' + gradePillShadow + '">' +
-          '<span class="theme-card-grade-pill">' + grade.label + '</span>' +
+          ';--grade-color:' + gradeCardColor(grade) + ';animation-delay:' + delay + 'ms">' +
+        '<div class="theme-card-top">' +
+          '<span class="theme-card-grade">' + grade.label + '</span>' +
           '<span class="theme-card-evidence-badge" title="' + count + ' evidence piece' + (count === 1 ? '' : 's') + '">' +
-            attachmentGlyph() + (count > 0 ? '<span>' + count + '</span>' : '') +
+            evidenceBadgeHtml(count) +
           '</span>' +
         '</div>' +
+        '<h3 class="theme-card-title">' + escapeHtml(theme.title) + '</h3>' +
         '</div>';
     }
 
@@ -1703,18 +1743,12 @@
       var style = ExcellenceWheel.CATEGORY_STYLE[segment.category];
       var accentHex = style.wedge;
       var accentRgb = hexToRgbString(accentHex);
-      // Teaching's wedge colour is a golden yellow (#FDB40F) — darkening
-      // it (the default for every other category) came out a muddy
-      // mustard rather than reading as "Teaching's colour, darker". Use
-      // Teaching's own ring/accent orange (#F3712D, the same orange as
-      // its wheel ring and Element title) as the shadow instead, for
-      // that category only.
-      var shadowHex = segment.category === 'teaching' ? style.accent : darkenHex(accentHex, 0.2);
       var cardsHtml = themes.map(function (t, i) {
-        return renderThemeCard(t, i, accentHex, accentRgb, shadowHex, baseDelay + i * 35);
+        return renderThemeCard(t, i, accentHex, accentRgb, baseDelay + i * 35);
       }).join('');
+      // The icon circle is filled with the Element's own wheel colour.
       detailEl.innerHTML =
-        '<div class="element-detail" style="--title-color:' + style.ring + '">' +
+        '<div class="element-detail" style="--element-color:' + accentHex + '">' +
           elementIconPlaceholder() +
           '<h2 class="element-title">' + escapeHtml(title) + '</h2>' +
           '<div class="theme-cards">' + cardsHtml + '</div>' +
@@ -1726,18 +1760,15 @@
     function syncCard(cardEl, theme) {
       if (!cardEl) return;
       var g = GRADES[theme.grade] || GRADES.ungraded;
-      var indicators = cardEl.querySelector('.theme-card-indicators');
-      var pill = cardEl.querySelector('.theme-card-grade-pill');
-      if (indicators) {
-        indicators.style.setProperty('--grade-pill-color', g.color);
-        indicators.style.setProperty('--grade-pill-shadow', darkenHex(g.color, 0.22));
-      }
-      if (pill) pill.textContent = g.label;
+      cardEl.style.setProperty('--grade-color', gradeCardColor(g));
+      cardEl.classList.toggle('is-ungraded', g === GRADES.ungraded);
+      var gradeEl = cardEl.querySelector('.theme-card-grade');
+      if (gradeEl) gradeEl.textContent = g.label;
       var count = (theme.evidence || []).length;
       var badge = cardEl.querySelector('.theme-card-evidence-badge');
       if (badge) {
         badge.setAttribute('title', count + ' evidence piece' + (count === 1 ? '' : 's'));
-        badge.innerHTML = attachmentGlyph() + (count > 0 ? '<span>' + count + '</span>' : '');
+        badge.innerHTML = evidenceBadgeHtml(count);
       }
       updateDotRingColors(); // this Theme's overview dot needs the same colour update
     }
@@ -2098,7 +2129,10 @@
         // backend in the first place — nothing to delete server-side.
         if (removed && removed.entryId && SCHOOL_NAME) {
           google.script.run
-            .withSuccessHandler(function (result) { if (result && result.stale) reloadAfterRestore(); })
+            .withSuccessHandler(function (result) {
+              if (result && result.stale) reloadAfterRestore();
+              else if (result && result.ok) markUpdatedByMe();
+            })
             .withFailureHandler(function (err) { console.error('Failed to delete evidence entry:', err); })
             .deleteEvidenceEntry(removed.entryId, STATE_VERSION);
         }
@@ -2510,6 +2544,7 @@
             entry.entryId = result.entryId;
             entry.attachments = result.attachments || [];
             delete entry.lastSaved;
+            markUpdatedByMe();
             // A reload after a restore may have fetched the school's state
             // before this save landed, leaving this entry out of the list.
             theme.evidence = theme.evidence || [];
