@@ -5,59 +5,98 @@
  * Logic is in Script_History.html; the server side is the "School
  * history" sections of Code.gs.
  *
- * The panel slides in from the right over a dimmed backdrop, above the
- * banner and Theme modal (z-index 1100) but below the toasts (9999), so
- * restore progress stays visible. Colours follow the rest of the app:
+ * The panel is its own card (white, black outline, no shadow), like the
+ * main container. When the window is wide enough, the main container
+ * slides left and the panel sits beside it (body.history-alongside, set
+ * by layoutHistoryPanel() in Script_History.html); otherwise it overlaps
+ * the container's right side. Nothing behind it is dimmed, and a click
+ * anywhere outside it closes it. It sits above the Theme modal (z-index
+ * 1100) but below the toasts (9999), so restore progress stays visible.
+ * Colours follow the rest of the app:
  * navy #1c1f4f for structure, the banner's blue #2f8fd1 for checkpoints,
  * and the Delivering orange #F2994A for restores.
  */
 
 /* Panel ------------------------------------------------------------------*/
 
+/* A transparent, click-through layer: only the panel itself takes clicks.
+   Clicks outside it close it (see Script_History.html). */
 .history-overlay {
   position: fixed;
   inset: 0;
   z-index: 1100;
-  background: rgba(20, 22, 40, 0.45);
-  opacity: 0;
+  pointer-events: none;
   visibility: hidden;
-  transition: opacity 0.2s ease, visibility 0s linear 0.2s;
+  transition: visibility 0s linear 0.25s;
 }
 
 .history-overlay.is-open {
-  opacity: 1;
   visibility: visible;
-  transition: opacity 0.2s ease;
+  transition: none;
 }
 
+/* 400px wide, the same top/bottom margins as the main container (the
+   body's 32px padding). `left` is set from script when it sits beside
+   the container. */
 .history-panel {
   position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: min(440px, 100vw);
+  top: 32px;
+  bottom: 32px;
+  right: 32px;
+  width: 400px;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   background: #fff;
-  box-shadow: -4px 0 0 0 #1c1f4f, -16px 0 40px rgba(0, 0, 0, 0.18);
-  transform: translateX(100%);
-  transition: transform 0.25s ease;
+  border: 2.5px solid #000000;
+  border-radius: 36px;
+  overflow: hidden;
+  pointer-events: auto;
+  opacity: 0;
+  transform: translateX(40px);
+  transition: transform 0.25s ease, opacity 0.2s ease;
   font-family: 'Figtree', 'Segoe UI', sans-serif;
   color: #2a2c38;
 }
 
 .history-overlay.is-open .history-panel {
+  opacity: 1;
   transform: none;
+}
+
+/* Beside the container: the container gives up the panel's width plus a
+   24px gap on its right, so the pair is centred together. */
+#app-root {
+  transition: margin-right 0.25s ease;
+}
+
+body.history-alongside #app-root {
+  margin-right: 424px;
+}
+
+@media (max-width: 560px) {
+  /* left/right rather than a 100vw width: 100vw includes the reserved
+     scrollbar gutter, which would push the panel off the left edge. */
+  .history-panel {
+    top: 12px;
+    bottom: 12px;
+    left: 12px;
+    right: 12px;
+    width: auto;
+    border-radius: 24px;
+  }
 }
 
 .history-header {
   flex: none;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 22px 22px 14px;
-  border-bottom: 1px solid #eef0f5;
+  min-height: 88px; /* same as the main banner, so the black rules line up side by side */
+  box-sizing: border-box;
+  padding: 14px 24px 14px 28px;
+  border-bottom: 2.5px solid #000000;
 }
 
 .history-title {
@@ -95,7 +134,7 @@
 
 .history-toolbar {
   flex: none;
-  padding: 14px 22px;
+  padding: 18px 28px 22px;
   border-bottom: 1px solid #eef0f5;
 }
 
@@ -103,7 +142,7 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  padding: 16px 22px 28px;
+  padding: 16px 28px 28px;
 }
 
 .history-message {
@@ -140,6 +179,37 @@
   cursor: default;
 }
 
+/* Save checkpoint: large, sky blue, black outline and hard shadow. */
+.history-btn.is-checkpoint {
+  min-height: 48px;
+  padding: 0 20px;
+  border: 2.5px solid #000000;
+  border-radius: 10px;
+  background: #38B6FF;
+  color: #000000;
+  font-size: 15px;
+  font-weight: 800;
+  box-shadow: 5px 5px 0 0 #000000;
+}
+
+.history-toolbar > .history-btn.is-checkpoint {
+  width: calc(100% - 5px); /* the shadow stays inside the toolbar */
+}
+
+.history-btn.is-checkpoint svg {
+  width: 18px;
+  height: 18px;
+}
+
+.history-btn.is-checkpoint:hover:not(:disabled) {
+  background: #5cc3ff;
+}
+
+.history-btn.is-checkpoint:active:not(:disabled) {
+  transform: translate(3px, 3px);
+  box-shadow: 2px 2px 0 0 #000000;
+}
+
 .history-btn.is-primary {
   background: #1c1f4f;
   color: #fff;
@@ -151,24 +221,30 @@
   box-shadow: 0 1px 0 0 #05060c;
 }
 
-.history-btn.is-warning {
-  background: #F2994A;
-  color: #fff;
-  box-shadow: 0 3px 0 0 #c46f24;
+.history-btn.is-warning,
+.history-btn.is-secondary {
+  border: 2px solid #000000;
+  box-shadow: 3px 3px 0 0 #000000;
 }
 
-.history-btn.is-warning:active:not(:disabled) {
-  transform: translateY(2px);
-  box-shadow: 0 1px 0 0 #c46f24;
+.history-btn.is-warning:active:not(:disabled),
+.history-btn.is-secondary:active:not(:disabled) {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 0 #000000;
+}
+
+.history-btn.is-warning {
+  background: #FF914D;
+  color: #000000;
 }
 
 .history-btn.is-secondary {
-  background: #eef0f5;
-  color: #2a2c38;
+  background: #ffffff;
+  color: #000000;
 }
 
 .history-btn.is-secondary:hover:not(:disabled) {
-  background: #e4e6ee;
+  background: #f1f1f1;
 }
 
 .history-link-btn {
@@ -209,8 +285,8 @@
 .history-checkpoint-input {
   width: 100%;
   box-sizing: border-box;
-  border: 1.5px solid #e5e7ee;
-  border-radius: 10px;
+  border: 2px solid #000000;
+  border-radius: 8px;
   padding: 10px 12px;
   font-family: 'Figtree', 'Segoe UI', sans-serif;
   font-size: 13px;
@@ -219,13 +295,14 @@
 }
 
 .history-checkpoint-input:focus {
-  border-color: #2f8fd1;
+  box-shadow: 3px 3px 0 0 #000000;
 }
 
 .history-checkpoint-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
+  gap: 10px;
+  padding: 2px 5px 5px 0; /* room for the buttons' shadows */
 }
 
 /* Entries */
@@ -416,8 +493,9 @@
 .history-confirm-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
+  gap: 10px;
   margin-top: 18px;
+  padding: 0 4px 4px 0; /* room for the buttons' shadows */
 }
 
 .history-back {
@@ -429,76 +507,5 @@
   .history-panel {
     transition: none;
   }
-}
-
-/* Dark theme (optional) ---------------------------------------------------*/
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .history-panel {
-    background: #1e2030;
-    color: #d7d9ea;
-  }
-  :root:not([data-theme="light"]) .history-title,
-  :root:not([data-theme="light"]) .history-item-title,
-  :root:not([data-theme="light"]) .history-confirm-heading,
-  :root:not([data-theme="light"]) .history-change-theme,
-  :root:not([data-theme="light"]) .history-link-btn {
-    color: #eef0ff;
-  }
-  :root:not([data-theme="light"]) .history-header,
-  :root:not([data-theme="light"]) .history-toolbar {
-    border-color: #2c2e42;
-  }
-  :root:not([data-theme="light"]) .history-close,
-  :root:not([data-theme="light"]) .history-btn.is-secondary,
-  :root:not([data-theme="light"]) .history-item.kind-auto .history-item-icon {
-    background: #2c2e42;
-    color: #d7d9ea;
-  }
-  :root:not([data-theme="light"]) .history-changes,
-  :root:not([data-theme="light"]) .history-checkpoint-input {
-    background: #262838;
-    border-color: #34364a;
-    color: #c7c9db;
-  }
-  :root:not([data-theme="light"]) .history-item:not(:last-child)::before {
-    background: #2c2e42;
-  }
-  :root:not([data-theme="light"]) .history-item-summary {
-    color: #c7c9db;
-  }
-}
-:root[data-theme="dark"] .history-panel {
-  background: #1e2030;
-  color: #d7d9ea;
-}
-:root[data-theme="dark"] .history-title,
-:root[data-theme="dark"] .history-item-title,
-:root[data-theme="dark"] .history-confirm-heading,
-:root[data-theme="dark"] .history-change-theme,
-:root[data-theme="dark"] .history-link-btn {
-  color: #eef0ff;
-}
-:root[data-theme="dark"] .history-header,
-:root[data-theme="dark"] .history-toolbar {
-  border-color: #2c2e42;
-}
-:root[data-theme="dark"] .history-close,
-:root[data-theme="dark"] .history-btn.is-secondary,
-:root[data-theme="dark"] .history-item.kind-auto .history-item-icon {
-  background: #2c2e42;
-  color: #d7d9ea;
-}
-:root[data-theme="dark"] .history-changes,
-:root[data-theme="dark"] .history-checkpoint-input {
-  background: #262838;
-  border-color: #34364a;
-  color: #c7c9db;
-}
-:root[data-theme="dark"] .history-item:not(:last-child)::before {
-  background: #2c2e42;
-}
-:root[data-theme="dark"] .history-item-summary {
-  color: #c7c9db;
 }
 </style>

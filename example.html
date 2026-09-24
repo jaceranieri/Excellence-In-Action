@@ -1958,8 +1958,7 @@
 
     function renderAccordionItem(item) {
       var attachments = item.attachments || [];
-      var meta = [item.date];
-      if (attachments.length) meta.push(attachments.length + ' attachment' + (attachments.length === 1 ? '' : 's'));
+      var meta = [item.date]; // the attachment count is the pill beside the title
       var attachmentsHtml = attachments.map(function (a) {
         return '<div class="evidence-attachment" title="' + escapeHtml(a.name) + '">' +
           '<span class="evidence-attachment-name">' + escapeHtml(a.name) + '</span>' + attachmentIcon(a.kind) + '</div>';
@@ -1971,6 +1970,8 @@
               escapeHtml(evidenceDisplayTitle(item)) + '</span>' +
             '<span class="evidence-accordion-meta">' + escapeHtml(meta.join(' \u00b7 ')) + '</span>' +
           '</span>' +
+          '<span class="evidence-accordion-pill" title="' + attachments.length + ' attachment' +
+            (attachments.length === 1 ? '' : 's') + '">' + attachmentGlyph() + '<span>' + attachments.length + '</span></span>' +
           '<svg class="evidence-accordion-chevron" viewBox="0 0 10 6" fill="none" xmlns="http://www.w3.org/2000/svg">' +
             '<path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
         '</div>' +

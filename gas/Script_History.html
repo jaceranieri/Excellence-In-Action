@@ -28,7 +28,7 @@
     var historyOverlay = document.createElement('div');
     historyOverlay.className = 'history-overlay';
     historyOverlay.innerHTML =
-      '<div class="history-panel" role="dialog" aria-modal="true" aria-labelledby="history-title">' +
+      '<div class="history-panel" role="dialog" aria-modal="false" aria-labelledby="history-title">' +
         '<div class="history-header">' +
           '<div>' +
             '<h2 class="history-title" id="history-title">History</h2>' +
@@ -41,6 +41,7 @@
       '</div>';
     document.body.appendChild(historyOverlay);
 
+    var historyPanelEl = historyOverlay.querySelector('.history-panel');
     var historySubtitleEl = historyOverlay.querySelector('.history-subtitle');
     var historyCloseBtn = historyOverlay.querySelector('.history-close');
     var historyToolbarEl = historyOverlay.querySelector('.history-toolbar');
@@ -213,8 +214,8 @@
       if (historyToolbarEl.getAttribute('data-mode') === 'form') return; // keep what's being typed
       historyToolbarEl.setAttribute('data-mode', 'button');
       historyToolbarEl.innerHTML =
-        '<button type="button" class="history-btn is-primary" data-action="checkpoint-form"' + (historyUi.busy ? ' disabled' : '') + '>' +
-          HISTORY_ICONS.checkpoint.replace('<svg', '<svg width="15" height="15"') + 'Save checkpoint</button>';
+        '<button type="button" class="history-btn is-checkpoint" data-action="checkpoint-form"' + (historyUi.busy ? ' disabled' : '') + '>' +
+          HISTORY_ICONS.checkpoint + 'Save checkpoint</button>';
     }
 
     function showCheckpointForm() {
@@ -226,7 +227,7 @@
             ' placeholder="e.g. End of Term 3 review" autocomplete="off" required>' +
           '<div class="history-checkpoint-actions">' +
             '<button type="button" class="history-btn is-secondary" data-action="checkpoint-cancel">Cancel</button>' +
-            '<button type="submit" class="history-btn is-primary">Save checkpoint</button>' +
+            '<button type="submit" class="history-btn is-checkpoint">Save checkpoint</button>' +
           '</div>' +
         '</form>';
       historyToolbarEl.querySelector('input').focus();
@@ -409,6 +410,27 @@
 
     // -- Open / close ------------------------------------------------------------
 
+    // Beside the main container when the window has room for both (the
+    // container slides left: body.history-alongside in
+    // Stylesheet_History.html), otherwise over the container's right side.
+    // Keep these in step with #app-root's max width and the body padding
+    // in Index.html, and the panel width in Stylesheet_History.html.
+    var APP_MAX_WIDTH = 1160;
+    var PAGE_PADDING = 32;
+    var HISTORY_PANEL_WIDTH = 400;
+    var HISTORY_PANEL_GAP = 24;
+
+    function layoutHistoryPanel() {
+      var content = document.body.clientWidth - 2 * PAGE_PADDING;
+      var pair = APP_MAX_WIDTH + HISTORY_PANEL_GAP + HISTORY_PANEL_WIDTH;
+      var alongside = content >= pair;
+      document.body.classList.toggle('history-alongside', alongside);
+      historyPanelEl.style.left = alongside
+        ? (PAGE_PADDING + (content - pair) / 2 + APP_MAX_WIDTH + HISTORY_PANEL_GAP) + 'px'
+        : '';
+      historyPanelEl.style.right = alongside ? 'auto' : '';
+    }
+
     function openHistory() {
       if (!SCHOOL_NAME) return;
       historyLastFocus = document.activeElement;
@@ -417,8 +439,9 @@
       historyUi.preview = null;
       historyUi.expanded = {};
       historyToolbarEl.removeAttribute('data-mode');
+      layoutHistoryPanel();
       historyOverlay.classList.add('is-open');
-      document.body.style.overflow = 'hidden';
+      historyOpenBtn.setAttribute('aria-expanded', 'true');
       historyCloseBtn.focus();
       // Pending rating changes first, so the list (and "Current") includes them.
       historyUi.loading = false;
@@ -427,11 +450,14 @@
       whenRatingsSaved(function () { loadHistory(true); });
     }
 
-    function closeHistory() {
+    // `keepFocus`: closed by a click elsewhere, so leave focus where that
+    // click put it.
+    function closeHistory(keepFocus) {
       if (!historyOverlay.classList.contains('is-open')) return;
       historyOverlay.classList.remove('is-open');
-      document.body.style.overflow = '';
-      if (historyLastFocus && typeof historyLastFocus.focus === 'function') historyLastFocus.focus();
+      document.body.classList.remove('history-alongside');
+      historyOpenBtn.setAttribute('aria-expanded', 'false');
+      if (!keepFocus && historyLastFocus && typeof historyLastFocus.focus === 'function') historyLastFocus.focus();
     }
 
     // -- Checkpoints ---------------------------------------------------------------
@@ -563,10 +589,22 @@
 
     // -- Events ------------------------------------------------------------------------
 
-    if (historyOpenBtn) historyOpenBtn.addEventListener('click', openHistory);
-    historyCloseBtn.addEventListener('click', closeHistory);
-    historyOverlay.addEventListener('click', function (e) {
-      if (e.target === historyOverlay) closeHistory();
+    historyOpenBtn.addEventListener('click', function () {
+      if (historyOverlay.classList.contains('is-open')) closeHistory();
+      else openHistory();
+    });
+    historyCloseBtn.addEventListener('click', function () { closeHistory(); });
+    // Nothing behind the panel is dimmed or blocked, so a click anywhere
+    // outside it (except the History button, which toggles it, and the
+    // toasts) closes it.
+    document.addEventListener('pointerdown', function (e) {
+      if (!historyOverlay.classList.contains('is-open')) return;
+      if (historyPanelEl.contains(e.target) || historyOpenBtn.contains(e.target) ||
+          (e.target.closest && e.target.closest('.eia-toasts'))) return;
+      closeHistory(true);
+    });
+    window.addEventListener('resize', function () {
+      if (historyOverlay.classList.contains('is-open')) layoutHistoryPanel();
     });
     document.addEventListener('keydown', function (e) {
       if (e.key !== 'Escape' || !historyOverlay.classList.contains('is-open')) return;

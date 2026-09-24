@@ -146,10 +146,33 @@ the project owner's mockup):
   `#FF5F5E`, Delivering `#FF914D`, Sustaining `#F5B400`, Excelling
   `#02BF63`. Cards, the wheel's indicator ring, the grade dropdown and
   the modal badge all use it.
-- **Not restyled:** the Theme modal, History panel, toasts and login
-  page keep their look for now, by choice. The old dark-mode overrides
-  for the cards and banner were dropped, because the new design is
-  always light.
+- **Theme modal** (second mockup):
+  - A black outline only, and no darkened background behind it. The
+    overlay is still there, transparent, so a click outside closes it.
+  - Title centred in a header with a black rule under it, like the main
+    banner.
+  - Grade badge and its dropdown have a black border and hard black
+    shadow.
+  - Evidence entries show their attachment count in the same black
+    paperclip pill as the cards (`.evidence-accordion-pill`).
+  - Add Evidence is a black button. The evidence form (inputs, Attach
+    Files / Cancel / Submit) got black outlines to match, with Submit
+    in black.
+- **History panel:**
+  - Its own card (black outline, rounded, header rule level with the
+    main banner's).
+  - When the window is at least 1648px wide, the main container slides
+    left and the panel sits beside it (`layoutHistoryPanel()`,
+    `body.history-alongside`). Otherwise it overlaps the container's
+    right side.
+  - No dimming. A click anywhere outside it closes it, except on the
+    History button (which toggles it) and toasts.
+  - Save checkpoint is a large sky-blue button (`#38B6FF`) with a black
+    outline and shadow. The timeline itself is unchanged.
+- **Not restyled:** toasts and the login page.
+- **No dark mode:** the old dark-mode overrides were removed from the
+  cards, banner, Theme modal and History panel, because the new design
+  is always light.
 - **Static build:** `example.html` mirrors all of this except the parts
   that need the server (crest, Last Updated, History). It loads the
   Winter Day font from `fonts/`.

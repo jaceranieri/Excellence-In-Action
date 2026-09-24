@@ -2039,8 +2039,7 @@
     function renderAccordionItem(item, isOpen) {
       var attachments = item.attachments || [];
       var copying = attachments.some(function (a) { return a.pickedId; });
-      var meta = [item.date];
-      if (attachments.length) meta.push(attachments.length + ' attachment' + (attachments.length === 1 ? '' : 's'));
+      var meta = [item.date]; // the attachment count is the pill beside the title
       if (item.pending) meta.push(copying ? 'Copying files…' : 'Saving…');
       else if (item.saveError) meta.push('Not saved');
       var attachmentsHtml = attachments.map(function (a) {
@@ -2079,6 +2078,8 @@
               escapeHtml(evidenceDisplayTitle(item)) + '</span>' +
             '<span class="evidence-accordion-meta">' + escapeHtml(meta.join(' · ')) + '</span>' +
           '</span>' +
+          '<span class="evidence-accordion-pill" title="' + attachments.length + ' attachment' +
+            (attachments.length === 1 ? '' : 's') + '">' + attachmentGlyph() + '<span>' + attachments.length + '</span></span>' +
           '<svg class="evidence-accordion-chevron" viewBox="0 0 10 6" fill="none" xmlns="http://www.w3.org/2000/svg">' +
             '<path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
         '</div>' +
