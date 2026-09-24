@@ -247,6 +247,19 @@ function findRowByValue_(sheet, colIndex1Based, value) {
   return -1;
 }
 
+/**
+ * Makes Sheets store `value` exactly as typed. Without this, text starting
+ * with "=" is run as a formula (saving its result or an error instead),
+ * and text like "0012" or "1/2" turns into a number or a date. A leading
+ * apostrophe marks the cell as plain text; Sheets hides it, and
+ * getValue() returns the text without it. Use it for every user-typed
+ * string written to a sheet.
+ */
+function asText_(value) {
+  var s = value === null || value === undefined ? '' : String(value);
+  return s ? "'" + s : s;
+}
+
 function parseAttachments_(raw) {
   try { return raw ? JSON.parse(raw) : []; } catch (e) { return []; }
 }
@@ -490,14 +503,14 @@ function saveEvidenceEntry(themeId, entry) {
       themeId = String(old[EVIDENCE_COL.ThemeId - 1]);
       number = parseInt(old[EVIDENCE_COL.EntryNumber - 1], 10) || 0;
       appendEvidenceVersion_(versionId, entryId, access, themeId, number, type, date, title, text, attachmentsJson, now);
-      sheet.getRange(rowIdx, EVIDENCE_COL.Type, 1, 4).setValues([[type, date, text, attachmentsJson]]);
-      sheet.getRange(rowIdx, EVIDENCE_COL.UpdatedAt, 1, 3).setValues([[now, title, versionId]]);
+      sheet.getRange(rowIdx, EVIDENCE_COL.Type, 1, 4).setValues([[asText_(type), asText_(date), asText_(text), attachmentsJson]]);
+      sheet.getRange(rowIdx, EVIDENCE_COL.UpdatedAt, 1, 3).setValues([[now, asText_(title), versionId]]);
       change = evidenceEditChange_(themeId, entryId, number, old, title, text, oldAttachments, attachments);
     } else {
       entryId = Utilities.getUuid();
       appendEvidenceVersion_(versionId, entryId, access, themeId, number, type, date, title, text, attachmentsJson, now);
-      sheet.appendRow([entryId, access.schoolName, themeId, number, type, date, text, attachmentsJson,
-        access.email, now, now, title, versionId]);
+      sheet.appendRow([entryId, access.schoolName, themeId, number, asText_(type), asText_(date), asText_(text),
+        attachmentsJson, access.email, now, now, asText_(title), versionId]);
       change = { t: 'evidence-add', theme: themeId, entry: entryId, number: number, title: title, files: attachments.length };
     }
     recordHistory_(access, state, change ? [change] : [], state.ratings);
@@ -614,8 +627,8 @@ function newVersionId_() {
 
 function appendEvidenceVersion_(versionId, entryId, access, themeId, number, type, date, title, text, attachmentsJson, savedAt) {
   ensureSheet_(TABS.EVIDENCE_VERSIONS, EVIDENCE_VERSION_HEADERS).appendRow([
-    versionId, entryId, access.schoolName, themeId, number, type, date, title, text, attachmentsJson,
-    access.email, savedAt]);
+    versionId, entryId, access.schoolName, themeId, number, asText_(type), asText_(date), asText_(title),
+    asText_(text), attachmentsJson, access.email, savedAt]);
 }
 
 /**
@@ -644,8 +657,8 @@ function currentEvidenceVersionIds_(schoolName) {
       sheet.getRange(rowIdx, EVIDENCE_COL.VersionId).setValue(versionId);
       ids.push(versionId);
       return [versionId, r[EVIDENCE_COL.EntryId - 1], schoolName, r[EVIDENCE_COL.ThemeId - 1],
-        r[EVIDENCE_COL.EntryNumber - 1], r[EVIDENCE_COL.Type - 1], r[EVIDENCE_COL.Date - 1],
-        r[EVIDENCE_COL.Title - 1], r[EVIDENCE_COL.Text - 1], r[EVIDENCE_COL.Attachments - 1],
+        r[EVIDENCE_COL.EntryNumber - 1], asText_(r[EVIDENCE_COL.Type - 1]), asText_(r[EVIDENCE_COL.Date - 1]),
+        asText_(r[EVIDENCE_COL.Title - 1]), asText_(r[EVIDENCE_COL.Text - 1]), r[EVIDENCE_COL.Attachments - 1],
         r[EVIDENCE_COL.CreatedBy - 1], r[EVIDENCE_COL.UpdatedAt - 1] || r[EVIDENCE_COL.CreatedAt - 1]];
     });
     versionSheet.getRange(versionSheet.getLastRow() + 1, 1, rows.length, EVIDENCE_VERSION_HEADERS.length).setValues(rows);
@@ -763,7 +776,7 @@ function latestHistoryEntry_(sheet, state) {
 function appendHistoryRow_(sheet, access, state, kind, label, changes, changeCount, snapshot) {
   var id = Utilities.getUuid();
   var now = new Date().toISOString();
-  sheet.appendRow([id, access.schoolName, kind, label, access.email, access.name, now, now,
+  sheet.appendRow([id, access.schoolName, kind, asText_(label), access.email, asText_(access.name), now, now,
     changeCount, JSON.stringify(changes), JSON.stringify(snapshot), JSON.stringify(summarizeChanges_(changes))]);
   var row = sheet.getLastRow();
   state.sheet.getRange(state.row, RATINGS_COL.LastHistoryId, 1, 2).setValues([[id, row]]);
@@ -1197,11 +1210,12 @@ function restoreToPoint(historyId, stateVersion) {
       }
       if (r.current) {
         sheet.getRange(r.current.row, EVIDENCE_COL.ThemeId, 1, 6)
-          .setValues([[t.themeId, t.number, t.type, t.date, t.text, attachmentsJson]]);
-        sheet.getRange(r.current.row, EVIDENCE_COL.UpdatedAt, 1, 3).setValues([[now, t.title, versionId]]);
+          .setValues([[t.themeId, t.number, asText_(t.type), asText_(t.date), asText_(t.text), attachmentsJson]]);
+        sheet.getRange(r.current.row, EVIDENCE_COL.UpdatedAt, 1, 3).setValues([[now, asText_(t.title), versionId]]);
       } else {
-        sheet.appendRow([t.entryId, access.schoolName, t.themeId, t.number, t.type, t.date, t.text, attachmentsJson,
-          t.savedBy, toMillis_(t.savedAt) ? new Date(toMillis_(t.savedAt)).toISOString() : now, now, t.title, versionId]);
+        sheet.appendRow([t.entryId, access.schoolName, t.themeId, t.number, asText_(t.type), asText_(t.date),
+          asText_(t.text), attachmentsJson, t.savedBy,
+          toMillis_(t.savedAt) ? new Date(toMillis_(t.savedAt)).toISOString() : now, now, asText_(t.title), versionId]);
       }
     });
     plan.toRemove.map(function (c) { return c.row; })

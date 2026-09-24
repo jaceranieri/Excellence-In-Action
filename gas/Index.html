@@ -14,6 +14,7 @@
 <?!= include('Stylesheet_ThemeDots'); ?>
 <?!= include('Stylesheet_AppBanner'); ?>
 <?!= include('Stylesheet_LoginGate'); ?>
+<?!= include('Stylesheet_History'); ?>
 <style>
   :root { color-scheme: light; }
 
@@ -226,6 +227,15 @@
         <p class="app-banner-title">Excellence in Action</p>
         <p class="app-banner-subtitle">Placeholder School Name</p>
       </div>
+      <!-- Opens the school's history panel (Script_History.html). -->
+      <button type="button" class="app-banner-history-btn" id="history-open-btn" aria-haspopup="dialog">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="M3.5 12a8.5 8.5 0 1 0 2.5-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          <path d="M3 4.5V9h4.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M12 7.5V12l3 2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="app-banner-history-label">History</span>
+      </button>
       <div class="app-banner-avatar" aria-hidden="true" title="Placeholder avatar">
         <!-- Placeholder avatar — swap for the signed-in user's real photo/initials -->
         <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -257,6 +267,7 @@
   <?!= include('Script_LoginGate'); ?>
   <?!= include('Script_ExcellenceWheel'); ?>
   <?!= include('Script_App'); ?>
+  <?!= include('Script_History'); ?>
 
 </body>
 </html>

@@ -1473,6 +1473,25 @@
     var ratingsSaveTimer = null;
     var dirtyThemeIds = {}; // themes changed since the last ratings save
     var ratingsToast = null;
+    var ratingsSavesInFlight = 0;
+    var ratingsSavedCallbacks = [];
+
+    // Runs `cb` once every rating change made so far has reached the
+    // server (or failed), so a checkpoint or restore (Script_History.html)
+    // never races a pending save.
+    function whenRatingsSaved(cb) {
+      if (Object.keys(dirtyThemeIds).length) flushRatingsSave();
+      if (!ratingsSavesInFlight) { cb(); return; }
+      ratingsSavedCallbacks.push(cb);
+    }
+
+    function ratingsSaveSettled() {
+      ratingsSavesInFlight--;
+      if (ratingsSavesInFlight) return;
+      var callbacks = ratingsSavedCallbacks;
+      ratingsSavedCallbacks = [];
+      callbacks.forEach(function (cb) { cb(); });
+    }
 
     // -- Toasts --------------------------------------------------------------
     // Status messages stacked in the bottom-left corner, outside the Theme
@@ -1550,20 +1569,23 @@
       dirtyThemeIds = {};
       clearTimeout(ratingsSaveTimer);
       showRatingsToast('busy', 'Saving ratings…');
+      ratingsSavesInFlight++;
       google.script.run
         .withSuccessHandler(function (result) {
           if (result && result.stale) {
             if (ratingsToast) ratingsToast.dismiss();
             reloadAfterRestore();
-            return;
+          } else {
+            showRatingsToast('success', 'Ratings saved', 1800);
           }
-          showRatingsToast('success', 'Ratings saved', 1800);
+          ratingsSaveSettled();
         })
         .withFailureHandler(function (err) {
           console.error('Failed to save ratings:', err);
           showRatingsToast('error', 'Ratings didn’t save — retrying');
           themeIds.forEach(function (id) { dirtyThemeIds[id] = true; });
           ratingsSaveTimer = setTimeout(flushRatingsSave, 4000);
+          ratingsSaveSettled();
         })
         .saveRatings(JSON.stringify(buildRatingsPayload(themeIds)), STATE_VERSION);
     }

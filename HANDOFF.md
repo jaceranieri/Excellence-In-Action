@@ -58,7 +58,7 @@ owner):**
 - To deploy: paste `Code.gs`, `Script_App.html` and
   `Stylesheet_ThemeModal.html`, then publish a new version.
 
-**School history, steps 1–2 of 3 (recording + restore), not yet confirmed live:**
+**School history (all 3 steps done), not yet confirmed live:**
 The plan agreed with the project owner:
 - Each school gets a history of every change, with whole-school restore
   to any point. Everyone at the school can view and restore.
@@ -70,8 +70,8 @@ The plan agreed with the project owner:
 - Step 1 (done): record history on every save.
 - Step 2 (done, server only): restore with a preview, checkpoints, and
   the listing functions the panel needs.
-- Step 3: the History panel UI. Until then nothing calls the step 2
-  functions.
+- Step 3 (done): the History button and panel
+  (`Script_History.html`, `Stylesheet_History.html`).
 
 What step 1 changed:
 - Every ratings and evidence change is written to the new **History**
@@ -101,7 +101,25 @@ What step 2 added (all in `Code.gs`; see "School history" below):
 - A `Summary` column at the end of History, with the counts the
   collapsed list shows. Rows written by step 1 have none; it's worked
   out from their changes when listed.
-- Deploy with step 3. Deploying it alone is harmless.
+
+What step 3 added:
+- A **History** button in the banner, next to the avatar (icon-only
+  under 560px). It opens a side panel. See "School history" below.
+- **Text is stored exactly as typed.** Sheets used to run evidence text
+  starting with "=" as a formula, and turn text like "0012" into
+  numbers. Every user-typed value is now written with a leading
+  apostrophe (`asText_()` in `Code.gs`). Values already damaged before
+  this can't be recovered.
+
+**To deploy all three steps together:**
+1. In the Apps Script editor, create two new HTML files named exactly
+   `Script_History` and `Stylesheet_History`. Paste in
+   `gas/Script_History.html` and `gas/Stylesheet_History.html`.
+2. Replace `Code.gs`, `Index.html`, `Script_App.html` and
+   `Stylesheet_ThemeModal.html` with the repo versions.
+3. Deploy → Manage deployments → Edit → New version.
+4. The History and EvidenceVersions tabs, and the new columns, create
+   themselves on the first change.
 
 **Open items / next steps:**
 1. **"Untitled document" copy error:** one staff member couldn't
@@ -122,7 +140,9 @@ What step 2 added (all in `Code.gs`; see "School history" below):
    EvidenceFolders into a Shared Drive would remove both risks. The code
    already passes `supportsAllDrives` everywhere, but it hasn't been
    tried.
-5. **School history step 3**, the History panel (see above).
+5. **Check school history live:** make changes, save a checkpoint,
+   restore to it (with evidence that has files), then undo the restore.
+   Confirm the files move out of and back into ARCHIVE.
 
 ## What this is
 
@@ -161,7 +181,7 @@ real GAS deployment.
 | `theme-dots.css` | `gas/Stylesheet_ThemeDots.html` |
 | `app-banner.css` | `gas/Stylesheet_AppBanner.html` |
 | `example.html`'s `<style>`/inline `<script>` | `gas/Index.html`'s `<style>` / `gas/Script_App.html` |
-| — (no static equivalent) | `gas/Script_LoginGate.html`, `gas/Stylesheet_LoginGate.html`, `gas/Code.gs`, `gas/appsscript.json` |
+| — (no static equivalent) | `gas/Script_LoginGate.html`, `gas/Stylesheet_LoginGate.html`, `gas/Script_History.html`, `gas/Stylesheet_History.html`, `gas/Code.gs`, `gas/appsscript.json` |
 
 **One deliberate exception to "mirror every shared edit":** the Ratings/
 Evidence persistence code added to `gas/Script_App.html` (autosave,
@@ -500,6 +520,30 @@ design notes are at the "School history" section of `Code.gs`. In brief:
   snapshots point at version rows, and a restore refuses to run if any
   are missing (otherwise it would archive live evidence).
 
+**The History panel** (`Script_History.html`, styled by
+`Stylesheet_History.html`) opens from the banner's History button. It
+uses `Script_App.html`'s globals (listed at the top of the file). Its
+state object is `historyUi`, not `history`: a top-level `var history`
+would be `window.history`, which can't be replaced.
+- **The list:** newest first, 50 at a time ("Show older").
+  - Each entry shows who, when and a summary. For a session of changes,
+    "when" is a time range.
+  - "Show changes" fetches the entry's change list, grouped by theme.
+  - The latest entry is marked "Current" and has no restore button.
+- **Save checkpoint:** asks for a name (up to 80 characters).
+- **Restore to this point:**
+  - Shows a preview: a summary, "Show details", and a warning that the
+    whole school changes.
+  - After Restore, a toast tracks progress. The page reloads the
+    school's state, and any files that couldn't come back are listed in
+    their own toast.
+  - Restore entries say what the restore did: "brought back",
+    "archived", "returned to an earlier version".
+- **Pending saves come first:** opening the panel, saving a checkpoint
+  and previewing a restore wait for pending rating saves
+  (`whenRatingsSaved()` in `Script_App.html`). A restore isn't offered
+  while evidence is still saving.
+
 **Restore** (`restoreToPoint()`; `previewRestore()` runs the same plan
 without changing anything):
 - **What changes:** the whole school goes back to the entry's snapshot.
@@ -673,6 +717,7 @@ computed margins directly.
 | `gas/Script_LoginGate.html` | 3-state login gate logic, `enterApp()` |
 | `gas/Script_App.html` | All app logic + `ELEMENT_THEMES` data (mirrors `example.html`'s inline script) |
 | `gas/Script_ExcellenceWheel.html` | Wheel component (mirrors `excellence-wheel.js`) |
+| `gas/Script_History.html` / `gas/Stylesheet_History.html` | School history panel and banner History button (GAS only) |
 | `gas/Stylesheet_*.html` | Wrapped copies of the root `.css` files, plus `Stylesheet_LoginGate.html` (GAS-only) |
 | `EIA.json` | Source rubric data |
 | `import-eia.py` | One-time transform: `EIA.json` → `ELEMENT_THEMES` JS literal |
