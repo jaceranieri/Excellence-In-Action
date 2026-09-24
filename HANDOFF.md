@@ -180,9 +180,15 @@ the project owner's mockup):
 **Rubric, toasts, Element resources and team messages, not yet confirmed
 live:**
 - **Rubric:** a selected cell has a light tint of its level's grade
-  colour, a black outline and a hard black shadow (`--level-rgb`, set
-  per cell by `renderRubricGrid()`). The column heading no longer
-  highlights the theme's grade; the Grade badge shows that.
+  colour, black text, a black outline and a hard black shadow
+  (`--level-rgb`, set per cell by `renderRubricGrid()`). The column
+  heading no longer highlights the theme's grade; the Grade badge shows
+  that.
+  - **Selecting must never change a cell's size.** The border stays
+    1.5px, and the thicker look comes from an inset shadow. Text isn't
+    bolded. A wider border narrowed the text area, re-wrapped text near
+    the edge and made rows jump.
+  - Unselected cells have the same 4px shadow as selected ones, in grey.
   - On phones, criterion groups are separated by extra space instead of
     the old divider border.
 - **Toasts** are coloured by status, with black text, border and hard
@@ -191,6 +197,15 @@ live:**
 - **Element resources:** link buttons under the selected Element's
   Theme cards, from the Users spreadsheet's new **Resources** tab. See
   "Element resources and team messages" below.
+- **Animation:** the message box's slot opens and closes smoothly (a
+  grid row animating 0fr↔1fr), so the wheel slides rather than jumps
+  when a message arrives or is hidden. Element resources fade in with
+  the cards' cascade.
+- **Theme modal backdrop:** the page behind is blurred (6px), not
+  darkened.
+- **Version number** in the container's bottom-right corner, from
+  `APP_VERSION` in `Code.gs` (currently 1.0.0). Bump it with each
+  release, and the static copy in `example.html`.
 - **Team messages** from the Users spreadsheet's new **Messages** tab:
   - The newest active message shows in a box at the top of the main
     screen, with an optional call-to-action button.

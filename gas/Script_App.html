@@ -1773,7 +1773,8 @@
           '<div class="theme-cards">' + cardsHtml + '</div>' +
           '<div class="element-resources"></div>' +
         '</div>';
-      renderElementResources();
+      // Resources fade in with the cards' cascade, just after the last card.
+      renderElementResources(baseDelay + themes.length * 35);
     }
 
     // -- Element resources ------------------------------------------------
@@ -1788,9 +1789,11 @@
       return String(name || '').toLowerCase().replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, ' ').trim();
     }
 
-    function renderElementResources() {
+    // `delayMs` holds the fade-in (theme-cards.css) back to follow the cards.
+    function renderElementResources(delayMs) {
       var box = detailEl.querySelector('.element-resources');
       if (!box || !currentSegment) return;
+      box.style.setProperty('--resources-delay', (delayMs || 0) + 'ms');
       var data = ELEMENT_THEMES[currentSegment.id];
       var names = [
         normaliseElementName((data && data.title) || currentSegment.lines.join(' ')),

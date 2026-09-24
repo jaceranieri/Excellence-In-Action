@@ -61,10 +61,11 @@
 .theme-modal-overlay {
   position: fixed;
   inset: 0;
-  /* Transparent, not dimmed (neubrutalism: the modal's black outline
-     separates it from the page). It still covers the page so a click
-     outside the modal closes it. */
+  /* Blurred but not darkened: the modal's black outline separates it from
+     the page. It covers the page so a click outside the modal closes it. */
   background: transparent;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -229,7 +230,9 @@
   color: #6a6d7a;
   cursor: pointer;
   outline: none;
-  box-shadow: 0 3px 0 0 #e5e7ee;
+  /* Same size as a selected cell's shadow (only the colour changes), so
+     selecting never looks like it moves anything. */
+  box-shadow: 4px 4px 0 0 #e5e7ee;
   transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
 }
 
@@ -239,22 +242,26 @@
 }
 
 /* A selected cell: a light tint of its level's grade colour (--level-rgb,
-   set per cell by renderRubricGrid()), black outline and hard shadow. */
+   set per cell by renderRubricGrid()), black text, black outline and hard
+   shadow. The border keeps its 1.5px width: the extra thickness is an
+   inset shadow, which takes no space, so the text never re-wraps (a
+   wider border narrowed the text area and made rows jump). The text
+   isn't bolded, for the same reason. */
 .rubric-cell.is-selected {
-  border: 2.5px solid #000000;
+  border-color: #000000;
   background: rgba(var(--level-rgb, 154, 160, 166), 0.18);
   color: #000000;
-  box-shadow: 5px 5px 0 0 #000000;
+  box-shadow: inset 0 0 0 1px #000000, 4px 4px 0 0 #000000;
 }
 
 .rubric-cell:active {
-  transform: translateY(2px);
-  box-shadow: 0 1px 0 0 #e5e7ee;
+  transform: translate(2px, 2px);
+  box-shadow: 2px 2px 0 0 #e5e7ee;
 }
 
 .rubric-cell.is-selected:active {
-  transform: translate(3px, 3px);
-  box-shadow: 2px 2px 0 0 #000000;
+  transform: translate(2px, 2px);
+  box-shadow: inset 0 0 0 1px #000000, 2px 2px 0 0 #000000;
 }
 
 .rubric-cell.is-blank {

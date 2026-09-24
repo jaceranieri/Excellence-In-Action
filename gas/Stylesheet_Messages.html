@@ -10,12 +10,25 @@
 
 /* Message box ------------------------------------------------------------*/
 
+/* The slot opens and closes smoothly (its one grid row animates between
+   0fr and 1fr), so the wheel below slides down or up rather than jumping
+   when a message arrives or is hidden. The message fades in once there's
+   room, and fades out straight away when leaving. Script_Messages.html
+   toggles .is-open. */
 #team-message-slot {
   width: 100%;
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.35s ease;
 }
 
-#team-message-slot:empty {
-  display: none;
+#team-message-slot.is-open {
+  grid-template-rows: 1fr;
+}
+
+.team-message-inner {
+  min-height: 0;
+  overflow: hidden; /* the message's margins leave room for its shadow */
 }
 
 .team-message {
@@ -31,6 +44,22 @@
   box-shadow: 6px 6px 0 0 #000000;
   font-family: 'Figtree', 'Segoe UI', sans-serif;
   color: #000000;
+  opacity: 0;
+  transform: translateY(-10px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+#team-message-slot.is-open .team-message {
+  opacity: 1;
+  transform: none;
+  transition-delay: 0.15s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #team-message-slot,
+  .team-message {
+    transition: none;
+  }
 }
 
 .team-message-body {

@@ -54,6 +54,7 @@
      fixed login gate) so .stage-area below has real room to vertically
      centre the wheel+cards row within. */
   #app-root {
+    position: relative; /* for .app-version */
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -70,6 +71,20 @@
      at equal specificity — same fix as .login-gate needed earlier. */
   #app-root[hidden] {
     display: none;
+  }
+
+  /* The app's version (APP_VERSION in Code.gs), small in the container's
+     bottom-right corner. */
+  .app-version {
+    position: absolute;
+    right: 30px;
+    bottom: 12px;
+    margin: 0;
+    font-family: 'Figtree', 'Segoe UI', sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    color: #a3a6b0;
+    pointer-events: none;
   }
 
   /* Vertically centres the wheel+cards row within whatever space is
@@ -126,6 +141,10 @@
        and a changing height moved the wheel; .stage-area now aligns to
        the top instead, so growing never moves the wheel. */
     min-height: 520px;
+    /* A little extra room above the wheel and cards, below the team
+       message (whose slot animates open and closed, so the row slides
+       rather than jumps when a message appears or is hidden). */
+    margin-top: 12px;
     transition: gap 0.4s ease;
   }
   /* Desktop sizes fit the central container (1160px wide, 48px padding
@@ -293,6 +312,7 @@
         </div>
       </div>
     </div>
+    <p class="app-version">v<?= appVersion ?></p>
   </div>
 
   <script>

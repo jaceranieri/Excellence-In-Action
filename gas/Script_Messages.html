@@ -62,13 +62,31 @@
       messagesOpenBtn.setAttribute('aria-label', count ? 'Messages (' + count + ' new)' : 'Messages');
     }
 
+    // The message box animates open and closed (Stylesheet_Messages.html):
+    // a different message first closes the one showing, then opens.
+    var TEAM_MESSAGE_CLOSE_MS = 380;
+    var shownTeamMessageId = null;
+    var teamMessageClosing = false;
+
     function renderTeamMessage() {
+      if (teamMessageClosing) return; // runs again once the close finishes
       var m = (SITE_CONTENT.messages || []).filter(isUnreadMessage)[0];
-      if (!m) {
-        teamMessageSlot.innerHTML = '';
+      var id = m ? m.id : null;
+      if (id === shownTeamMessageId) return;
+      if (shownTeamMessageId) {
+        teamMessageClosing = true;
+        teamMessageSlot.classList.remove('is-open');
+        setTimeout(function () {
+          teamMessageClosing = false;
+          shownTeamMessageId = null;
+          teamMessageSlot.innerHTML = '';
+          renderTeamMessage();
+        }, TEAM_MESSAGE_CLOSE_MS);
         return;
       }
-      teamMessageSlot.innerHTML =
+      if (!m) return;
+      shownTeamMessageId = id;
+      teamMessageSlot.innerHTML = '<div class="team-message-inner">' +
         '<section class="team-message" aria-label="Message from the team">' +
           '<div class="team-message-body">' +
             '<h2 class="team-message-title">' + escapeHtml(m.title || 'A message from the team') + '</h2>' +
@@ -77,7 +95,9 @@
           messageCtaHtml(m, 'team-message-cta') +
           '<button type="button" class="team-message-close" data-id="' + escapeHtml(m.id) + '"' +
             ' aria-label="Hide this message" title="Hide this message">&times;</button>' +
-        '</section>';
+        '</section></div>';
+      void teamMessageSlot.offsetHeight; // lay it out closed first, so opening animates
+      teamMessageSlot.classList.add('is-open');
     }
 
     function renderMessagesPanel() {

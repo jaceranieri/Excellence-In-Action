@@ -43,6 +43,10 @@ function requireProp_(key) {
   return value;
 }
 
+// Shown small in the bottom-right corner of the app. Bump it with each
+// release you deploy (and in example.html's static copy).
+var APP_VERSION = '1.0.0';
+
 // Sheet tab names are just structure, not secrets — fine to hardcode.
 var TABS = {
   USERS: 'Users', SCHOOLS: 'Schools', RESOURCES: 'Resources', MESSAGES: 'Messages', // Users spreadsheet
@@ -90,6 +94,7 @@ function doGet(e) {
   var access = getCurrentUserAccess();
   var tpl = HtmlService.createTemplateFromFile('Index');
   tpl.access = access;
+  tpl.appVersion = APP_VERSION;
   return tpl.evaluate()
     .setTitle('Excellence in Action')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1')

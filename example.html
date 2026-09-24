@@ -46,6 +46,7 @@
      outline, no shadow), holding the banner at its top and the
      wheel/cards row below. Mirrors #app-root in gas/Index.html. */
   #app-root {
+    position: relative; /* for .app-version */
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -56,6 +57,20 @@
     border: 2.5px solid #000000;
     border-radius: 36px;
     overflow: hidden;
+  }
+
+  /* The app's version, small in the container's bottom-right corner.
+     Keep in step with APP_VERSION in gas/Code.gs. */
+  .app-version {
+    position: absolute;
+    right: 30px;
+    bottom: 12px;
+    margin: 0;
+    font-family: 'Figtree', 'Segoe UI', sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    color: #a3a6b0;
+    pointer-events: none;
   }
 
   /* Vertically centres the wheel+cards row within whatever space is
@@ -112,6 +127,10 @@
        and a changing height moved the wheel; .stage-area now aligns to
        the top instead, so growing never moves the wheel. */
     min-height: 520px;
+    /* A little extra room above the wheel and cards, below the team
+       message (whose slot animates open and closed, so the row slides
+       rather than jumps when a message appears or is hidden). */
+    margin-top: 12px;
     transition: gap 0.4s ease;
   }
   #wheel-host {
@@ -221,6 +240,7 @@
       </div>
     </div>
   </div>
+  <p class="app-version">v1.0.0</p>
 </div>
 
   <script src="excellence-wheel.js"></script>
