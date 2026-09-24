@@ -410,25 +410,39 @@
 
     // -- Open / close ------------------------------------------------------------
 
-    // Beside the main container when the window has room for both (the
-    // container slides left: body.history-alongside in
+    // Side panels (this History panel, and Messages in Script_Messages.html)
+    // sit beside the main container when the window has room for both (the
+    // container slides left: body.side-panel-alongside in
     // Stylesheet_History.html), otherwise over the container's right side.
-    // Keep these in step with #app-root's max width and the body padding
-    // in Index.html, and the panel width in Stylesheet_History.html.
+    // Only one is open at a time. Keep these in step with #app-root's max
+    // width and the body padding in Index.html, and the panel width in
+    // Stylesheet_History.html.
     var APP_MAX_WIDTH = 1160;
     var PAGE_PADDING = 32;
-    var HISTORY_PANEL_WIDTH = 400;
-    var HISTORY_PANEL_GAP = 24;
+    var SIDE_PANEL_WIDTH = 400;
+    var SIDE_PANEL_GAP = 24;
 
-    function layoutHistoryPanel() {
+    function layoutSidePanel(panelEl) {
       var content = document.body.clientWidth - 2 * PAGE_PADDING;
-      var pair = APP_MAX_WIDTH + HISTORY_PANEL_GAP + HISTORY_PANEL_WIDTH;
+      var pair = APP_MAX_WIDTH + SIDE_PANEL_GAP + SIDE_PANEL_WIDTH;
       var alongside = content >= pair;
-      document.body.classList.toggle('history-alongside', alongside);
-      historyPanelEl.style.left = alongside
-        ? (PAGE_PADDING + (content - pair) / 2 + APP_MAX_WIDTH + HISTORY_PANEL_GAP) + 'px'
+      document.body.classList.toggle('side-panel-alongside', alongside);
+      panelEl.style.left = alongside
+        ? (PAGE_PADDING + (content - pair) / 2 + APP_MAX_WIDTH + SIDE_PANEL_GAP) + 'px'
         : '';
-      historyPanelEl.style.right = alongside ? 'auto' : '';
+      panelEl.style.right = alongside ? 'auto' : '';
+      // Overlapping the container, the panel starts below its banner, so
+      // the History and Messages buttons stay visible and clickable.
+      var banner = document.querySelector('.app-banner');
+      panelEl.style.top = !alongside && banner
+        ? Math.max(12, Math.round(banner.getBoundingClientRect().bottom + 10)) + 'px'
+        : '';
+    }
+
+    // True for a click on a side panel's banner button (History, Messages):
+    // those open and close panels themselves.
+    function isSidePanelButton(target) {
+      return !!(target.closest && target.closest('.app-banner-panel-btn'));
     }
 
     function openHistory() {
@@ -439,7 +453,8 @@
       historyUi.preview = null;
       historyUi.expanded = {};
       historyToolbarEl.removeAttribute('data-mode');
-      layoutHistoryPanel();
+      if (typeof closeMessages === 'function') closeMessages(true, true);
+      layoutSidePanel(historyPanelEl);
       historyOverlay.classList.add('is-open');
       historyOpenBtn.setAttribute('aria-expanded', 'true');
       historyCloseBtn.focus();
@@ -451,11 +466,12 @@
     }
 
     // `keepFocus`: closed by a click elsewhere, so leave focus where that
-    // click put it.
-    function closeHistory(keepFocus) {
+    // click put it. `keepLayout`: another side panel is opening in its
+    // place, so the main container stays where it is.
+    function closeHistory(keepFocus, keepLayout) {
       if (!historyOverlay.classList.contains('is-open')) return;
       historyOverlay.classList.remove('is-open');
-      document.body.classList.remove('history-alongside');
+      if (!keepLayout) document.body.classList.remove('side-panel-alongside');
       historyOpenBtn.setAttribute('aria-expanded', 'false');
       if (!keepFocus && historyLastFocus && typeof historyLastFocus.focus === 'function') historyLastFocus.focus();
     }
@@ -595,16 +611,16 @@
     });
     historyCloseBtn.addEventListener('click', function () { closeHistory(); });
     // Nothing behind the panel is dimmed or blocked, so a click anywhere
-    // outside it (except the History button, which toggles it, and the
-    // toasts) closes it.
+    // outside it (except the side panel buttons, which toggle panels, and
+    // the toasts) closes it.
     document.addEventListener('pointerdown', function (e) {
       if (!historyOverlay.classList.contains('is-open')) return;
-      if (historyPanelEl.contains(e.target) || historyOpenBtn.contains(e.target) ||
+      if (historyPanelEl.contains(e.target) || isSidePanelButton(e.target) ||
           (e.target.closest && e.target.closest('.eia-toasts'))) return;
       closeHistory(true);
     });
     window.addEventListener('resize', function () {
-      if (historyOverlay.classList.contains('is-open')) layoutHistoryPanel();
+      if (historyOverlay.classList.contains('is-open')) layoutSidePanel(historyPanelEl);
     });
     document.addEventListener('keydown', function (e) {
       if (e.key !== 'Escape' || !historyOverlay.classList.contains('is-open')) return;

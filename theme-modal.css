@@ -190,9 +190,9 @@
   min-width: 340px; /* was 0 — that's the actual bug: it let this column shrink smaller than its grid's own 4x160px+gaps content size, so the grid overflowed sideways under the sidebar instead of the column just refusing to shrink further */
   min-height: 0; /* same flex-shrink trick as above — without it this column just grows to its grid's full height instead of respecting the row's stretched (capped) height */
   overflow-y: auto;
-  /* Bottom padding so the last rubric row's focus/hover state and shadow
-     band aren't flush against (or clipped by) the scroll edge. */
-  padding-bottom: 4px;
+  /* Room on the right and bottom for a selected cell's hard shadow, which
+     the scroll edge would otherwise clip. */
+  padding: 0 6px 8px 0;
 }
 
 .rubric-header,
@@ -212,11 +212,6 @@
   font-weight: 600;
   color: #90939e;
   padding: 0 2px;
-}
-
-.rubric-header-cell.is-current {
-  color: var(--modal-accent, #1c1f4f);
-  font-weight: 700;
 }
 
 .rubric-cell {
@@ -239,14 +234,16 @@
 
 .rubric-cell:hover,
 .rubric-cell:focus-visible {
-  border-color: var(--modal-accent, #1c1f4f);
+  border-color: #000000;
 }
 
+/* A selected cell: a light tint of its level's grade colour (--level-rgb,
+   set per cell by renderRubricGrid()), black outline and hard shadow. */
 .rubric-cell.is-selected {
-  border-color: var(--modal-accent, #1c1f4f);
-  background: rgba(var(--modal-accent-rgb, 28, 31, 79), 0.05);
-  color: #2a2c38;
-  box-shadow: 0 3px 0 0 var(--modal-shadow, #1c1f4f);
+  border: 2.5px solid #000000;
+  background: rgba(var(--level-rgb, 154, 160, 166), 0.18);
+  color: #000000;
+  box-shadow: 5px 5px 0 0 #000000;
 }
 
 .rubric-cell:active {
@@ -255,7 +252,8 @@
 }
 
 .rubric-cell.is-selected:active {
-  box-shadow: 0 1px 0 0 var(--modal-shadow, #1c1f4f);
+  transform: translate(3px, 3px);
+  box-shadow: 2px 2px 0 0 #000000;
 }
 
 .rubric-cell.is-blank {
@@ -869,24 +867,16 @@
   .rubric-cell-level {
     display: block;
     margin: 0 0 4px;
-    font-weight: 700;
-    color: var(--modal-accent, #1c1f4f);
+    font-weight: 800;
+    color: #000000;
   }
   .rubric-cell {
     min-height: 0;
   }
-  /* Start-of-row spacing/divider, since rows are always exactly 4 cells */
+  /* Extra space before each criterion's group of 4 levels (rows are
+     always exactly 4 cells), so the groups read apart. */
   .rubric-cell:nth-child(4n+1):not(:first-child) {
-    margin-top: 18px;
-    padding-top: 22px;
-    border-top: 2px solid #eef0f5;
-    border-radius: 0;
-    border-left: none;
-    border-right: none;
-    border-bottom: 1.5px solid #e5e7ee;
-  }
-  .rubric-cell:nth-child(4n+1):not(:first-child).is-selected {
-    border-top-color: #eef0f5;
+    margin-top: 26px;
   }
 }
 

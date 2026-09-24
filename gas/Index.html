@@ -15,6 +15,7 @@
 <?!= include('Stylesheet_AppBanner'); ?>
 <?!= include('Stylesheet_LoginGate'); ?>
 <?!= include('Stylesheet_History'); ?>
+<?!= include('Stylesheet_Messages'); ?>
 <style>
   :root { color-scheme: light; }
 
@@ -82,9 +83,14 @@
     width: 100%;
     box-sizing: border-box;
     padding: 40px 48px;
+    /* Content starts at the top of the container (the team message, if
+       any, then the wheel/cards row), rather than being centred
+       vertically: the cards column's height varies by Element, and
+       top-aligning keeps the wheel from moving when it does. */
     display: flex;
+    flex-direction: column;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
   }
 
   /* Wheel + Theme cards, side by side, with real breathing room between
@@ -113,17 +119,13 @@
        content-dependent circularity that caused the wheel to change
        size before, just relocated to a different tier). */
     width: 100%;
-    /* Fixed to #wheel-host's own height, not left to auto (which would
-       resolve to whichever child is tallest). #detail's height varies
-       with how many Theme-card rows an Element has — left auto, that
-       made .stage-area's vertical centring (based on .main-layout's
-       own box) shift the WHEEL up and down every time a different
-       Element's card count crossed a row boundary, even though the
-       wheel's own size never changed. Pinning this to the wheel's
-       height, with overflow left visible (the default), decouples
-       that: taller card content just extends past the box's bottom
-       uneventfully instead of resizing the box centring is based on. */
-    height: 520px;
+    /* At least the wheel's height, growing when the cards column (Theme
+       cards plus Element resources) is taller, so nothing spills past
+       the central container, which clips its overflow. This used to be
+       a fixed height, because .stage-area centred this row vertically
+       and a changing height moved the wheel; .stage-area now aligns to
+       the top instead, so growing never moves the wheel. */
+    min-height: 520px;
     transition: gap 0.4s ease;
   }
   /* Desktop sizes fit the central container (1160px wide, 48px padding
@@ -178,7 +180,7 @@
      scaled-down version of the desktop numbers above. */
   @media (max-width: 1279.98px) {
     .stage-area { padding: 32px 20px; }
-    .main-layout { gap: 32px; height: 380px; }
+    .main-layout { gap: 32px; min-height: 380px; }
     #wheel-host { width: 380px; }
     #detail { width: 380px; }
   }
@@ -190,7 +192,7 @@
      height reverts to auto here since the column stacks wheel+cards
      cumulatively rather than side by side. */
   @media (max-width: 899.98px) {
-    .main-layout { flex-direction: column; align-items: center; gap: 32px; height: auto; }
+    .main-layout { flex-direction: column; align-items: center; gap: 32px; min-height: 0; }
     #wheel-host { width: min(360px, 100%); }
     #detail { width: min(420px, 100%); }
   }
@@ -251,12 +253,21 @@
           <p class="app-banner-updated-value"></p>
         </div>
         <!-- Opens the school's history panel (Script_History.html). -->
-        <button type="button" class="app-banner-history-btn" id="history-open-btn" aria-haspopup="dialog" aria-label="History" title="History">
+        <button type="button" class="app-banner-history-btn app-banner-panel-btn" id="history-open-btn" aria-haspopup="dialog" aria-label="History" title="History">
           <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
             <path d="M3.5 12a8.5 8.5 0 1 0 2.5-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
             <path d="M3 4.5V9h4.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
             <path d="M12 7.5V12l3 2" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
+        </button>
+        <!-- Opens the team's messages (Script_Messages.html). The badge
+             counts active messages this person hasn't hidden. -->
+        <button type="button" class="app-banner-bell-btn app-banner-panel-btn" id="messages-open-btn" aria-haspopup="dialog" aria-label="Messages" title="Messages">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M6 16.5V11a6 6 0 1 1 12 0v5.5l1.5 2h-15l1.5-2Z" stroke="currentColor" stroke-width="2.1" stroke-linejoin="round"/>
+            <path d="M10 21a2.2 2.2 0 0 0 4 0" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/>
+          </svg>
+          <span class="app-banner-badge" hidden></span>
         </button>
         <div class="app-banner-avatar" aria-hidden="true">
           <!-- Placeholder avatar — enterApp() swaps in the user's initials and colour -->
@@ -269,6 +280,8 @@
     </header>
 
     <div class="stage-area">
+      <!-- The newest active team message, if any (Script_Messages.html). -->
+      <div id="team-message-slot"></div>
       <div class="main-layout is-empty">
         <div id="wheel-host"></div>
 
@@ -291,6 +304,7 @@
   <?!= include('Script_ExcellenceWheel'); ?>
   <?!= include('Script_App'); ?>
   <?!= include('Script_History'); ?>
+  <?!= include('Script_Messages'); ?>
 
 </body>
 </html>

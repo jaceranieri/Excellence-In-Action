@@ -45,8 +45,8 @@ function requireProp_(key) {
 
 // Sheet tab names are just structure, not secrets — fine to hardcode.
 var TABS = {
-  USERS: 'Users', SCHOOLS: 'Schools', RATINGS: 'Ratings', EVIDENCE: 'EvidenceLog',
-  HISTORY: 'History', EVIDENCE_VERSIONS: 'EvidenceVersions'
+  USERS: 'Users', SCHOOLS: 'Schools', RESOURCES: 'Resources', MESSAGES: 'Messages', // Users spreadsheet
+  RATINGS: 'Ratings', EVIDENCE: 'EvidenceLog', HISTORY: 'History', EVIDENCE_VERSIONS: 'EvidenceVersions' // data spreadsheet
 };
 
 // Columns added after launch always go at the end, so existing rows keep
@@ -1292,6 +1292,141 @@ function restoreToPoint(historyId, stateVersion) {
 }
 
 // ===========================================================================
+// Element resources and team messages (Users spreadsheet)
+// ===========================================================================
+//
+// Two tabs in the Users spreadsheet that the project team edits by hand.
+// Both are created, with their header row, the first time the app reads
+// them. Columns are found by header name, so their order doesn't matter.
+//   - Resources: one row per link.
+//       Element  the Element's name as shown in the app, e.g. "Data
+//                Analysis and Decision Making" (or its wheel id)
+//       Label    the button text, e.g. "Position Paper"
+//       URL      the link (opens in a new tab)
+//     An Element can have any number of rows; they show in row order.
+//   - Messages: one row per message.
+//       Title, Message          the message itself (line breaks are kept)
+//       ButtonLabel, ButtonURL  optional call-to-action button
+//       Active                  tick to show it at the top of everyone's
+//                               screen (newest first, one at a time)
+//       Posted                  a date, for ordering (newest first);
+//                               without one, lower rows count as newer
+//     The Messages panel lists every row, active or not.
+// A message's id is a hash of its title and text: someone who hid a
+// message sees it again if its wording is edited. Hidden message ids are
+// kept per person in Script Properties (eia.dismissedMessages.<hash>).
+// Links must start with http:// or https://; anything else is ignored.
+
+var RESOURCES_HEADERS = ['Element', 'Label', 'URL'];
+var MESSAGES_HEADERS = ['Title', 'Message', 'ButtonLabel', 'ButtonURL', 'Active', 'Posted'];
+var MAX_DISMISSED_MESSAGES = 200;
+
+/** A tab of the Users spreadsheet, created with `headers` if it's missing. */
+function usersTab_(tabName, headers) {
+  var ss = SpreadsheetApp.openById(requireProp_('USERS_SHEET_ID'));
+  var sheet = ss.getSheetByName(tabName);
+  if (!sheet) {
+    sheet = ss.insertSheet(tabName);
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    sheet.setFrozenRows(1);
+  }
+  return sheet;
+}
+
+/** A tab's rows as objects keyed by lower-cased header name. */
+function readTabObjects_(sheet) {
+  var rows = sheet.getDataRange().getValues();
+  if (rows.length < 2) return [];
+  var header = rows[0].map(function (h) { return String(h).trim().toLowerCase(); });
+  return rows.slice(1).map(function (row) {
+    var o = {};
+    header.forEach(function (h, i) { if (h) o[h] = row[i]; });
+    return o;
+  });
+}
+
+/** `value` if it's an http(s) link, otherwise ''. */
+function safeUrl_(value) {
+  var url = String(value || '').trim();
+  return /^https?:\/\/[^\s"'<>]+$/i.test(url) ? url : '';
+}
+
+function isTicked_(value) {
+  return value === true || /^(true|yes|y|1)$/i.test(String(value === undefined ? '' : value).trim());
+}
+
+function dismissedMessagesKey_(email) { return 'eia.dismissedMessages.' + shortHash_(email); }
+
+function readDismissedMessages_(email) {
+  try {
+    var list = JSON.parse(PropertiesService.getScriptProperties().getProperty(dismissedMessagesKey_(email)) || '[]');
+    return Array.isArray(list) ? list : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+/**
+ * The Element resources and team messages, plus the messages this visitor
+ * has hidden:
+ *   { resources: [{ element, label, url }],
+ *     messages:  [{ id, title, text, buttonLabel, buttonUrl, active, postedAt }]  newest first,
+ *     dismissed: [messageId] }
+ * A problem with either tab is logged and leaves that part empty, so it
+ * never stops the app loading.
+ */
+function getSiteContent() {
+  var access = requireActiveUser_();
+  var out = { resources: [], messages: [], dismissed: readDismissedMessages_(access.email) };
+  try {
+    out.resources = readTabObjects_(usersTab_(TABS.RESOURCES, RESOURCES_HEADERS)).map(function (r) {
+      return { element: String(r.element || '').trim(), label: String(r.label || '').trim(), url: safeUrl_(r.url) };
+    }).filter(function (r) { return r.element && r.label && r.url; });
+  } catch (e) {
+    console.error('Could not read the Resources tab: ' + e);
+  }
+  try {
+    out.messages = readTabObjects_(usersTab_(TABS.MESSAGES, MESSAGES_HEADERS)).map(function (m, i) {
+      var title = String(m.title || '').trim();
+      var text = String(m.message || '').trim();
+      var buttonUrl = safeUrl_(m.buttonurl);
+      return {
+        id: shortHash_(title + '\n' + text),
+        title: title,
+        text: text,
+        buttonLabel: buttonUrl ? (String(m.buttonlabel || '').trim() || 'Open link') : '',
+        buttonUrl: buttonUrl,
+        active: isTicked_(m.active),
+        postedAt: toMillis_(m.posted),
+        row: i
+      };
+    }).filter(function (m) {
+      return m.title || m.text;
+    }).sort(function (a, b) {
+      return (b.postedAt - a.postedAt) || (b.row - a.row);
+    }).map(function (m) {
+      delete m.row;
+      return m;
+    });
+  } catch (e) {
+    console.error('Could not read the Messages tab: ' + e);
+  }
+  return out;
+}
+
+/** Hides message `id` for the visitor (it stays in their Messages panel). */
+function dismissMessage(id) {
+  var access = requireActiveUser_();
+  id = String(id || '');
+  if (!/^[0-9a-f]{24}$/.test(id)) throw new Error('Invalid message.');
+  var list = readDismissedMessages_(access.email).filter(function (x) { return x !== id; });
+  list.push(id);
+  if (list.length > MAX_DISMISSED_MESSAGES) list = list.slice(list.length - MAX_DISMISSED_MESSAGES);
+  PropertiesService.getScriptProperties().setProperty(dismissedMessagesKey_(access.email), JSON.stringify(list));
+  return { ok: true };
+}
+
+// ===========================================================================
 // Evidence files: school folder, archive, sharing
 // ===========================================================================
 
@@ -1862,6 +1997,14 @@ function checkSetup() {
   } catch (e) {
     log(false, e.message);
   }
+  [[TABS.RESOURCES, RESOURCES_HEADERS], [TABS.MESSAGES, MESSAGES_HEADERS]].forEach(function (t) {
+    try {
+      var rows = usersTab_(t[0], t[1]).getLastRow() - 1;
+      log(true, t[0] + ' tab (Users spreadsheet): ' + rows + ' row' + (rows === 1 ? '' : 's'));
+    } catch (e) {
+      log(false, t[0] + ' tab: ' + e.message);
+    }
+  });
   var token = ScriptApp.getOAuthToken();
   schools.forEach(function (s) {
     var id = parseDriveId_(s.folderValue);

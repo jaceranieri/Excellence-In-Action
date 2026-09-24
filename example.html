@@ -69,9 +69,14 @@
     width: 100%;
     box-sizing: border-box;
     padding: 40px 48px;
+    /* Content starts at the top of the container (the team message, if
+       any, then the wheel/cards row), rather than being centred
+       vertically: the cards column's height varies by Element, and
+       top-aligning keeps the wheel from moving when it does. */
     display: flex;
+    flex-direction: column;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
   }
 
   /* Wheel + Theme cards, side by side, with real breathing room between
@@ -100,17 +105,13 @@
        content-dependent circularity that caused the wheel to change
        size before, just relocated to a different tier). */
     width: 100%;
-    /* Fixed to #wheel-host's own height, not left to auto (which would
-       resolve to whichever child is tallest). #detail's height varies
-       with how many Theme-card rows an Element has — left auto, that
-       made .stage-area's vertical centring (based on .main-layout's
-       own box) shift the WHEEL up and down every time a different
-       Element's card count crossed a row boundary, even though the
-       wheel's own size never changed. Pinning this to the wheel's
-       height, with overflow left visible (the default), decouples
-       that: taller card content just extends past the box's bottom
-       uneventfully instead of resizing the box centring is based on. */
-    height: 520px;
+    /* At least the wheel's height, growing when the cards column (Theme
+       cards plus Element resources) is taller, so nothing spills past
+       the central container, which clips its overflow. This used to be
+       a fixed height, because .stage-area centred this row vertically
+       and a changing height moved the wheel; .stage-area now aligns to
+       the top instead, so growing never moves the wheel. */
+    min-height: 520px;
     transition: gap 0.4s ease;
   }
   #wheel-host {
@@ -162,7 +163,7 @@
      scaled-down version of the desktop numbers above. */
   @media (max-width: 1279.98px) {
     .stage-area { padding: 32px 20px; }
-    .main-layout { gap: 32px; height: 380px; }
+    .main-layout { gap: 32px; min-height: 380px; }
     #wheel-host { width: 380px; }
     #detail { width: 380px; }
   }
@@ -174,7 +175,7 @@
      height reverts to auto here since the column stacks wheel+cards
      cumulatively rather than side by side. */
   @media (max-width: 899.98px) {
-    .main-layout { flex-direction: column; align-items: center; gap: 32px; height: auto; }
+    .main-layout { flex-direction: column; align-items: center; gap: 32px; min-height: 0; }
     #wheel-host { width: min(360px, 100%); }
     #detail { width: min(420px, 100%); }
   }
@@ -1874,10 +1875,11 @@
     var composeAttachments = []; // staged for the evidence currently being composed
     var editingNumber = null;    // set while editing an existing entry; null while composing a new one
 
-    function renderRubricHeader(theme) {
+    // The level names above the rubric columns. The theme's current grade
+    // isn't highlighted here: the Grade badge shows it.
+    function renderRubricHeader() {
       return RUBRIC_LEVELS.map(function (key) {
-        var isCurrent = theme.grade === key;
-        return '<div class="rubric-header-cell' + (isCurrent ? ' is-current' : '') + '">' + GRADES[key].label + '</div>';
+        return '<div class="rubric-header-cell">' + GRADES[key].label + '</div>';
       }).join('');
     }
 
@@ -1895,7 +1897,9 @@
             return;
           }
           var isSel = row.selected === key;
+          // --level-rgb tints the cell in its level's grade colour when selected.
           html += '<div class="rubric-cell' + (isSel ? ' is-selected' : '') + '" tabindex="0" role="button"' +
+            ' style="--level-rgb:' + hexToRgbString(GRADES[key].color) + '"' +
             ' aria-pressed="' + isSel + '" data-row="' + rowIdx + '" data-level="' + key + '">' +
             '<span class="rubric-cell-level">' + GRADES[key].label + '</span>' +
             escapeHtml(cellText) +
@@ -2176,7 +2180,7 @@
     });
 
     function refreshRubricAndBadge(theme) {
-      rubricHeaderEl.innerHTML = renderRubricHeader(theme);
+      rubricHeaderEl.innerHTML = renderRubricHeader();
       rubricGridEl.innerHTML = renderRubricGrid(theme);
       var grade = GRADES[theme.grade] || GRADES.ungraded;
       gradeBadgeText.textContent = grade.label;

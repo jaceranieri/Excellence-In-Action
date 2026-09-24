@@ -166,6 +166,58 @@
   color: #000000;
 }
 
+/* Element resources (GAS build: links from the Users spreadsheet's
+   Resources tab) — a heading and a row of link buttons under the cards. */
+.element-resources:empty {
+  display: none;
+}
+
+.element-resources-title {
+  margin: 28px 0 12px;
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+  font-weight: 800;
+  font-size: 20px;
+  color: #000000;
+}
+
+.element-resources-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 16px;
+  padding: 0 6px 6px 0; /* room for the buttons' shadow */
+}
+
+.element-resource-link {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 16px;
+  border: 2.5px solid #000000;
+  border-radius: 8px;
+  background: #eeeeee;
+  box-shadow: 4px 4px 0 0 #000000;
+  color: #000000;
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+  font-weight: 800;
+  font-size: 14.5px;
+  text-decoration: none;
+  transition: transform 0.1s ease, box-shadow 0.1s ease, background-color 0.15s ease;
+}
+
+.element-resource-link:hover,
+.element-resource-link:focus-visible {
+  background: #ffffff;
+  outline: none;
+}
+
+.element-resource-link:focus-visible {
+  box-shadow: 4px 4px 0 0 #000000, 0 0 0 3px #17458f;
+}
+
+.element-resource-link:active {
+  transform: translate(3px, 3px);
+  box-shadow: 1px 1px 0 0 #000000;
+}
+
 @media (max-width: 1279.98px) {
   .element-title { font-size: 26px; }
   .theme-card { min-height: 104px; }

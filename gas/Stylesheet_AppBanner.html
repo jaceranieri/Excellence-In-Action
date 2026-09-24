@@ -10,9 +10,9 @@
  *     ("Action" is Winter Day, embedded by Stylesheet_LoginGate);
  *   - middle: the school's crest (or its name, if it has none) — set by
  *     enterApp() in Script_LoginGate.html;
- *   - right: Last Updated, the History button and the avatar, whose
- *     colour enterApp() picks from the user's email.
- * The History button's own behaviour is in Script_History.html.
+ *   - right: Last Updated, the History and Messages (bell) buttons and
+ *     the avatar, whose colour enterApp() picks from the user's email.
+ * The buttons' behaviour is in Script_History.html / Script_Messages.html.
  */
 
 .app-banner {
@@ -119,7 +119,8 @@
   white-space: nowrap;
 }
 
-.app-banner-history-btn,
+/* The round History and Messages (bell) buttons, and the avatar. */
+.app-banner-panel-btn,
 .app-banner-avatar {
   flex: none;
   width: 46px;
@@ -132,7 +133,8 @@
   justify-content: center;
 }
 
-.app-banner-history-btn {
+.app-banner-panel-btn {
+  position: relative; /* for the bell's badge */
   padding: 0;
   background: #ffffff;
   color: #f5b400;
@@ -140,23 +142,48 @@
   transition: background-color 0.15s ease, transform 0.1s ease;
 }
 
-.app-banner-history-btn svg {
+.app-banner-panel-btn svg {
   width: 24px;
   height: 24px;
 }
 
-.app-banner-history-btn:hover,
-.app-banner-history-btn:focus-visible {
+.app-banner-panel-btn:hover,
+.app-banner-panel-btn:focus-visible,
+.app-banner-panel-btn[aria-expanded="true"] {
   background: #fff6db;
   outline: none;
 }
 
-.app-banner-history-btn:focus-visible {
+.app-banner-panel-btn:focus-visible {
   box-shadow: 0 0 0 3px #17458f;
 }
 
-.app-banner-history-btn:active {
+.app-banner-panel-btn:active {
   transform: translateY(1px);
+}
+
+/* Unread count on the bell: active messages this person hasn't hidden. */
+.app-banner-badge {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  min-width: 20px;
+  height: 20px;
+  box-sizing: border-box;
+  padding: 0 5px;
+  border: 2px solid #000000;
+  border-radius: 999px;
+  background: #FF5F5E;
+  color: #000000;
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+  font-weight: 800;
+  font-size: 11px;
+  line-height: 16px;
+  text-align: center;
+}
+
+.app-banner-badge[hidden] {
+  display: none;
 }
 
 .app-banner-avatar {
@@ -174,26 +201,33 @@
   height: 20px;
 }
 
-/* Small screens: branding and buttons on the first row, the crest on
-   its own row below. */
+/* Small screens: branding and the round buttons on the first row; the
+   crest and Last Updated on the second. The tools group dissolves
+   (display: contents) so its items can be placed on the grid directly. */
 @media (max-width: 640px) {
   .app-banner {
-    grid-template-columns: auto 1fr;
+    grid-template-columns: 1fr auto auto auto;
     grid-template-areas:
-      "brand tools"
-      "school school";
+      "brand  history bell    avatar"
+      "school updated updated updated";
+    column-gap: 8px;
     row-gap: 12px;
     padding: 12px 16px;
   }
+  .app-banner-tools { display: contents; }
+  .app-banner-history-btn { grid-area: history; }
+  .app-banner-bell-btn { grid-area: bell; }
+  .app-banner-avatar { grid-area: avatar; }
+  .app-banner-updated { grid-area: updated; justify-self: end; margin-right: 0; }
+  .app-banner-school { justify-content: flex-start; }
   .app-banner-brand-top { font-size: 14px; }
   .app-banner-brand-script { font-size: 28px; margin-left: 10px; }
-  .app-banner-school img { max-height: 44px; }
-  .app-banner-tools { gap: 8px; }
-  .app-banner-updated { margin-right: 2px; }
+  .app-banner-school img { max-height: 40px; max-width: 170px; }
   .app-banner-updated-label { font-size: 11px; }
   .app-banner-updated-value { font-size: 10px; }
-  .app-banner-history-btn,
+  .app-banner-panel-btn,
   .app-banner-avatar { width: 40px; height: 40px; }
+  .app-banner-panel-btn svg { width: 21px; height: 21px; }
   .app-banner-avatar { font-size: 14px; }
 }
 </style>

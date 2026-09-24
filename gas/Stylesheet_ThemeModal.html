@@ -191,9 +191,9 @@
   min-width: 340px; /* was 0 — that's the actual bug: it let this column shrink smaller than its grid's own 4x160px+gaps content size, so the grid overflowed sideways under the sidebar instead of the column just refusing to shrink further */
   min-height: 0; /* same flex-shrink trick as above — without it this column just grows to its grid's full height instead of respecting the row's stretched (capped) height */
   overflow-y: auto;
-  /* Bottom padding so the last rubric row's focus/hover state and shadow
-     band aren't flush against (or clipped by) the scroll edge. */
-  padding-bottom: 4px;
+  /* Room on the right and bottom for a selected cell's hard shadow, which
+     the scroll edge would otherwise clip. */
+  padding: 0 6px 8px 0;
 }
 
 .rubric-header,
@@ -213,11 +213,6 @@
   font-weight: 600;
   color: #90939e;
   padding: 0 2px;
-}
-
-.rubric-header-cell.is-current {
-  color: var(--modal-accent, #1c1f4f);
-  font-weight: 700;
 }
 
 .rubric-cell {
@@ -240,14 +235,16 @@
 
 .rubric-cell:hover,
 .rubric-cell:focus-visible {
-  border-color: var(--modal-accent, #1c1f4f);
+  border-color: #000000;
 }
 
+/* A selected cell: a light tint of its level's grade colour (--level-rgb,
+   set per cell by renderRubricGrid()), black outline and hard shadow. */
 .rubric-cell.is-selected {
-  border-color: var(--modal-accent, #1c1f4f);
-  background: rgba(var(--modal-accent-rgb, 28, 31, 79), 0.05);
-  color: #2a2c38;
-  box-shadow: 0 3px 0 0 var(--modal-shadow, #1c1f4f);
+  border: 2.5px solid #000000;
+  background: rgba(var(--level-rgb, 154, 160, 166), 0.18);
+  color: #000000;
+  box-shadow: 5px 5px 0 0 #000000;
 }
 
 .rubric-cell:active {
@@ -256,7 +253,8 @@
 }
 
 .rubric-cell.is-selected:active {
-  box-shadow: 0 1px 0 0 var(--modal-shadow, #1c1f4f);
+  transform: translate(3px, 3px);
+  box-shadow: 2px 2px 0 0 #000000;
 }
 
 .rubric-cell.is-blank {
@@ -1004,24 +1002,16 @@
   .rubric-cell-level {
     display: block;
     margin: 0 0 4px;
-    font-weight: 700;
-    color: var(--modal-accent, #1c1f4f);
+    font-weight: 800;
+    color: #000000;
   }
   .rubric-cell {
     min-height: 0;
   }
-  /* Start-of-row spacing/divider, since rows are always exactly 4 cells */
+  /* Extra space before each criterion's group of 4 levels (rows are
+     always exactly 4 cells), so the groups read apart. */
   .rubric-cell:nth-child(4n+1):not(:first-child) {
-    margin-top: 18px;
-    padding-top: 22px;
-    border-top: 2px solid #eef0f5;
-    border-radius: 0;
-    border-left: none;
-    border-right: none;
-    border-bottom: 1.5px solid #e5e7ee;
-  }
-  .rubric-cell:nth-child(4n+1):not(:first-child).is-selected {
-    border-top-color: #eef0f5;
+    margin-top: 26px;
   }
 }
 
@@ -1053,21 +1043,24 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 8px;
-  max-width: min(360px, calc(100vw - 32px));
+  gap: 12px; /* room for each toast's hard shadow */
+  max-width: min(360px, calc(100vw - 38px));
   pointer-events: none;
 }
 
+/* Coloured by status (sky blue working, green done, red error, yellow
+   information), with black text, a black border and a hard black shadow. */
 .eia-toast {
   display: flex;
   align-items: flex-start;
   gap: 10px;
   padding: 10px 10px 10px 12px;
-  border-radius: 12px;
-  background: #2a2c38;
-  color: #fff;
+  border: 2.5px solid #000000;
+  border-radius: 10px;
+  background: #38B6FF;
+  color: #000000;
   font-family: 'Figtree', 'Segoe UI', sans-serif;
-  box-shadow: 0 3px 0 0 #171825, 0 10px 24px rgba(0, 0, 0, 0.18);
+  box-shadow: 5px 5px 0 0 #000000;
   pointer-events: auto;
   opacity: 0;
   transform: translateY(8px);
@@ -1080,19 +1073,21 @@
 }
 
 .eia-toast.is-success {
-  background: #1E8E4F;
-  box-shadow: 0 3px 0 0 #166b3b, 0 10px 24px rgba(0, 0, 0, 0.18);
+  background: #02BF63;
 }
 
 .eia-toast.is-error {
-  background: #c94f4f;
-  box-shadow: 0 3px 0 0 #9c3a3a, 0 10px 24px rgba(0, 0, 0, 0.18);
+  background: #FF5F5E;
+}
+
+.eia-toast.is-info {
+  background: #F5B400;
 }
 
 .eia-toast-icon {
   flex: none;
-  width: 16px;
-  height: 16px;
+  width: 17px;
+  height: 17px;
   margin-top: 1px;
   border-radius: 50%;
   display: flex;
@@ -1105,33 +1100,28 @@
 }
 
 .eia-toast.is-busy .eia-toast-icon {
-  border: 2px solid rgba(255, 255, 255, 0.35);
-  border-top-color: #fff;
+  border: 2.5px solid rgba(0, 0, 0, 0.25);
+  border-top-color: #000000;
   animation: eia-toast-spin 0.8s linear infinite;
 }
 
 .eia-toast.is-success .eia-toast-icon,
-.eia-toast.is-error .eia-toast-icon {
-  background: #fff;
+.eia-toast.is-error .eia-toast-icon,
+.eia-toast.is-info .eia-toast-icon {
+  background: #000000;
+  color: #ffffff;
 }
 
 .eia-toast.is-success .eia-toast-icon::before {
   content: '\2713';
-  color: #1E8E4F;
 }
 
 .eia-toast.is-error .eia-toast-icon::before {
   content: '!';
-  color: #c94f4f;
-}
-
-.eia-toast.is-info .eia-toast-icon {
-  background: #fff;
 }
 
 .eia-toast.is-info .eia-toast-icon::before {
   content: 'i';
-  color: #2a2c38;
   font-family: Georgia, serif;
 }
 
@@ -1144,36 +1134,35 @@
 
 .eia-toast-title {
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 800;
   line-height: 1.4;
 }
 
 .eia-toast-detail {
   font-size: 11.5px;
+  font-weight: 500;
   line-height: 1.4;
-  opacity: 0.85;
   overflow-wrap: anywhere;
 }
 
 .eia-toast-close {
   flex: none;
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   padding: 0;
   border: none;
   border-radius: 50%;
   background: transparent;
-  color: inherit;
-  font-size: 16px;
+  color: #000000;
+  font-size: 17px;
   line-height: 1;
   cursor: pointer;
-  opacity: 0.7;
 }
 
 .eia-toast-close:hover,
 .eia-toast-close:focus-visible {
-  opacity: 1;
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(0, 0, 0, 0.12);
+  outline: none;
 }
 
 @keyframes eia-toast-spin {

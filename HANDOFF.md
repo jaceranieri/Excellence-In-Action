@@ -162,14 +162,14 @@ the project owner's mockup):
   - Its own card (black outline, rounded, header rule level with the
     main banner's).
   - When the window is at least 1648px wide, the main container slides
-    left and the panel sits beside it (`layoutHistoryPanel()`,
-    `body.history-alongside`). Otherwise it overlaps the container's
+    left and the panel sits beside it (`layoutSidePanel()`,
+    `body.side-panel-alongside`). Otherwise it overlaps the container's
     right side.
   - No dimming. A click anywhere outside it closes it, except on the
     History button (which toggles it) and toasts.
   - Save checkpoint is a large sky-blue button (`#38B6FF`) with a black
     outline and shadow. The timeline itself is unchanged.
-- **Not restyled:** toasts and the login page.
+- **Not restyled:** the login page.
 - **No dark mode:** the old dark-mode overrides were removed from the
   cards, banner, Theme modal and History panel, because the new design
   is always light.
@@ -177,17 +177,57 @@ the project owner's mockup):
   that need the server (crest, Last Updated, History). It loads the
   Winter Day font from `fonts/`.
 
-**To deploy everything (evidence titles, school history, restyle):**
-1. In the Apps Script editor, create two new HTML files named exactly
-   `Script_History` and `Stylesheet_History`. Paste in
-   `gas/Script_History.html` and `gas/Stylesheet_History.html`.
+**Rubric, toasts, Element resources and team messages, not yet confirmed
+live:**
+- **Rubric:** a selected cell has a light tint of its level's grade
+  colour, a black outline and a hard black shadow (`--level-rgb`, set
+  per cell by `renderRubricGrid()`). The column heading no longer
+  highlights the theme's grade; the Grade badge shows that.
+  - On phones, criterion groups are separated by extra space instead of
+    the old divider border.
+- **Toasts** are coloured by status, with black text, border and hard
+  shadow: sky blue while working, green done, red error, yellow
+  information.
+- **Element resources:** link buttons under the selected Element's
+  Theme cards, from the Users spreadsheet's new **Resources** tab. See
+  "Element resources and team messages" below.
+- **Team messages** from the Users spreadsheet's new **Messages** tab:
+  - The newest active message shows in a box at the top of the main
+    screen, with an optional call-to-action button.
+  - Its × hides it for that person on every device (stored in Script
+    Properties).
+  - A **bell** between History and the avatar opens a Messages panel,
+    built like the History panel, listing every message. Its red badge
+    counts active messages not yet hidden.
+- **Layout change:** `.stage-area` now aligns to the top instead of
+  centring vertically, and `.main-layout` has a `min-height` rather
+  than a fixed `height`. The cards column (with resources) can be taller
+  than the wheel, and the container clips overflow; see "Layout system".
+- **Side panels:** the History and Messages panels share
+  `layoutSidePanel()` and `isSidePanelButton()` (in
+  `Script_History.html`). Only one is open at a time.
+  - When overlapping the container (windows under 1648px wide), a panel
+    starts below the banner, so its buttons stay usable.
+  - The body class is now `side-panel-alongside`.
+- **Phone header:** Last Updated moves to the second row, beside the
+  crest, to make room for the bell.
+
+**To deploy everything (evidence titles, school history, restyle,
+resources and messages):**
+1. In the Apps Script editor, create four new HTML files named exactly
+   `Script_History`, `Stylesheet_History`, `Script_Messages` and
+   `Stylesheet_Messages`. Paste in the matching `gas/*.html` files.
 2. Replace `Code.gs`, `Index.html`, `Script_App.html`,
    `Script_LoginGate.html`, `Stylesheet_AppBanner.html`,
    `Stylesheet_ThemeCards.html` and `Stylesheet_ThemeModal.html` with
    the repo versions.
 3. Deploy → Manage deployments → Edit → New version.
-4. The History and EvidenceVersions tabs, and the new columns, create
-   themselves on the first change.
+4. Tabs create themselves:
+   - on the data spreadsheet, History, EvidenceVersions and the new
+     columns appear on the first change;
+   - on the Users spreadsheet, Resources and Messages appear with their
+     header rows the first time anyone opens the app (or when you run
+     `checkSetup`).
 
 **Open items / next steps:**
 1. **"Untitled document" copy error:** one staff member couldn't
@@ -277,7 +317,9 @@ in `import-eia.py` itself; not run by the app.
   and looks it up (case-insensitive) against the **Users** tab (falling
   back to the first tab). Returns `{email, found, active, name, schoolName, crestUrl}`.
   The same spreadsheet's **Schools** tab maps each school to its evidence
-  folder — see "Attachments" below.
+  folder — see "Attachments" below. Its **Resources** and **Messages**
+  tabs hold the Element links and team messages (see "Element resources
+  and team messages").
 - **Deployment settings matter**: `appsscript.json` has
   `"executeAs": "USER_DEPLOYING"` (i.e. "Execute as: Me") and
   `"access": "DOMAIN"`. This combination is deliberate and documented in
@@ -502,6 +544,8 @@ Properties), read via `requireProp_()`:
 | `DRIVE_OAUTH_CLIENT_SECRET` | same client's secret |
 | `REVIEW_GROUP_EMAIL` | *optional*: a Google Group given Viewer on every school folder |
 
+`eia.dismissedMessages.<hash>` keys hold which team messages each person
+has hidden; deleting one just shows them their messages again.
 `eia.driveToken.<hash>` and `eia.driveAuthError.<hash>` keys also appear
 in Script Properties. They're per-visitor Drive tokens and one-shot error
 messages. Leave them alone; deleting one just makes that visitor
@@ -638,6 +682,37 @@ without changing anything):
 - **Checkpoints** (`saveCheckpoint()`) save the current state under a
   name of up to 80 characters. They never absorb later changes.
 
+## Element resources and team messages (`gas/` only)
+
+Both are edited by hand in the **Users spreadsheet**. Code.gs's
+`getSiteContent()` reads them once when the page loads; people see
+changes on their next visit. Columns are found by header name, in any
+order. Links must start with `http://` or `https://`; others are ignored.
+
+**Resources tab**, one row per link: `Element, Label, URL`.
+- `Element` is the Element's name as the app shows it (e.g. "Data
+  Analysis and Decision Making"). Case, spacing and "&" vs "and" don't
+  matter. The wheel id (e.g. `data-analysis`) also works.
+- Links show in row order as buttons under the Theme cards, headed
+  "Element Resources". An Element with no rows shows nothing.
+
+**Messages tab**, one row per message: `Title, Message, ButtonLabel,
+ButtonURL, Active, Posted`.
+- `ButtonLabel`/`ButtonURL` are the optional call-to-action button (the
+  label defaults to "Open link").
+- `Active` (a checkbox, or TRUE/yes) shows the message at the top of
+  everyone's main screen. Only the newest active message that the person
+  hasn't hidden shows; hiding it brings up the next.
+- `Posted` (a date) orders messages, newest first. Without dates, lower
+  rows count as newer.
+- The Messages panel (the bell) lists every row, active or not, and
+  "Mark as read" hides one, like the ×.
+- A message's id is a hash of its title and text, so editing the
+  wording shows it again to people who had hidden it. To retract a
+  message completely, delete its row.
+- Code: `Script_Messages.html` / `Stylesheet_Messages.html`. The panel
+  reuses the History panel's card styles.
+
 ## Layout system — read this before touching sizing
 
 This went through many iterations; the current state is the result of
@@ -662,15 +737,15 @@ changed.
   hundreds of pixels away from the wheel on wide screens — a real,
   confirmed bug (see git log "Fix wheel/cards separation..."). If the
   cards ever drift away from the wheel again, check this first.
-- **`.main-layout` has a fixed `height` per tier** (matching
-  `#wheel-host`'s own height, e.g. 520px), not `height: auto`. The
-  cards column's height varies with how many Theme-card rows an Element
-  has; if `.main-layout`'s height is left auto, `.stage-area`'s vertical
-  centering (based on the tallest child) shifts the *wheel* up/down
-  every time you select an Element with a different row count, even
-  though the wheel's own size never changes. Overflow is left at its
-  default (visible) so taller card content just extends past the box's
-  bottom without affecting the centering math.
+- **`.main-layout` has a `min-height` per tier** (the wheel's height,
+  e.g. 520px) and `.stage-area` aligns its content to the top.
+  - This was a fixed `height` with vertical centring. A changing height
+    would have moved the wheel whenever the number of card rows changed.
+  - It had to change: the cards column (cards plus Element resources)
+    can now be much taller than the wheel, and `#app-root` clips
+    overflow (`overflow: hidden`, for its rounded corners).
+  - With top alignment, the row can grow without the wheel ever moving.
+    Don't go back to centring without solving both problems.
 - **`.main-layout.is-empty`**: before any Element is ever selected, the
   wheel sits alone, centered on the whole row (`#detail` collapsed to
   zero width/opacity). The wheel's `onSelect` callback in
@@ -791,7 +866,8 @@ computed margins directly.
 | `gas/Script_LoginGate.html` | 3-state login gate logic, `enterApp()` |
 | `gas/Script_App.html` | All app logic + `ELEMENT_THEMES` data (mirrors `example.html`'s inline script) |
 | `gas/Script_ExcellenceWheel.html` | Wheel component (mirrors `excellence-wheel.js`) |
-| `gas/Script_History.html` / `gas/Stylesheet_History.html` | School history panel and banner History button (GAS only) |
+| `gas/Script_History.html` / `gas/Stylesheet_History.html` | School history panel, plus the shared side-panel layout (GAS only) |
+| `gas/Script_Messages.html` / `gas/Stylesheet_Messages.html` | Team message box, bell badge and Messages panel (GAS only) |
 | `gas/Stylesheet_*.html` | Wrapped copies of the root `.css` files, plus `Stylesheet_LoginGate.html` (GAS-only) |
 | `EIA.json` | Source rubric data |
 | `import-eia.py` | One-time transform: `EIA.json` → `ELEMENT_THEMES` JS literal |

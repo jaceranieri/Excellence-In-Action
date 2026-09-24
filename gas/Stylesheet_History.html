@@ -7,8 +7,8 @@
  *
  * The panel is its own card (white, black outline, no shadow), like the
  * main container. When the window is wide enough, the main container
- * slides left and the panel sits beside it (body.history-alongside, set
- * by layoutHistoryPanel() in Script_History.html); otherwise it overlaps
+ * slides left and the panel sits beside it (body.side-panel-alongside, set
+ * by layoutSidePanel() in Script_History.html); otherwise it overlaps
  * the container's right side. Nothing behind it is dimmed, and a click
  * anywhere outside it closes it. It sits above the Theme modal (z-index
  * 1100) but below the toasts (9999), so restore progress stays visible.
@@ -70,7 +70,7 @@
   transition: margin-right 0.25s ease;
 }
 
-body.history-alongside #app-root {
+body.side-panel-alongside #app-root {
   margin-right: 424px;
 }
 

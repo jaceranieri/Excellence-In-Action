@@ -1364,6 +1364,10 @@
     });
 
     var SCHOOL_NAME = '';
+    // Element resources and team messages (Code.gs's getSiteContent()),
+    // loaded once on entering the app. Messages are handled by
+    // Script_Messages.html.
+    var SITE_CONTENT = { resources: [], messages: [], dismissed: [] };
     var USER_EMAIL = '';
     var USER_NAME = '';
     // The school's restore count when its state was loaded (Code.gs's
@@ -1452,6 +1456,19 @@
       });
     }
 
+    function loadSiteContent() {
+      google.script.run
+        .withSuccessHandler(function (content) {
+          SITE_CONTENT = content || SITE_CONTENT;
+          renderElementResources();
+          if (typeof window.onSiteContentLoaded === 'function') window.onSiteContentLoaded();
+        })
+        .withFailureHandler(function (err) {
+          console.error('Failed to load resources and messages:', err);
+        })
+        .getSiteContent();
+    }
+
     // Exposed for Script_LoginGate.html's enterApp() to call once the
     // visitor's access record (with schoolName/email) is known.
     // -- Last Updated (banner) --------------------------------------------
@@ -1484,6 +1501,7 @@
       USER_EMAIL = access.email || '';
       USER_NAME = access.name || '';
       loadSchoolState();
+      loadSiteContent();
       // Gives this visitor view access to their school's evidence folder,
       // so attachment links open for everyone at the school.
       google.script.run
@@ -1747,12 +1765,47 @@
         return renderThemeCard(t, i, accentHex, accentRgb, baseDelay + i * 35);
       }).join('');
       // The icon circle is filled with the Element's own wheel colour.
+      currentSegment = segment;
       detailEl.innerHTML =
         '<div class="element-detail" style="--element-color:' + accentHex + '">' +
           elementIconPlaceholder() +
           '<h2 class="element-title">' + escapeHtml(title) + '</h2>' +
           '<div class="theme-cards">' + cardsHtml + '</div>' +
+          '<div class="element-resources"></div>' +
         '</div>';
+      renderElementResources();
+    }
+
+    // -- Element resources ------------------------------------------------
+    // Links from the Users spreadsheet's Resources tab (Code.gs's
+    // getSiteContent()), shown as buttons under the selected Element's
+    // Theme cards. A row's Element is matched to the Element's name as
+    // shown in the app (ignoring case, spacing and "&" vs "and") or to its
+    // wheel id.
+    var currentSegment = null;
+
+    function normaliseElementName(name) {
+      return String(name || '').toLowerCase().replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, ' ').trim();
+    }
+
+    function renderElementResources() {
+      var box = detailEl.querySelector('.element-resources');
+      if (!box || !currentSegment) return;
+      var data = ELEMENT_THEMES[currentSegment.id];
+      var names = [
+        normaliseElementName((data && data.title) || currentSegment.lines.join(' ')),
+        normaliseElementName(currentSegment.id)
+      ];
+      var links = (SITE_CONTENT.resources || []).filter(function (r) {
+        return names.indexOf(normaliseElementName(r.element)) >= 0 && /^https?:\/\//i.test(r.url);
+      });
+      box.innerHTML = links.length
+        ? '<h3 class="element-resources-title">Element Resources</h3>' +
+          '<div class="element-resources-links">' + links.map(function (r) {
+            return '<a class="element-resource-link" href="' + escapeHtml(r.url) + '" target="_blank" rel="noopener">' +
+              escapeHtml(r.label) + '</a>';
+          }).join('') + '</div>'
+        : '';
     }
 
     // Reflects a Theme's current grade onto its outer card, live, without a
@@ -1941,10 +1994,11 @@
     var composeAttachments = []; // staged for the evidence currently being composed
     var editingNumber = null;    // set while editing an existing entry; null while composing a new one
 
-    function renderRubricHeader(theme) {
+    // The level names above the rubric columns. The theme's current grade
+    // isn't highlighted here: the Grade badge shows it.
+    function renderRubricHeader() {
       return RUBRIC_LEVELS.map(function (key) {
-        var isCurrent = theme.grade === key;
-        return '<div class="rubric-header-cell' + (isCurrent ? ' is-current' : '') + '">' + GRADES[key].label + '</div>';
+        return '<div class="rubric-header-cell">' + GRADES[key].label + '</div>';
       }).join('');
     }
 
@@ -1962,7 +2016,9 @@
             return;
           }
           var isSel = row.selected === key;
+          // --level-rgb tints the cell in its level's grade colour when selected.
           html += '<div class="rubric-cell' + (isSel ? ' is-selected' : '') + '" tabindex="0" role="button"' +
+            ' style="--level-rgb:' + hexToRgbString(GRADES[key].color) + '"' +
             ' aria-pressed="' + isSel + '" data-row="' + rowIdx + '" data-level="' + key + '">' +
             '<span class="rubric-cell-level">' + GRADES[key].label + '</span>' +
             escapeHtml(cellText) +
@@ -2682,7 +2738,7 @@
     });
 
     function refreshRubricAndBadge(theme) {
-      rubricHeaderEl.innerHTML = renderRubricHeader(theme);
+      rubricHeaderEl.innerHTML = renderRubricHeader();
       rubricGridEl.innerHTML = renderRubricGrid(theme);
       var grade = GRADES[theme.grade] || GRADES.ungraded;
       gradeBadgeText.textContent = grade.label;
