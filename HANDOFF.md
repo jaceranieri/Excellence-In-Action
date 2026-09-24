@@ -48,7 +48,7 @@ owner):**
   the existing tab on first use, so no manual sheet edit is needed.
 - Attachment names are always one line, cut off with "…". The full
   name is in the tooltip.
-- Evidence saves report progress in bottom-right **toasts**
+- Evidence saves report progress in bottom-left **toasts**
   (`createToast()` in `Script_App.html`): "Copying N files to your
   school's evidence folder…", then "Evidence copied…" or "Evidence not
   saved". Toasts sit outside the modal, so they keep updating after it
@@ -57,6 +57,39 @@ owner):**
   pill.
 - To deploy: paste `Code.gs`, `Script_App.html` and
   `Stylesheet_ThemeModal.html`, then publish a new version.
+
+**School history, step 1 of 3 (recording), not yet confirmed live:**
+The plan agreed with the project owner:
+- Each school gets a history of every change, with whole-school restore
+  to any point. Everyone at the school can view and restore.
+- One person's changes are grouped into one entry until 30 minutes
+  idle. People can also save named checkpoints.
+- A restore brings evidence back fully: deleted entries return, with
+  their files moved out of ARCHIVE, and later entries are archived.
+- History is kept forever and opens from a History button in the banner.
+- Step 1 (done): record history on every save. Step 2: the restore
+  engine and preview. Step 3: the History panel UI.
+
+What step 1 changed:
+- Every ratings and evidence change is written to the new **History**
+  tab, grouped as above. Each evidence save also writes a permanent row
+  to the new **EvidenceVersions** tab. See "School history" below.
+- **Ratings saves now send only the themes that changed**, and
+  `saveRatings()` merges them into the school's row. Two people editing
+  different themes at the same time no longer overwrite each other
+  (this was open item 5).
+- **Restore counter:** every save carries the page's `stateVersion`. A
+  save from a page loaded before a restore is refused, and the page
+  reloads and says so. Restores don't exist until step 2, so for now
+  the counter stays at 0.
+- **Editing evidence that someone else deleted** used to quietly re-add
+  it as a new entry. It now shows "deleted by someone else" with Try
+  again (save it as new) or Discard.
+- Toasts moved to the bottom-left, so an error toast no longer covers
+  the modal's Submit / Add Evidence buttons.
+- To deploy: paste `Code.gs`, `Script_App.html` and
+  `Stylesheet_ThemeModal.html`, then publish a new version. The new tabs
+  and columns create themselves.
 
 **Open items / next steps:**
 1. **"Untitled document" copy error:** one staff member couldn't
@@ -77,9 +110,7 @@ owner):**
    EvidenceFolders into a Shared Drive would remove both risks. The code
    already passes `supportsAllDrives` everywhere, but it hasn't been
    tried.
-5. **Ratings are last-write-wins per school** (see "Save flow —
-   Ratings"). Revisit only if simultaneous edits at the same school
-   cause problems.
+5. **School history steps 2 and 3** (see above).
 
 ## What this is
 
@@ -172,18 +203,23 @@ in `import-eia.py` itself; not run by the app.
 Every Theme's grade, rubric-cell selections, and evidence entries now
 persist to a **separate** spreadsheet from the Users sheet:
 `https://docs.google.com/spreadsheets/d/15l-HVd1MtjN3uc-jnXDEQSNMDHDN1NTJMSa3v78ptfQ/`
-(the `DATA_SHEET_ID` Script Property). Two tabs, created automatically on
-first write if they don't already exist (`ensureSheet_()`):
+(the `DATA_SHEET_ID` Script Property). Tabs are created automatically on
+first write if they don't already exist (`ensureSheet_()`). Columns added
+later always go at the end, and `ensureSheet_()` labels them on existing
+tabs.
 
 - **Ratings** — one row per school: `SchoolName, RatingsJSON,
-  LastUpdatedBy, LastUpdatedAt`. `RatingsJSON` is
+  LastUpdatedBy, LastUpdatedAt, RestoreCount, LastHistoryId,
+  LastHistoryRow`. `RatingsJSON` is
   `{"<themeId>": {"grade": "sustaining", "rubric": [<selected level per
   rubric row, in array order, or null>, ...]}, ...}` for every theme.
-  Saved as one whole-row overwrite per save (last-write-wins — see below).
+  The last three columns are history bookkeeping (see "School history").
 - **EvidenceLog** — one row per evidence entry (not per school):
   `EntryId, SchoolName, ThemeId, EntryNumber, Type, Date, Text,
-  Attachments, CreatedBy, CreatedAt, UpdatedAt, Title`. `Text` holds
-  the Details; `Title` was added later, so it's last. `Attachments` is a JSON
+  Attachments, CreatedBy, CreatedAt, UpdatedAt, Title, VersionId`.
+  `Text` holds the Details. `VersionId` is the entry's current row in
+  EvidenceVersions.
+- **History** and **EvidenceVersions** — see "School history" below. `Attachments` is a JSON
   array of `{fileId, name, mimeType, url}`, each a copy inside the
   school's evidence folder. `EntryId` (a UUID,
   generated server-side in `saveEvidenceEntry()`) is the real identity for
@@ -200,25 +236,22 @@ it's what survives a future rubric wording edit or theme reorder, unlike
 array position or title text.
 
 **Load flow**: `Script_App.html`'s `window.onAppEntered(access)` calls
-`Code.gs`'s `getSchoolState(schoolName)`, which returns
-`{ratings, evidence}` for that school; `applySchoolState()` merges it
-onto `ELEMENT_THEMES` in place (a theme with no saved row keeps its
-built-in "ungraded, nothing selected" default). Runs once, right after
-the login gate's Continue click.
+`Code.gs`'s `getSchoolState()`, which returns
+`{ratings, evidence, stateVersion}` for the visitor's school.
+`applySchoolState()` resets every theme to its default, then applies
+it onto `ELEMENT_THEMES` in place. Runs right after the login gate's
+Continue click, and again whenever a save is refused because the school
+was restored (`reloadAfterRestore()`).
 
 **Save flow — Ratings**: any rubric-cell click or grade-dropdown change
 calls `scheduleSaveRatings()`, which debounces ~1.5s (so clicking through
 several rubric rows collapses into one save) before calling `Code.gs`'s
-`saveRatings()` with the *entire* ratings blob for every theme, not just
-what changed. Also flushed on tab-hide/`beforeunload`. A bottom-right
-toast ("Saving ratings…/Ratings saved/Ratings didn't save — retrying")
-reflects this. **This is last-write-wins, not a
-field-level merge** — two staff at the same school saving within the same
-debounce window can clobber each other's change to a *different* theme.
-Accepted tradeoff for v1 (see the original planning conversation); if
-concurrent same-school editing turns out to be common in practice, the
-fix is a read-modify-write per-theme-key merge inside `saveRatings()`
-rather than a whole-row overwrite.
+`saveRatings()` with only the themes changed since the last save
+(`dirtyThemeIds`). The server merges them into the school's saved
+ratings, so different themes never overwrite each other; the same theme
+is still last-write-wins. Also flushed on tab-hide/`beforeunload`. A
+bottom-left toast ("Saving ratings…/Ratings saved/Ratings didn't save —
+retrying") reflects this.
 
 **Save flow — Evidence**: Submit closes the draft immediately. The entry
 appears (opened) with a pulsing "Copying files…" / "Saving…" status, and
@@ -407,9 +440,50 @@ reconnect.
 - A console line `[Violation] Permissions policy violation: unload is not
   allowed in this document` appears when the Picker opens. It comes from
   Google's own Picker/gapi scripts, is harmless, and isn't ours to fix.
-- `RATINGS_HEADERS` / `EVIDENCE_HEADERS` in `Code.gs` are the source of
-  truth for column order. `ensureSheet_()` only writes headers when it
-  creates a tab.
+- `RATINGS_HEADERS` / `EVIDENCE_HEADERS` / `HISTORY_HEADERS` /
+  `EVIDENCE_VERSION_HEADERS` in `Code.gs` are the source of
+  truth for column order. `ensureSheet_()` writes headers when it
+  creates a tab, and labels any columns added at the end since.
+
+## School history (`gas/` only)
+
+Status and the agreed plan are under "Current status" at the top. The
+design notes are at the "School history" section of `Code.gs`. In brief:
+
+- **History tab**, one row per history entry: `HistoryId, SchoolName,
+  Kind, Label, Actor, ActorName, StartedAt, UpdatedAt, ChangeCount,
+  ChangesJSON, SnapshotJSON`.
+  - `Kind` is `baseline`, `auto`, and later `checkpoint` / `restore`.
+  - `ChangesJSON` lists what changed (grade, rubric cell, evidence
+    add/edit/delete), capped at 200 per entry.
+  - `SnapshotJSON` is the whole school's state after the entry:
+    `{ratings, evidence: [versionId, ...]}`. That's what a restore puts
+    back.
+- **Baseline:** just before a school's first recorded change, its
+  current state is saved as a `baseline` entry ("History started").
+  Evidence saved before history existed gets its first EvidenceVersions
+  row at that point.
+- **Grouping:** a change joins the school's latest entry if that is an
+  `auto` entry by the same person, updated within 30 minutes
+  (`HISTORY_GROUP_MINUTES`). Changes that cancel out are dropped: a
+  cell clicked on and off again, or evidence added then deleted.
+- **EvidenceVersions tab**, one never-changed row per evidence save:
+  `VersionId, EntryId, SchoolName, ThemeId, EntryNumber, Type, Date,
+  Title, Text, Attachments, SavedBy, SavedAt`. Snapshots refer to these
+  16-character ids, so a school with 36 themes and 500 evidence entries
+  has a ~13 KB snapshot (a cell holds 50,000 characters).
+- **Finding the latest entry:** the Ratings row's `LastHistoryId` /
+  `LastHistoryRow` point at it. The row is only a hint. If the History
+  tab has been sorted by hand, it's found by id instead.
+- **Restore counter:** `RestoreCount` on the Ratings row. Pages send it
+  as `stateVersion`, and `isStaleSave_()` refuses saves from a page
+  older than the last restore. Pages from before this change send no
+  version; they're only refused once the school has been restored.
+- **History never blocks a save:** if writing history fails, the save
+  still goes through and the error is logged
+  (`Could not record history…` in Executions).
+- **Don't delete or reorder rows** on History or EvidenceVersions by
+  hand. Old snapshots point at version rows.
 
 ## Layout system — read this before touching sizing
 

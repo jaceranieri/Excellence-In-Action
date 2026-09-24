@@ -1364,13 +1364,24 @@
 
     var SCHOOL_NAME = '';
     var USER_EMAIL = '';
+    // The school's restore count when its state was loaded (Code.gs's
+    // getSchoolState()). Sent with every save; the server refuses saves
+    // from a page loaded before the school was restored to an earlier
+    // point, and the page then reloads (reloadAfterRestore()).
+    var STATE_VERSION = 0;
 
     // Applies a school's saved {ratings, evidence} (see Code.gs's
-    // getSchoolState()) onto ELEMENT_THEMES in place. A theme with no
-    // saved rating entry keeps its ELEMENT_THEMES default (ungraded,
-    // nothing selected) — this only overwrites themes the sheet actually
-    // has data for.
+    // getSchoolState()) onto ELEMENT_THEMES in place. Every theme is reset
+    // to its default first (ungraded, nothing selected, no evidence), so
+    // reloading after a restore doesn't leave anything behind.
     function applySchoolState(state) {
+      Object.keys(THEME_BY_ID).forEach(function (themeId) {
+        var theme = THEME_BY_ID[themeId];
+        theme.grade = 'ungraded';
+        theme.rubric.forEach(function (row) { row.selected = null; });
+        theme.evidence = [];
+      });
+      STATE_VERSION = state.stateVersion || 0;
       Object.keys(state.ratings || {}).forEach(function (themeId) {
         var theme = THEME_BY_ID[themeId];
         if (!theme) return; // stale id from a since-removed theme — ignore, don't throw
@@ -1390,7 +1401,7 @@
       });
     }
 
-    function loadSchoolState() {
+    function loadSchoolState(onLoaded, onError) {
       if (!SCHOOL_NAME) return;
       google.script.run
         .withSuccessHandler(function (state) {
@@ -1398,11 +1409,44 @@
           updateDotRingColors();
           var selected = wheel && wheel.getSelected && wheel.getSelected();
           if (selected) renderElementDetail(selected);
+          if (onLoaded) onLoaded();
         })
         .withFailureHandler(function (err) {
           console.error('Failed to load saved ratings/evidence:', err);
+          if (onError) onError(err);
         })
         .getSchoolState();
+    }
+
+    // A save was refused because the school has been restored to an
+    // earlier point since this page loaded. Unsaved rating changes are
+    // dropped (they were made on top of the old state); the page reloads
+    // the school's current state, and `afterReload` can put back anything
+    // worth keeping (see saveEntryInBackground()).
+    var restoreReloadCallbacks = null;
+    var restoreToast = null;
+
+    function reloadAfterRestore(afterReload) {
+      if (restoreReloadCallbacks) {
+        if (afterReload) restoreReloadCallbacks.push(afterReload);
+        return;
+      }
+      restoreReloadCallbacks = afterReload ? [afterReload] : [];
+      dirtyThemeIds = {};
+      clearTimeout(ratingsSaveTimer);
+      var toast = restoreToast || (restoreToast = createToast());
+      toast.update('busy', 'Refreshing…', 'Your school’s work was restored to an earlier point.');
+      loadSchoolState(function () {
+        var callbacks = restoreReloadCallbacks;
+        restoreReloadCallbacks = null;
+        callbacks.forEach(function (cb) { cb(); });
+        refreshOpenModal();
+        toast.update('info', 'Your school’s work was restored to an earlier point',
+          'The page has been refreshed to show it. Any changes you made just before it happened weren’t saved.', 12000);
+      }, function () {
+        restoreReloadCallbacks = null;
+        toast.update('error', 'Couldn’t refresh', 'Your school’s work was restored to an earlier point. Reload the page to see it.');
+      });
     }
 
     // Exposed for Script_LoginGate.html's enterApp() to call once the
@@ -1427,15 +1471,15 @@
     // are last-write-wins whole-row overwrites (see Code.gs's saveRatings
     // doc comment) — acceptable for v1 per HANDOFF.md.
     var ratingsSaveTimer = null;
-    var ratingsDirty = false;
+    var dirtyThemeIds = {}; // themes changed since the last ratings save
     var ratingsToast = null;
 
     // -- Toasts --------------------------------------------------------------
-    // Status messages stacked in the bottom-right corner, outside the Theme
+    // Status messages stacked in the bottom-left corner, outside the Theme
     // modal, so a background evidence save keeps reporting progress (and
     // its result) after the modal is closed. Each toast is reusable:
     // update() puts it back on screen if it was dismissed or auto-hidden.
-    // States: 'busy' (spinner), 'success', 'error'.
+    // States: 'busy' (spinner), 'success', 'error', 'info'.
     var toastStackEl = null;
 
     function createToast() {
@@ -1486,9 +1530,9 @@
       ratingsToast.update(state, title, '', autoHideMs);
     }
 
-    function buildRatingsPayload() {
+    function buildRatingsPayload(themeIds) {
       var payload = {};
-      Object.keys(THEME_BY_ID).forEach(function (themeId) {
+      themeIds.forEach(function (themeId) {
         var theme = THEME_BY_ID[themeId];
         payload[themeId] = {
           grade: theme.grade,
@@ -1498,25 +1542,35 @@
       return payload;
     }
 
+    // Only the themes changed since the last save are sent; Code.gs's
+    // saveRatings() merges them into the school's saved ratings.
     function flushRatingsSave() {
-      if (!ratingsDirty || !SCHOOL_NAME) return;
-      ratingsDirty = false;
+      var themeIds = Object.keys(dirtyThemeIds);
+      if (!themeIds.length || !SCHOOL_NAME) return;
+      dirtyThemeIds = {};
       clearTimeout(ratingsSaveTimer);
       showRatingsToast('busy', 'Saving ratings…');
       google.script.run
-        .withSuccessHandler(function () { showRatingsToast('success', 'Ratings saved', 1800); })
+        .withSuccessHandler(function (result) {
+          if (result && result.stale) {
+            if (ratingsToast) ratingsToast.dismiss();
+            reloadAfterRestore();
+            return;
+          }
+          showRatingsToast('success', 'Ratings saved', 1800);
+        })
         .withFailureHandler(function (err) {
           console.error('Failed to save ratings:', err);
           showRatingsToast('error', 'Ratings didn’t save — retrying');
-          ratingsDirty = true;
+          themeIds.forEach(function (id) { dirtyThemeIds[id] = true; });
           ratingsSaveTimer = setTimeout(flushRatingsSave, 4000);
         })
-        .saveRatings(JSON.stringify(buildRatingsPayload()));
+        .saveRatings(JSON.stringify(buildRatingsPayload(themeIds)), STATE_VERSION);
     }
 
-    function scheduleSaveRatings() {
-      if (!SCHOOL_NAME) return;
-      ratingsDirty = true;
+    function scheduleSaveRatings(theme) {
+      if (!SCHOOL_NAME || !theme) return;
+      dirtyThemeIds[theme.id] = true;
       clearTimeout(ratingsSaveTimer);
       ratingsSaveTimer = setTimeout(flushRatingsSave, 1500);
     }
@@ -2022,8 +2076,9 @@
         // backend in the first place — nothing to delete server-side.
         if (removed && removed.entryId && SCHOOL_NAME) {
           google.script.run
+            .withSuccessHandler(function (result) { if (result && result.stale) reloadAfterRestore(); })
             .withFailureHandler(function (err) { console.error('Failed to delete evidence entry:', err); })
-            .deleteEvidenceEntry(removed.entryId);
+            .deleteEvidenceEntry(removed.entryId, STATE_VERSION);
         }
         return;
       }
@@ -2425,13 +2480,32 @@
         .withSuccessHandler(function (result) {
           savesInFlight--;
           entry.pending = false;
+          if (result && result.stale) {
+            handleStaleEntrySave(theme, card, entry, toast, toastDetail);
+            return;
+          }
           if (result && result.ok) {
             entry.entryId = result.entryId;
             entry.attachments = result.attachments || [];
             delete entry.lastSaved;
+            // A reload after a restore may have fetched the school's state
+            // before this save landed, leaving this entry out of the list.
+            theme.evidence = theme.evidence || [];
+            if (theme.evidence.indexOf(entry) < 0 &&
+                !theme.evidence.some(function (e) { return e.entryId === entry.entryId; })) {
+              theme.evidence.push(entry);
+            }
             toast.update('success', fileCount
               ? 'Evidence copied to your school’s evidence folder'
               : 'Evidence saved', toastDetail, 5000);
+          } else if (result && result.gone) {
+            // Deleted by someone else while this was being edited: offer
+            // to save it again as a new entry. Attachments that were on the
+            // deleted entry are in ARCHIVE now, so only new picks carry over.
+            entry.entryId = null;
+            delete entry.lastSaved;
+            entry.attachments = entry.attachments.filter(function (a) { return a.pickedId; });
+            entry.saveError = 'This evidence was deleted by someone else, so your changes weren’t saved. Choose Try again to add it as new evidence, or Discard.';
           } else if (result && result.needsAuth) {
             pickerAuth = null;
             entry.saveError = 'Your Google Drive connection needs renewing. Choose Edit, click Attach Files to reconnect, then save again.';
@@ -2460,10 +2534,30 @@
           title: entry.title,
           text: entry.text,
           themeTitle: theme.title,
+          stateVersion: STATE_VERSION,
           attachments: entry.attachments.map(function (a) {
             return a.pickedId ? { pickedId: a.pickedId, name: a.name } : { fileId: a.fileId };
           })
         });
+    }
+
+    // The school was restored to an earlier point, so the server refused
+    // this save. New evidence is kept as a "Not saved" entry (Try again
+    // saves it on top of the restored state); an edit is dropped, since
+    // the entry it edited may not even exist any more.
+    function handleStaleEntrySave(theme, card, entry, toast, toastDetail) {
+      var isNew = !entry.entryId;
+      toast.update('error', 'Evidence not saved', toastDetail + (isNew
+        ? ' — your school’s work was restored to an earlier point. Open this Theme to try again.'
+        : ' — your school’s work was restored to an earlier point, so your changes were discarded.'));
+      reloadAfterRestore(function () {
+        if (!isNew) return;
+        theme.evidence = theme.evidence || [];
+        entry.number = theme.evidence.reduce(function (max, e) { return Math.max(max, e.number || 0); }, 0) + 1;
+        entry.saveError = 'Not saved: your school’s work was restored to an earlier point while you were adding this. Choose Try again to add it now.';
+        theme.evidence.push(entry);
+        syncCard(card, theme);
+      });
     }
 
     // Undoes a failed save: a never-saved entry is removed; an edit of a
@@ -2539,6 +2633,18 @@
       gradeDropdownEl.innerHTML = renderGradeDropdown(theme);
     }
 
+    // After a reload re-renders the Theme cards, points the open modal at
+    // the new card for its theme and redraws its rubric and evidence (a
+    // draft being composed is left alone).
+    function refreshOpenModal() {
+      if (!currentModalTheme || !modalOverlay.classList.contains('is-open')) return;
+      var idx = currentThemes ? currentThemes.indexOf(currentModalTheme) : -1;
+      var card = idx >= 0 && detailEl.querySelector('.theme-card[data-theme-index="' + idx + '"]');
+      if (card) currentModalCard = card;
+      refreshRubricAndBadge(currentModalTheme);
+      if (evidenceComposeEl.style.display === 'none') renderEvidenceList(currentModalTheme);
+    }
+
     function openThemeModal(theme, cardEl) {
       currentModalTheme = theme;
       currentModalCard = cardEl;
@@ -2583,7 +2689,7 @@
       currentModalTheme.grade = computeAverageGrade(currentModalTheme);
       refreshRubricAndBadge(currentModalTheme);
       syncCard(currentModalCard, currentModalTheme);
-      scheduleSaveRatings();
+      scheduleSaveRatings(currentModalTheme);
     });
     rubricGridEl.addEventListener('keydown', function (e) {
       if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
@@ -2605,7 +2711,7 @@
       gradeBadgeWrap.classList.remove('is-open');
       refreshRubricAndBadge(currentModalTheme); // rubric selections untouched; header highlight still needs refreshing
       syncCard(currentModalCard, currentModalTheme);
-      scheduleSaveRatings();
+      scheduleSaveRatings(currentModalTheme);
     });
     document.addEventListener('click', function (e) {
       if (gradeBadgeWrap.classList.contains('is-open') && !gradeBadgeWrap.contains(e.target)) {
