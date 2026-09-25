@@ -1889,9 +1889,9 @@
     // ExcellenceWheel.SEGMENTS), so it lines up with the wedges without
     // duplicating the wheel's own arc-drawing math.
     //
-    // In the Our Priorities view (theme-dots.css): only the priority
-    // Themes' slices lift with their wedge; every other slice stays put
-    // and fades.
+    // In the Our Priorities view (theme-dots.css): every slice still lifts
+    // with its wedge, but only the priority Themes' slices keep their full
+    // colour; the rest fade.
     // =======================================================================
 
     var INDICATOR_EDGE_GAP = 0.6;  // degrees inset from the wedge's own edges — matches the wheel's wedge-to-wedge gap
@@ -1931,7 +1931,8 @@
           var a1 = spanStart + (i + 1) * sliceWidth - INDICATOR_SLICE_GAP / 2;
           var d = ExcellenceWheel.roundedSectorPath(geo.R.dotRingInner, geo.R.dotRingOuter, a0, a1, INDICATOR_CORNER);
           var attrs = ' d="' + d + '" data-seg-id="' + seg.id + '" data-theme-idx="' + i + '"';
-          slices += '<path class="ew-theme-indicator" fill="' + INDICATOR_UNGRADED_COLOR + '"' +
+          slices += '<path class="ew-theme-indicator-base" style="animation-delay:' + delay + 'ms"' + attrs + '/>' +
+            '<path class="ew-theme-indicator" fill="' + INDICATOR_UNGRADED_COLOR + '"' +
             ' style="animation-delay:' + delay + 'ms"' + attrs + '/>';
         }
         slot.innerHTML =

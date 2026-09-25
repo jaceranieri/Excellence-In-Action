@@ -10,11 +10,11 @@
  * (wheel.getWedgeSlot()) where buildDotRing() in the app script draws
  * that Element's slices.
  *
- * Because the slices sit inside their wedge, they lift with it (over the
- * dark outer ring) on hover and selection, and click through to it. Each
- * slice has a black border, like the wedges, and is coloured only by its
- * Theme's grade. It isn't dimmed with the wedges, except in the Our
- * Priorities view (below).
+ * Because the slices sit inside their wedge, they lift with it as one
+ * piece (over the dark outer ring) on hover and selection, and click
+ * through to it. Each slice has a black border, like the wedges, and is
+ * coloured only by its Theme's grade. It isn't dimmed with the wedges,
+ * except in the Our Priorities view (below).
  *
  * Entrance animation: reuses `@keyframes ew-pop-in`, defined in
  * excellence-wheel.css, not redeclared here — both stylesheets are
@@ -39,31 +39,36 @@
   stroke-linejoin: round;
   transform-box: view-box;
   transform-origin: 546px 546px;
-  transition: fill 2s ease, opacity 0.18s ease, transform 0.15s ease;
+  transition: fill 2s ease, opacity 0.18s ease;
 }
 
-/* Our Priorities view (the wheel adds .ew-has-highlight): only priority
-   Themes' slices lift with their wedge. Every other slice stays where it
-   is, by undoing its wedge's 1.045 lift, and fades. */
+/* A white base under each slice, lifting with it, so a faded slice reads
+   as a pale tint even where it lifts over the dark outer ring. */
+.ew-theme-indicator-base {
+  fill: #ffffff;
+  transform-box: view-box;
+  transform-origin: 546px 546px;
+}
+
+/* Our Priorities view (the wheel adds .ew-has-highlight): all of a
+   wedge's slices still lift with it, but only priority Themes' slices
+   keep their full colour; every other slice fades. */
 .ew-has-highlight .ew-theme-indicator:not(.is-priority) {
   opacity: 0.3;
-}
-
-.ew-has-highlight .ew-wedge.is-hovered .ew-theme-indicator:not(.is-priority),
-.ew-wedge.is-highlighted .ew-theme-indicator:not(.is-priority) {
-  transform: scale(0.95694); /* 1 / 1.045 */
 }
 
 /* Entrance plays once, when buildDotRing() first constructs the slices —
    a later grade change only ever updates each path's own `fill` in
    place via updateDotRingColors(). */
-.ew-theme-indicator-layer.is-entering .ew-theme-indicator {
+.ew-theme-indicator-layer.is-entering .ew-theme-indicator,
+.ew-theme-indicator-layer.is-entering .ew-theme-indicator-base {
   animation: ew-pop-in 320ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
   /* animation-delay set per Element inline — see buildDotRing() */
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .ew-theme-indicator-layer.is-entering .ew-theme-indicator {
+  .ew-theme-indicator-layer.is-entering .ew-theme-indicator,
+  .ew-theme-indicator-layer.is-entering .ew-theme-indicator-base {
     animation: none;
   }
   .ew-theme-indicator {

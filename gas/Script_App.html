@@ -1507,7 +1507,14 @@
       SCHOOL_NAME = access.schoolName || '';
       USER_EMAIL = access.email || '';
       USER_NAME = access.name || '';
-      loadSchoolState();
+      // Bottom-left toast while the school's saved work loads on entry.
+      var loadToast = createToast();
+      loadToast.update('busy', 'Loading your school’s data…');
+      loadSchoolState(function () {
+        loadToast.update('success', 'Your school’s data is ready', '', 2000);
+      }, function () {
+        loadToast.update('error', 'Couldn’t load your school’s data', 'Reload the page to try again.');
+      });
       loadSiteContent();
       // Gives this visitor view access to their school's evidence folder,
       // so attachment links open for everyone at the school.
@@ -1993,9 +2000,9 @@
     // ExcellenceWheel.SEGMENTS), so it lines up with the wedges without
     // duplicating the wheel's own arc-drawing math.
     //
-    // In the Our Priorities view (theme-dots.css): only the priority
-    // Themes' slices lift with their wedge; every other slice stays put
-    // and fades.
+    // In the Our Priorities view (theme-dots.css): every slice still lifts
+    // with its wedge, but only the priority Themes' slices keep their full
+    // colour; the rest fade.
     // =======================================================================
 
     var INDICATOR_EDGE_GAP = 0.6;  // degrees inset from the wedge's own edges — matches the wheel's wedge-to-wedge gap
@@ -2038,7 +2045,8 @@
           var a1 = spanStart + (i + 1) * sliceWidth - INDICATOR_SLICE_GAP / 2;
           var d = ExcellenceWheel.roundedSectorPath(geo.R.dotRingInner, geo.R.dotRingOuter, a0, a1, INDICATOR_CORNER);
           var attrs = ' d="' + d + '" data-seg-id="' + seg.id + '" data-theme-idx="' + i + '"';
-          slices += '<path class="ew-theme-indicator" fill="' + INDICATOR_UNGRADED_COLOR + '"' +
+          slices += '<path class="ew-theme-indicator-base" style="animation-delay:' + delay + 'ms"' + attrs + '/>' +
+            '<path class="ew-theme-indicator" fill="' + INDICATOR_UNGRADED_COLOR + '"' +
             ' style="animation-delay:' + delay + 'ms"' + attrs + '/>';
         }
         slot.innerHTML =

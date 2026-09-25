@@ -566,9 +566,8 @@
 
     wedges.forEach(function (el) {
       var id = el.getAttribute('data-id');
-      // .is-hovered (set here) lifts the wedge in excellence-wheel.css.
-      el.addEventListener('pointerenter', function () { el.classList.add('is-hovered'); hoveredId = id; updateRingHighlights(); updateWedgeDimming(); });
-      el.addEventListener('pointerleave', function () { el.classList.remove('is-hovered'); if (hoveredId === id) hoveredId = null; updateRingHighlights(); updateWedgeDimming(); });
+      el.addEventListener('pointerenter', function () { hoveredId = id; updateRingHighlights(); updateWedgeDimming(); });
+      el.addEventListener('pointerleave', function () { if (hoveredId === id) hoveredId = null; updateRingHighlights(); updateWedgeDimming(); });
       el.addEventListener('focus', function () { hoveredId = id; updateRingHighlights(); updateWedgeDimming(); });
       el.addEventListener('blur', function () { if (hoveredId === id) hoveredId = null; updateRingHighlights(); updateWedgeDimming(); });
     });

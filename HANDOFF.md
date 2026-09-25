@@ -273,8 +273,14 @@ resources and messages):**
   `getWedgeSlot()`), not in a layer behind the wedges. They lift with
   the wedge over the dark outer ring, and clicking one selects the
   Element.
-- The hover lift uses an `.is-hovered` class set from pointer events,
-  not `:hover`.
+- The hover lift is plain CSS `:hover`. A class set from pointer
+  events was tried and left wedges stuck lifted on the live site.
+- In the priorities view every slice lifts with its wedge, but only
+  priority Themes' slices keep full colour; the rest fade (a white base
+  under each slice keeps a faded one pale over the dark ring).
+- A bottom-left toast ("Loading your school's data…", then "Your
+  school's data is ready") shows while the school's work loads after
+  the login gate (`onAppEntered()`).
 - **Priority carousel:** the priorities panel shows at most 6 cards
   (`PRIORITIES_PER_PAGE`). More go on further pages, with previous /
   page-dot / next buttons under the cards. Opening the view starts on
