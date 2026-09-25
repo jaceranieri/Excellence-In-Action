@@ -199,6 +199,43 @@
   // to fit on small shapes.
   var CORNER = { wedge: 12, ring: 10 };
 
+  // The even gap (in viewBox units) between the domain arcs, the slices
+  // and the outer ring. Checked in R above: 178 + 14 = 192, 448 + 14 = 462.
+  var SPACE = 14;
+
+  // Like roundedSectorPath(), but the straight sides are pulled in by
+  // `half` units, parallel to the slice's centre line, rather than by a
+  // fixed angle. Neighbouring slices then have an even gap between them,
+  // instead of one that narrows towards the centre.
+  function evenSectorPath(rInner, rOuter, startDeg, endDeg, half, radius) {
+    function P(r, deg) { var q = polar(r, deg); return [q.x, q.y]; }
+    function inset(r) { return Math.asin(Math.min(1, half / r)) * 180 / Math.PI; }
+    function along(p, q, d) {
+      var dx = q[0] - p[0], dy = q[1] - p[1], L = Math.sqrt(dx * dx + dy * dy);
+      return [p[0] + dx * d / L, p[1] + dy * d / L];
+    }
+    function f(p) { return p[0].toFixed(2) + ' ' + p[1].toFixed(2); }
+    var i0 = startDeg + inset(rInner), i1 = endDeg - inset(rInner);
+    var o0 = startDeg + inset(rOuter), o1 = endDeg - inset(rOuter);
+    var c = Math.min(radius || 0, (rOuter - rInner) / 2);
+    var O0 = P(rOuter, o0), O1 = P(rOuter, o1), I1 = P(rInner, i1), I0 = P(rInner, i0);
+    var dO = (c / rOuter) * 180 / Math.PI, dI = (c / rInner) * 180 / Math.PI;
+    var largeOut = o1 - o0 - 2 * dO > 180 ? 1 : 0;
+    var largeIn = i1 - i0 - 2 * dI > 180 ? 1 : 0;
+    return [
+      'M', f(P(rOuter, o0 + dO)),
+      'A', rOuter, rOuter, 0, largeOut, 1, f(P(rOuter, o1 - dO)),
+      'Q', f(O1), f(along(O1, I1, c)),
+      'L', f(along(I1, O1, c)),
+      'Q', f(I1), f(P(rInner, i1 - dI)),
+      'A', rInner, rInner, 0, largeIn, 0, f(P(rInner, i0 + dI)),
+      'Q', f(I0), f(along(I0, O0, c)),
+      'L', f(along(O0, I0, c)),
+      'Q', f(O0), f(P(rOuter, o0 + dO)),
+      'Z'
+    ].join(' ');
+  }
+
   function roundedSectorPath(rInner, rOuter, startDeg, endDeg, radius) {
     var r = Math.min(radius || 0, (rOuter - rInner) / 2, toRad(endDeg - startDeg) * rInner / 2);
     if (!(r > 0)) return sectorPath(rInner, rOuter, startDeg, endDeg);
@@ -363,8 +400,13 @@
   var R = {
     centerOuter: 100,
     ringInner: 100, ringOuter: 178,
-    wedgeInner: 184, wedgeOuter: 410,
-    dotRingInner: 416, dotRingOuter: 456,
+    // Each Element is one slice from wedgeInner to sliceOuter: the wedge
+    // itself, then (from dotRingInner) the band where the app draws its
+    // theme indicators. SPACE (below) separates everything evenly: domain
+    // arcs from slices, slices from each other, and slices from the dark
+    // outer ring.
+    wedgeInner: 192, wedgeOuter: 408,
+    dotRingInner: 408, dotRingOuter: 448, sliceOuter: 448,
     darkInner: 462, darkOuter: 546
   };
 
@@ -426,8 +468,6 @@
     // inside it, reserving/painting the ring where the app draws its
     // theme-overview dots (see GEOMETRY in the module's return value).
     // Animates in LAST (outermost layer) — see ENTRANCE.outerStart.
-    svg.push('<circle cx="' + CX + '" cy="' + CY + '" r="' + ((R.dotRingInner + R.dotRingOuter) / 2) +
-      '" fill="none" stroke="#ffffff" stroke-width="' + (R.dotRingOuter - R.dotRingInner) + '"/>');
     svg.push('<circle class="ew-outer-ring" cx="' + CX + '" cy="' + CY + '" r="' + ((R.darkInner + R.darkOuter) / 2) + '" fill="none" stroke="' + DARK_RING +
       '" stroke-width="' + (R.darkOuter - R.darkInner) + '" style="animation-delay:' + ENTRANCE.outerStart + 'ms"/>');
     svg.push('<text class="ew-brand-text" style="animation-delay:' + ENTRANCE.brandTextStart + 'ms"><textPath href="#ew-arc-top" startOffset="50%" text-anchor="middle">' +
@@ -443,7 +483,7 @@
       var ringDelay = ENTRANCE.ringStart + idx * ENTRANCE.ringStagger;
       svg.push('<path class="ew-ring" data-category="' + key + '" style="--ring-muted:' + style.ringMuted +
         ';--ring-full:' + style.ring + ';animation-delay:' + ringDelay + 'ms" d="' +
-        roundedSectorPath(R.ringInner, R.ringOuter, c.startAngle + GAP, c.endAngle - GAP, CORNER.ring) + '"/>');
+        evenSectorPath(R.ringInner, R.ringOuter, c.startAngle, c.endAngle, SPACE / 2, CORNER.ring) + '"/>');
       svg.push('<text class="ew-ring-label" style="animation-delay:' + ringDelay + 'ms"><textPath href="#ew-arc-' + key +
         '" startOffset="50%" text-anchor="middle">' + escapeXML(style.label.toUpperCase()) + '</textPath></text>');
     });
@@ -463,11 +503,16 @@
       svg.push('<g class="ew-wedge" tabindex="0" role="button" data-id="' + seg.id + '" data-category="' + seg.category +
         '" aria-label="' + escapeAttr(seg.lines.join(' ')) + '" aria-pressed="false" style="--wedge-muted:' +
         style.wedgeMuted + ';--wedge-full:' + style.wedge + ';animation-delay:' + wedgeDelay + 'ms">');
-      var wedgePath = roundedSectorPath(R.wedgeInner, R.wedgeOuter, seg.startAngle + GAP, seg.endAngle - GAP, CORNER.wedge);
-      // .ew-wedge-slot is for the app's own shapes that should lift with
-      // the wedge (see getWedgeSlot()); it sits below the wedge's fill.
-      svg.push('<g class="ew-wedge-slot"></g>');
-      svg.push('<path class="ew-wedge-fill" d="' + wedgePath + '"/>');
+      // The whole slice, wedge and indicator band together, in the
+      // Element's colour. .ew-wedge-slot, above it, is for the app's own
+      // shapes that lift with the slice (see getWedgeSlot()); it's
+      // clipped to the slice's shape, so the app can draw plain sectors
+      // across the band and they take on the slice's corners and edges.
+      var slicePath = evenSectorPath(R.wedgeInner, R.sliceOuter, seg.startAngle, seg.endAngle, SPACE / 2, CORNER.wedge);
+      var clipId = 'ew-clip-' + seg.id;
+      svg.push('<clipPath id="' + clipId + '"><path d="' + slicePath + '"/></clipPath>');
+      svg.push('<path class="ew-wedge-fill" d="' + slicePath + '"/>');
+      svg.push('<g class="ew-wedge-slot" clip-path="url(#' + clipId + ')"></g>');
       svg.push('<g class="ew-icon" transform="translate(' + iconPt.x + ',' + iconPt.y + ')">' +
         placeholderIcon() + '</g>');
       svg.push('<text class="ew-label" x="' + textTop.x + '" y="' + textTop.y + '" font-size="' + fontSize + '">');
@@ -627,8 +672,9 @@
         updateWedgeDimming();
       },
       getSvgRoot: function () { return svg; },
-      // A <g> inside a wedge, behind its fill, for the app's own shapes
-      // (e.g. theme indicators) that should lift with it.
+      // A <g> inside a wedge, above its fill and clipped to the slice's
+      // shape, for the app's own shapes (e.g. theme indicators) that
+      // should lift with it.
       getWedgeSlot: function (id) {
         var el = container.querySelector('.ew-wedge[data-id="' + id + '"] .ew-wedge-slot');
         return el || null;
@@ -655,6 +701,8 @@
     GEOMETRY: { cx: CX, cy: CY, R: R },
     sectorPath: sectorPath,
     roundedSectorPath: roundedSectorPath,
+    evenSectorPath: evenSectorPath,
+    SPACE: SPACE,
     // Only the piece of ENTRANCE the app actually needs — when to start
     // staggering in the theme-indicator ring, so it can slot into the
     // same inside-out sequence right after the wedges finish appearing,

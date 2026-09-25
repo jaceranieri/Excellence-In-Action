@@ -1879,13 +1879,14 @@
     }
 
     // =======================================================================
-    // Theme indicator ring — the ring band between the wedges and the
-    // outer dark ring, split into even slices per Element, one slice per
-    // Theme, coloured by the Theme's grade. Each Element's slices are drawn
-    // inside its wedge (wheel.getWedgeSlot()), so they lift with it on
-    // hover and selection. Clicking one selects its Element, like the rest of the wedge.
+    // Theme indicators — the band on the outer end of each Element's slice,
+    // split evenly into one piece per Theme, coloured by the Theme's grade,
+    // with thin white lines between them. They're drawn inside the wedge
+    // (wheel.getWedgeSlot(), clipped to the slice's shape), so the band
+    // joins straight onto the wedge and lifts with it on hover and
+    // selection. Clicking one selects its Element, like the rest of the wedge.
     // Drawn with the wheel's exposed geometry (ExcellenceWheel.GEOMETRY,
-    // ExcellenceWheel.roundedSectorPath) and per-segment angles (on
+    // ExcellenceWheel.sectorPath) and per-segment angles (on
     // ExcellenceWheel.SEGMENTS), so it lines up with the wedges without
     // duplicating the wheel's own arc-drawing math.
     //
@@ -1894,9 +1895,7 @@
     // colour; the rest fade.
     // =======================================================================
 
-    var INDICATOR_EDGE_GAP = 0.6;  // degrees inset from the wedge's own edges — matches the wheel's wedge-to-wedge gap
-    var INDICATOR_SLICE_GAP = 1.2; // degrees between adjacent Theme slices within one Element
-    var INDICATOR_CORNER = 6;      // softened corners, a little smaller than the wedges'
+    var INDICATOR_LINE = 4; // white lines between one Element's Theme indicators
 
     // Ungraded reads as almost invisible here on purpose — barely off the
     // ring's white background, so the eye goes straight to what's
@@ -1915,6 +1914,18 @@
     function buildDotRing() {
       var geo = ExcellenceWheel.GEOMETRY;
       var entrance = ExcellenceWheel.ENTRANCE;
+      var rIn = geo.R.dotRingInner, rOut = geo.R.sliceOuter;
+      // The slot is clipped to the slice's shape (excellence-wheel.js), so
+      // each indicator is a plain sector across the band; the first and
+      // last take on the slice's own edges and corners. The band is split
+      // evenly between the slice's straight sides at its middle radius.
+      var rMid = (rIn + rOut) / 2;
+      var inset = Math.asin((ExcellenceWheel.SPACE / 2) / rMid) * 180 / Math.PI;
+      function radialLine(deg) {
+        var a = deg * Math.PI / 180, c = Math.cos(a), s = Math.sin(a);
+        return 'M ' + (geo.cx + (rIn - 1) * c).toFixed(2) + ' ' + (geo.cy + (rIn - 1) * s).toFixed(2) +
+          ' L ' + (geo.cx + (rOut + 2) * c).toFixed(2) + ' ' + (geo.cy + (rOut + 2) * s).toFixed(2);
+      }
       ExcellenceWheel.SEGMENTS.forEach(function (seg, segIdx) {
         var slot = wheel.getWedgeSlot(seg.id);
         var data = ELEMENT_THEMES[seg.id];
@@ -1922,21 +1933,23 @@
         var n = themes.length;
         if (!slot || !n) return;
         var delay = entrance.indicatorStart + segIdx * entrance.indicatorStagger;
-        var spanStart = seg.startAngle + INDICATOR_EDGE_GAP;
-        var spanEnd = seg.endAngle - INDICATOR_EDGE_GAP;
-        var sliceWidth = (spanEnd - spanStart) / n;
-        var slices = '';
+        var spanStart = seg.startAngle + inset;
+        var width = (seg.endAngle - inset - spanStart) / n;
+        var slices = '', lines = '';
         for (var i = 0; i < n; i++) {
-          var a0 = spanStart + i * sliceWidth + INDICATOR_SLICE_GAP / 2;
-          var a1 = spanStart + (i + 1) * sliceWidth - INDICATOR_SLICE_GAP / 2;
-          var d = ExcellenceWheel.roundedSectorPath(geo.R.dotRingInner, geo.R.dotRingOuter, a0, a1, INDICATOR_CORNER);
+          var a0 = i === 0 ? seg.startAngle : spanStart + i * width;
+          var a1 = i === n - 1 ? seg.endAngle : spanStart + (i + 1) * width;
+          var d = ExcellenceWheel.sectorPath(rIn, rOut + 2, a0, a1);
           var attrs = ' d="' + d + '" data-seg-id="' + seg.id + '" data-theme-idx="' + i + '"';
           slices += '<path class="ew-theme-indicator-base" style="animation-delay:' + delay + 'ms"' + attrs + '/>' +
             '<path class="ew-theme-indicator" fill="' + INDICATOR_UNGRADED_COLOR + '"' +
             ' style="animation-delay:' + delay + 'ms"' + attrs + '/>';
+          if (i > 0) lines += '<path class="ew-theme-indicator-line" d="' + radialLine(a0) + '" style="animation-delay:' + delay + 'ms"/>';
         }
         slot.innerHTML =
-          '<g class="ew-theme-indicator-layer is-entering" aria-hidden="true">' + slices + '</g>';
+          '<g class="ew-theme-indicator-layer is-entering" aria-hidden="true">' + slices +
+            '<g class="ew-theme-indicator-lines" stroke-width="' + INDICATOR_LINE + '">' + lines + '</g>' +
+          '</g>';
       });
     }
 

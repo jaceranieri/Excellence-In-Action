@@ -1,8 +1,9 @@
 /*!
- * Theme indicator ring — the ring the wheel reserves between its wedges
- * and its outer dark ring (see GEOMETRY in excellence-wheel.js), split
- * by the app into one slice per Theme, filling each Element's full
- * angular width evenly regardless of how many Themes it has. This is an
+ * Theme indicators — the band on the outer end of each Element's slice
+ * (dotRingInner to sliceOuter in excellence-wheel.js's GEOMETRY), split
+ * by the app into one piece per Theme, evenly, however many Themes the
+ * Element has. The band joins straight onto the wedge with no line; thin
+ * white lines between the pieces make it read as a band. This is an
  * app-level overlay, not part of the wheel component itself: the wheel
  * has no idea Themes or grades exist. It exposes its centre point,
  * radii and path builders, plus a slot inside each wedge
@@ -11,8 +12,8 @@
  *
  * Because the slices sit inside their wedge, they lift with it as one
  * piece (over the dark outer ring) on hover and selection, and click
- * through to it. Each slice is coloured only by its Theme's grade. It isn't dimmed with the wedges,
- * except in the Our Priorities view (below).
+ * through to it. Each piece is coloured only by its Theme's grade. It
+ * isn't dimmed with the wedges, except in the Our Priorities view (below).
  *
  * Entrance animation: reuses `@keyframes ew-pop-in`, defined in
  * excellence-wheel.css, not redeclared here — both stylesheets are
@@ -45,6 +46,15 @@
   transform-origin: 546px 546px;
 }
 
+/* The white lines between one Element's indicators. */
+.ew-theme-indicator-line {
+  fill: none;
+  stroke: #ffffff;
+  pointer-events: none;
+  transform-box: view-box;
+  transform-origin: 546px 546px;
+}
+
 /* Our Priorities view (the wheel adds .ew-has-highlight): all of a
    wedge's slices still lift with it, but only priority Themes' slices
    keep their full colour; every other slice fades. */
@@ -56,14 +66,16 @@
    a later grade change only ever updates each path's own `fill` in
    place via updateDotRingColors(). */
 .ew-theme-indicator-layer.is-entering .ew-theme-indicator,
-.ew-theme-indicator-layer.is-entering .ew-theme-indicator-base {
+.ew-theme-indicator-layer.is-entering .ew-theme-indicator-base,
+.ew-theme-indicator-layer.is-entering .ew-theme-indicator-line {
   animation: ew-pop-in 320ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
   /* animation-delay set per Element inline — see buildDotRing() */
 }
 
 @media (prefers-reduced-motion: reduce) {
   .ew-theme-indicator-layer.is-entering .ew-theme-indicator,
-  .ew-theme-indicator-layer.is-entering .ew-theme-indicator-base {
+  .ew-theme-indicator-layer.is-entering .ew-theme-indicator-base,
+  .ew-theme-indicator-layer.is-entering .ew-theme-indicator-line {
     animation: none;
   }
   .ew-theme-indicator {

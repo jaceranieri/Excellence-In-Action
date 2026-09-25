@@ -267,6 +267,14 @@ resources and messages):**
 - Wedges, the Leading/Teaching/Learning ring arcs and the indicator
   slices have slightly rounded corners (`roundedSectorPath()` in the
   wheel; radii in `CORNER` and `INDICATOR_CORNER`).
+- **Joined slices (option E):** each Element is one slice from the
+  domain arcs out to the dark ring: the wedge, then the Theme indicator
+  band joined straight onto it (no line), split by thin white lines. The
+  slot the app draws into is clipped to the slice's shape, so the app
+  draws plain sectors. Every gap is the same even width (`SPACE`, 14
+  units): arcs to slices, slice to slice, arc to arc, and slice to outer
+  ring (`evenSectorPath()`, whose straight sides are parallel, so a gap
+  doesn't narrow towards the centre).
 - A hard drop shadow on raised wedges, and later black outlines on
   every wedge, arc and slice, were both tried and removed at the
   project owner's request (too busy).
