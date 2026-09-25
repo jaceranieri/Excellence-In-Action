@@ -703,6 +703,11 @@
     sectorPath: sectorPath,
     roundedSectorPath: roundedSectorPath,
     evenSectorPath: evenSectorPath,
+    // A plain circular arc at radius r (for lines along a slice).
+    arcLinePath: function (r, startDeg, endDeg) {
+      var a = polar(r, startDeg), b = polar(r, endDeg);
+      return 'M ' + a.x.toFixed(2) + ' ' + a.y.toFixed(2) + ' A ' + r + ' ' + r + ' 0 0 1 ' + b.x.toFixed(2) + ' ' + b.y.toFixed(2);
+    },
     SPACE: SPACE,
     // Only the piece of ENTRANCE the app actually needs — when to start
     // staggering in the theme-indicator ring, so it can slot into the

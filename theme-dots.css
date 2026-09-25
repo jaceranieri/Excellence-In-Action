@@ -2,8 +2,8 @@
  * Theme indicators — the band on the outer end of each Element's slice
  * (dotRingInner to sliceOuter in excellence-wheel.js's GEOMETRY), split
  * by the app into one piece per Theme, evenly, however many Themes the
- * Element has. The band joins straight onto the wedge with no line; thin
- * white lines between the pieces make it read as a band. This is an
+ * Element has. Thin white lines separate the band from the wedge and the
+ * pieces from each other. This is an
  * app-level overlay, not part of the wheel component itself: the wheel
  * has no idea Themes or grades exist. It exposes its centre point,
  * radii and path builders, plus a slot inside each wedge
@@ -12,8 +12,9 @@
  *
  * Because the slices sit inside their wedge, they lift with it as one
  * piece (over the dark outer ring) on hover and selection, and click
- * through to it. Each piece is coloured only by its Theme's grade. It
- * isn't dimmed with the wedges, except in the Our Priorities view (below).
+ * through to it. Each piece is coloured by its Theme's grade, and fades
+ * when its wedge is dimmed (another Element hovered or selected), like the
+ * wedge itself.
  *
  * Entrance animation: reuses `@keyframes ew-pop-in`, defined in
  * excellence-wheel.css, not redeclared here — both stylesheets are
@@ -44,6 +45,13 @@
   fill: #ffffff;
   transform-box: view-box;
   transform-origin: 546px 546px;
+}
+
+/* An Element that isn't hovered or selected while another is (the wheel
+   dims its wedge): its indicators fade too, but keep a hint of colour.
+   The white base under each one keeps the fade pale. */
+.ew-wedge.is-dimmed .ew-theme-indicator {
+  opacity: 0.35;
 }
 
 /* The white lines between one Element's indicators. */

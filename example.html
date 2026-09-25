@@ -1881,7 +1881,7 @@
     // =======================================================================
     // Theme indicators — the band on the outer end of each Element's slice,
     // split evenly into one piece per Theme, coloured by the Theme's grade,
-    // with thin white lines between them. They're drawn inside the wedge
+    // with thin white lines between them and along the join with the wedge. They're drawn inside the wedge
     // (wheel.getWedgeSlot(), clipped to the slice's shape), so the band
     // joins straight onto the wedge and lifts with it on hover and
     // selection. Clicking one selects its Element, like the rest of the wedge.
@@ -1895,7 +1895,7 @@
     // colour; the rest fade.
     // =======================================================================
 
-    var INDICATOR_LINE = 4; // white lines between one Element's Theme indicators
+    var INDICATOR_LINE = 4; // white lines between the wedge and its indicators, and between indicators
 
     // Ungraded reads as almost invisible here on purpose — barely off the
     // ring's white background, so the eye goes straight to what's
@@ -1946,6 +1946,9 @@
             ' style="animation-delay:' + delay + 'ms"' + attrs + '/>';
           if (i > 0) lines += '<path class="ew-theme-indicator-line" d="' + radialLine(a0) + '" style="animation-delay:' + delay + 'ms"/>';
         }
+        // And one along the join between the wedge and its band.
+        lines += '<path class="ew-theme-indicator-line" d="' + ExcellenceWheel.arcLinePath(rIn, seg.startAngle, seg.endAngle) +
+          '" style="animation-delay:' + delay + 'ms"/>';
         slot.innerHTML =
           '<g class="ew-theme-indicator-layer is-entering" aria-hidden="true">' + slices +
             '<g class="ew-theme-indicator-lines" stroke-width="' + INDICATOR_LINE + '">' + lines + '</g>' +

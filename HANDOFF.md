@@ -269,7 +269,9 @@ resources and messages):**
   wheel; radii in `CORNER` and `INDICATOR_CORNER`).
 - **Joined slices (option E):** each Element is one slice from the
   domain arcs out to the dark ring: the wedge, then the Theme indicator
-  band joined straight onto it (no line), split by thin white lines. The
+  band joined onto it, with thin white lines along the join and between
+  indicators. An Element's indicators fade (0.35) whenever its wedge is
+  dimmed, i.e. another Element is hovered or selected. The
   slot the app draws into is clipped to the slice's shape, so the app
   draws plain sectors. Every gap is the same even width (`SPACE`, 14
   units): arcs to slices, slice to slice, arc to arc, and slice to outer
@@ -317,8 +319,9 @@ resources and messages):**
   records Start or Not now in Script Property
   `eia.tourSeen.<email hash>`). The new lime **?** button in the banner
   starts it any time.
-- History is now a sky blue button and Messages bright yellow, both
-  with black icons.
+- Banner buttons: Help (?) navy `#183864` with a white ?, History lime
+  `#a3e634` and Messages red `#de2b48`, both with black icons. The
+  unread badge is white so it shows on the red bell.
 
 **Open items / next steps:**
 1. **"Untitled document" copy error:** one staff member couldn't
