@@ -1503,6 +1503,74 @@
       showLastUpdated({ name: USER_NAME, at: Date.now() });
     }
 
+    // -- Practice mode (the guided tour, Script_Tour.html) --------------------
+    // While PRACTICE is set, nothing reaches the server: ratings and
+    // priority changes aren't saved, evidence "saves" only locally,
+    // deleting evidence stays local, and attaching files, History and
+    // switching school are off. enterPractice() snapshots every Theme's
+    // grade, rubric, evidence and priority; exitPractice() puts them back
+    // and redraws, so the school's real work is exactly as it was.
+    var PRACTICE = null;
+
+    window.enterPractice = function (done) {
+      if (PRACTICE) { if (done) done(); return; }
+      // Real changes made just before the tour are saved first.
+      whenRatingsSaved(function () {
+        var snapshot = {};
+        Object.keys(THEME_BY_ID).forEach(function (id) {
+          var t = THEME_BY_ID[id];
+          snapshot[id] = {
+            grade: t.grade,
+            rubric: t.rubric.map(function (row) { return row.selected || null; }),
+            // A deep copy: editing an entry in practice changes it in place.
+            evidence: JSON.parse(JSON.stringify(t.evidence || [])),
+            priority: !!t.priority
+          };
+        });
+        PRACTICE = { snapshot: snapshot, selected: wheel.getSelected() };
+        document.body.classList.add('is-practice');
+        if (done) done();
+      });
+    };
+
+    window.exitPractice = function () {
+      if (!PRACTICE) return;
+      var snapshot = PRACTICE.snapshot;
+      if (modalOverlay.classList.contains('is-open')) closeThemeModal();
+      Object.keys(snapshot).forEach(function (id) {
+        var t = THEME_BY_ID[id], saved = snapshot[id];
+        t.grade = saved.grade;
+        t.rubric.forEach(function (row, i) { row.selected = saved.rubric[i] || null; });
+        t.evidence = saved.evidence;
+        t.priority = saved.priority;
+      });
+      PRACTICE = null;
+      document.body.classList.remove('is-practice');
+      updateDotRingColors();
+      prioritiesChanged();
+      wheel.deselect();
+      prioritiesPage = 0;
+      renderPrioritiesView(expandDetail() ? 400 : 0);
+    };
+
+    window.isPractice = function () { return !!PRACTICE; };
+
+    // Evidence "saved" in practice mode: kept on the page only.
+    function practiceSaveEntry(theme, card, entry) {
+      entry.pending = true;
+      entry.saveError = '';
+      refreshEvidenceViews(theme, card);
+      setTimeout(function () {
+        entry.pending = false;
+        entry.entryId = entry.entryId || 'practice-' + Date.now();
+        delete entry.lastSaved;
+        theme.evidence = theme.evidence || [];
+        if (theme.evidence.indexOf(entry) < 0) theme.evidence.push(entry);
+        refreshEvidenceViews(theme, card);
+        createToast().update('success', 'Practice evidence added', 'In practice mode it isn’t saved to your school.', 4000);
+      }, 600);
+    }
+
     // -- Switching school ----------------------------------------------------
     // Someone at several schools switches from the banner's dropdown
     // (renderBannerSchool() in Script_LoginGate.html). The page stays put:
@@ -1512,7 +1580,7 @@
     var switchingSchool = false;
 
     window.switchSchool = function (school) {
-      if (!school || school.schoolName === SCHOOL_NAME || switchingSchool) return;
+      if (!school || school.schoolName === SCHOOL_NAME || switchingSchool || PRACTICE) return;
       if (typeof historyUi !== 'undefined' && historyUi.busy) {
         createToast().update('error', 'Can’t switch school yet', 'Wait for the checkpoint or restore to finish.', 5000);
         return;
@@ -1568,6 +1636,8 @@
       loadToast.update('busy', 'Loading your school’s data…');
       loadSchoolState(function () {
         loadToast.update('success', 'Your school’s data is ready', '', 2000);
+        // First visit: offer the guided tour (Script_Tour.html).
+        if (typeof window.offerTour === 'function') window.offerTour();
       }, function () {
         loadToast.update('error', 'Couldn’t load your school’s data', 'Reload the page to try again.');
       });
@@ -1706,7 +1776,7 @@
     }
 
     function scheduleSaveRatings(theme) {
-      if (!SCHOOL_NAME || !theme) return;
+      if (!SCHOOL_NAME || !theme || PRACTICE) return;
       dirtyThemeIds[theme.id] = true;
       clearTimeout(ratingsSaveTimer);
       ratingsSaveTimer = setTimeout(flushRatingsSave, 1500);
@@ -2413,7 +2483,7 @@
         syncCard(currentModalCard, currentModalTheme);
         // An entry with no entryId was never successfully saved to the
         // backend in the first place — nothing to delete server-side.
-        if (removed && removed.entryId && SCHOOL_NAME) {
+        if (removed && removed.entryId && SCHOOL_NAME && !PRACTICE) {
           google.script.run
             .withSuccessHandler(function (result) {
               if (result && result.stale) reloadAfterRestore();
@@ -2606,6 +2676,11 @@
 
     function onAttachClick() {
       hideComposeError();
+      if (PRACTICE) {
+        createToast().update('info', 'Attaching files is off in practice mode',
+          'Outside the tour, Attach Files lets you pick files from Google Drive.', 5000);
+        return;
+      }
       if (driveAuthPoll) return;
       if (pickerAuthIsFresh()) {
         if (pickerAuth.authorized) openDrivePicker(pickerAuth);
@@ -2805,6 +2880,7 @@
     }
 
     function saveEntryInBackground(theme, card, entry) {
+      if (PRACTICE) { practiceSaveEntry(theme, card, entry); return; }
       entry.pending = true;
       entry.saveError = '';
       savesInFlight++;

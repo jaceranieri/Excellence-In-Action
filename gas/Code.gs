@@ -128,7 +128,7 @@ function shortHash_(value) {
  * Email, Name, SchoolName, CrestURL, Active). Someone at several schools
  * has one row per school; each row's Active applies to that school only.
  * Never throws on an unknown email — just comes back with found: false:
- *   { email, found, active, name, schoolName, crestUrl, schools }
+ *   { email, found, active, name, schoolName, crestUrl, schools, lastSchool, tourSeen }
  * `schools` is every school they're active at, [{schoolName, crestUrl}],
  * with the one they last opened first (see rememberSchool_()).
  * schoolName/crestUrl are that first school's, so single-school code
@@ -164,6 +164,7 @@ function getCurrentUserAccess() {
   }
   if (result.schools.length) {
     result.active = true;
+    result.tourSeen = PropertiesService.getScriptProperties().getProperty(tourSeenKey_(email)) === '1';
     var last = String(PropertiesService.getScriptProperties().getProperty(lastSchoolKey_(email)) || '').toLowerCase();
     result.schools.sort(function (a, b) {
       return (b.schoolName.toLowerCase() === last) - (a.schoolName.toLowerCase() === last);
@@ -177,6 +178,18 @@ function getCurrentUserAccess() {
 }
 
 function lastSchoolKey_(email) { return 'eia.lastSchool.' + shortHash_(email); }
+
+function tourSeenKey_(email) { return 'eia.tourSeen.' + shortHash_(email); }
+
+/**
+ * Records that the visitor has taken (or declined) the guided tour, so it
+ * isn't offered again on their next visit. The ? button still starts it.
+ */
+function markTourSeen() {
+  var access = requireActiveUser_();
+  PropertiesService.getScriptProperties().setProperty(tourSeenKey_(access.email), '1');
+  return { ok: true };
+}
 
 /** Remembers the school someone opened, so it's first next visit (only matters with several). */
 function rememberSchool_(access) {

@@ -1,0 +1,235 @@
+<style>
+/*!
+ * Guided tour (Script_Tour.html): four dim blocks around the lit-up part
+ * of the page (so only it can be clicked), a yellow ring round it, and a
+ * card with the step's text. Plus the "Practice mode" pill shown while the
+ * tour's practice mode is on, and the banner's ? button.
+ * Sits above the Theme modal (1000) and side panels (1100), below toasts
+ * (9999), so practice evidence toasts still show.
+ */
+
+.tour[hidden] {
+  display: none;
+}
+
+.tour-block,
+.tour-hole-block,
+.tour-ring,
+.tour-card {
+  position: fixed;
+  z-index: 9000;
+}
+
+.tour-block {
+  background: rgba(16, 19, 46, 0.55);
+}
+
+/* On steps that only point something out, the lit-up part can't be
+   clicked either. Action steps (.is-interactive) let clicks through. */
+.tour-hole-block {
+  background: transparent;
+}
+
+.tour.is-interactive .tour-hole-block {
+  pointer-events: none;
+}
+
+.tour-ring {
+  box-sizing: border-box;
+  border: 3px solid #ffc933;
+  border-radius: 12px;
+  box-shadow: 0 0 0 2px #000000;
+  pointer-events: none;
+  transition: left 0.2s ease, top 0.2s ease, width 0.2s ease, height 0.2s ease;
+}
+
+.tour-ring[hidden] {
+  display: none;
+}
+
+.tour-card {
+  z-index: 9001;
+  width: 340px;
+  max-width: calc(100vw - 24px);
+  box-sizing: border-box;
+  padding: 18px 20px 16px;
+  background: #ffffff;
+  border: 2.5px solid #000000;
+  border-radius: 12px;
+  box-shadow: 6px 6px 0 0 #000000;
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+  color: #000000;
+  outline: none;
+  transition: left 0.2s ease, top 0.2s ease;
+}
+
+.tour-card.is-centred {
+  width: 420px;
+}
+
+.tour-count {
+  margin: 0 0 4px;
+  font-weight: 700;
+  font-size: 12px;
+  color: #6a6d7a;
+}
+
+.tour-title {
+  margin: 0 0 8px;
+  font-weight: 800;
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+.tour-body p {
+  margin: 0 0 8px;
+  font-size: 14.5px;
+  line-height: 1.45;
+}
+
+.tour-note {
+  padding: 8px 10px;
+  border: 2px solid #000000;
+  border-radius: 8px;
+  background: #fff6d6;
+}
+
+.tour-hint {
+  margin: 4px 0 0;
+  padding: 8px 10px 8px 34px;
+  border-radius: 8px;
+  background: #e8f6ff;
+  font-weight: 700;
+  font-size: 14px;
+  line-height: 1.35;
+  position: relative;
+}
+
+.tour-hint::before {
+  content: '👉';
+  position: absolute;
+  left: 10px;
+  top: 7px;
+}
+
+.tour-hint[hidden] {
+  display: none;
+}
+
+.tour-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.tour-spacer {
+  flex: 1;
+}
+
+.tour-btn {
+  padding: 7px 14px;
+  border: 2px solid #000000;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 3px 3px 0 0 #000000;
+  color: #000000;
+  font-family: inherit;
+  font-weight: 800;
+  font-size: 14px;
+  cursor: pointer;
+  transition: transform 0.1s ease, box-shadow 0.1s ease, background-color 0.15s ease;
+}
+
+.tour-btn[hidden] {
+  display: none;
+}
+
+.tour-btn:hover,
+.tour-btn:focus-visible {
+  background: #f0f1f4;
+  outline: none;
+}
+
+.tour-btn:focus-visible {
+  box-shadow: 3px 3px 0 0 #000000, 0 0 0 3px #17458f;
+}
+
+.tour-btn:active {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 0 #000000;
+}
+
+.tour-btn.is-primary {
+  background: #ffc933;
+}
+
+.tour-btn.is-primary:hover,
+.tour-btn.is-primary:focus-visible {
+  background: #ffd75e;
+}
+
+.tour-skip {
+  border-color: transparent;
+  box-shadow: none;
+  background: transparent;
+  padding-left: 4px;
+  padding-right: 4px;
+  font-weight: 700;
+  color: #3a3c47;
+}
+
+.tour-skip:hover,
+.tour-skip:focus-visible {
+  background: transparent;
+  text-decoration: underline;
+}
+
+/* Practice mode pill, top centre, while the tour's practice mode is on. */
+.practice-pill {
+  display: none;
+  position: fixed;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9002;
+  padding: 7px 16px;
+  border: 2.5px solid #000000;
+  border-radius: 999px;
+  background: #ff66c4;
+  box-shadow: 3px 3px 0 0 #000000;
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+  font-weight: 800;
+  font-size: 14px;
+  color: #000000;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+body.is-practice .practice-pill {
+  display: block;
+}
+
+/* The banner's ? button, beside History (Index.html). */
+.app-banner-tour-btn {
+  --panel-color: #7ed957;       /* lime */
+  --panel-color-hover: #a6e88a;
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+  font-weight: 900;
+  font-size: 22px;
+  line-height: 1;
+}
+
+@media (max-width: 640px) {
+  .tour-card.is-centred { width: auto; }
+  .practice-pill { font-size: 12px; top: 6px; }
+  .app-banner-tour-btn { grid-area: tour; font-size: 19px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tour-ring,
+  .tour-card {
+    transition: none;
+  }
+}
+</style>

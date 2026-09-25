@@ -16,6 +16,7 @@
 <?!= include('Stylesheet_LoginGate'); ?>
 <?!= include('Stylesheet_History'); ?>
 <?!= include('Stylesheet_Messages'); ?>
+<?!= include('Stylesheet_Tour'); ?>
 <style>
   :root { color-scheme: light; }
 
@@ -272,6 +273,8 @@
           <p class="app-banner-updated-label">Last Updated</p>
           <p class="app-banner-updated-value"></p>
         </div>
+        <!-- Starts the guided tour (Script_Tour.html). -->
+        <button type="button" class="app-banner-tour-btn app-banner-panel-btn" id="tour-open-btn" aria-label="Take the tour" title="Take the tour">?</button>
         <!-- Opens the school's history panel (Script_History.html). -->
         <button type="button" class="app-banner-history-btn app-banner-panel-btn" id="history-open-btn" aria-haspopup="dialog" aria-label="History" title="History">
           <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -326,6 +329,7 @@
   <?!= include('Script_App'); ?>
   <?!= include('Script_History'); ?>
   <?!= include('Script_Messages'); ?>
+  <?!= include('Script_Tour'); ?>
 
 </body>
 </html>

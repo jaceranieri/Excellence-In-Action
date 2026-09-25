@@ -1,0 +1,477 @@
+<script>
+  // ===========================================================================
+  // Guided tour
+  // ===========================================================================
+  // A step-by-step walkthrough: the page dims except the part being
+  // explained, and a card beside it says what it is. Steps marked `action`
+  // wait for the person to do the thing (select an Element, grade an
+  // indicator...) and move on by themselves.
+  //
+  // The main tour runs in practice mode (enterPractice() in
+  // Script_App.html): nothing is saved, and the school's work is put back
+  // exactly as it was when the tour ends. An optional second tour then
+  // points out the other features (no practice needed; nothing is clicked).
+  //
+  // Offered once, on someone's first visit (Code.gs's tourSeen /
+  // markTourSeen()); the ? button in the banner starts it any time.
+  // Styles: Stylesheet_Tour.html.
+
+  (function () {
+    var root = document.createElement('div');
+    root.className = 'tour';
+    root.hidden = true;
+    root.innerHTML =
+      '<div class="tour-block" data-side="top"></div>' +
+      '<div class="tour-block" data-side="bottom"></div>' +
+      '<div class="tour-block" data-side="left"></div>' +
+      '<div class="tour-block" data-side="right"></div>' +
+      // Covers the lit-up part on steps where it's only being pointed out.
+      '<div class="tour-hole-block"></div>' +
+      '<div class="tour-ring"></div>' +
+      '<div class="tour-card" role="dialog" aria-modal="false" aria-labelledby="tour-card-title" tabindex="-1">' +
+        '<p class="tour-count"></p>' +
+        '<h2 class="tour-title" id="tour-card-title"></h2>' +
+        '<div class="tour-body"></div>' +
+        '<p class="tour-hint"></p>' +
+        '<div class="tour-actions">' +
+          '<button type="button" class="tour-btn tour-skip"></button>' +
+          '<span class="tour-spacer"></span>' +
+          '<button type="button" class="tour-btn tour-back">Back</button>' +
+          '<button type="button" class="tour-btn tour-next is-primary"></button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(root);
+
+    var pill = document.createElement('div');
+    pill.className = 'practice-pill';
+    pill.setAttribute('role', 'status');
+    pill.textContent = 'Practice mode: nothing you do here is saved';
+    document.body.appendChild(pill);
+
+    var blocks = {};
+    Array.prototype.forEach.call(root.querySelectorAll('.tour-block'), function (el) {
+      blocks[el.getAttribute('data-side')] = el;
+    });
+    var holeBlock = root.querySelector('.tour-hole-block');
+    var ring = root.querySelector('.tour-ring');
+    var card = root.querySelector('.tour-card');
+    var countEl = card.querySelector('.tour-count');
+    var titleEl = card.querySelector('.tour-title');
+    var bodyEl = card.querySelector('.tour-body');
+    var hintEl = card.querySelector('.tour-hint');
+    var skipBtn = card.querySelector('.tour-skip');
+    var backBtn = card.querySelector('.tour-back');
+    var nextBtn = card.querySelector('.tour-next');
+
+    function q(sel) { return document.querySelector(sel); }
+    function modalOpen() { return modalOverlay.classList.contains('is-open'); }
+    function rubricSignature() {
+      return currentModalTheme ? currentModalTheme.rubric.map(function (r) { return r.selected || ''; }).join('|') : '';
+    }
+
+    // -- Steps ---------------------------------------------------------------
+    // target()   the element to light up (none: a centred card)
+    // action     { hint, done() } — waits until done() is true, then moves on
+    // enter()    runs when the step starts (sets up the page for it)
+    // skipIf()   true: this step doesn't apply, so it's passed over
+
+    var MAIN = [
+      {
+        title: 'Welcome to Excellence in Action',
+        body: '<p>This short tour shows you how to review your school’s practice: choosing an Element, rating a Theme, adding evidence and marking a school priority.</p>' +
+          '<p class="tour-note">It’s <strong>practice mode</strong>, so nothing you do in the tour is saved.</p>',
+        next: 'Start tour', skip: 'Not now', noBack: true
+      },
+      {
+        target: function () { return q('#wheel-host .ew-svg'); },
+        title: 'The Excellence wheel',
+        body: '<p>The wheel has three domains (<strong>Leading</strong>, <strong>Teaching</strong> and <strong>Learning</strong>), each with three <strong>Elements</strong>.</p>',
+        enter: function () {
+          if (modalOpen()) closeThemeModal();
+          wheel.deselect();
+          renderPrioritiesView(expandDetail() ? 400 : 0);
+        },
+        action: { hint: 'Click any Element on the wheel.', done: function () { return !!wheel.getSelected(); } },
+        placement: 'right'
+      },
+      {
+        target: function () { return q('#detail .theme-cards'); },
+        title: 'Themes',
+        body: '<p>Each Element is made up of <strong>Themes</strong>. A card’s colour shows its current grade, and the paperclip counts its evidence.</p>',
+        enter: function () { if (modalOpen()) closeThemeModal(); },
+        skipIf: function () { return !wheel.getSelected(); },
+        action: { hint: 'Open any Theme card.', done: modalOpen },
+        placement: 'left'
+      },
+      {
+        target: function () { return q('.theme-modal .rubric-col'); },
+        title: 'Rate each indicator',
+        body: '<p>Each row is one <strong>indicator</strong>. Read across from Pre-Delivering to Excelling and pick the level that best describes your school now.</p>',
+        enter: function (step) { step.start = rubricSignature(); },
+        skipIf: function () { return !modalOpen(); },
+        action: {
+          hint: 'Click a level on any row.',
+          done: function (step) { return rubricSignature() !== step.start; }
+        },
+        placement: 'auto'
+      },
+      {
+        target: function () { return q('.theme-modal .grade-badge-wrap'); },
+        title: 'The Theme’s grade',
+        body: '<p>The grade is worked out from your indicator ratings as you go. You can also choose a grade here yourself.</p>',
+        skipIf: function () { return !modalOpen(); },
+        placement: 'auto'
+      },
+      {
+        target: function () { return q('.theme-modal .evidence-add-btn'); },
+        title: 'Add evidence',
+        body: '<p>Back up your rating with <strong>evidence</strong>: a short description, plus files from Google Drive if you have them.</p>',
+        skipIf: function () { return !modalOpen(); },
+        enter: function () { if (evidenceComposeEl.style.display !== 'none') exitComposeMode(); },
+        action: { hint: 'Click Add Evidence.', done: function () { return evidenceComposeEl.style.display !== 'none'; } },
+        placement: 'auto'
+      },
+      {
+        target: function () { return q('.theme-modal .evidence-compose'); },
+        title: 'Describe your evidence',
+        body: '<p>Give it a title, add the details, and attach files if you like. Files are copied into your school’s evidence folder, where staff at your school can view them.</p>',
+        skipIf: function () { return !modalOpen(); },
+        enter: function (step) {
+          step.start = (currentModalTheme && currentModalTheme.evidence || []).length;
+          if (evidenceComposeEl.style.display === 'none') evidenceAddBtn.click();
+          evidenceTitleInput.focus();
+        },
+        action: {
+          hint: 'Type a title and a few words of detail, then click Submit. (Attach Files is off in practice mode.)',
+          done: function (step) { return (currentModalTheme && currentModalTheme.evidence || []).length > step.start; }
+        },
+        focusTarget: true,
+        placement: 'auto'
+      },
+      {
+        target: function () { return q('.theme-modal .theme-modal-priority'); },
+        title: 'Make it a school priority',
+        body: '<p>The star marks a Theme as a <strong>school priority</strong>. Everyone at your school sees the same priorities.</p>',
+        skipIf: function () { return !modalOpen(); },
+        action: {
+          hint: 'Click the star.',
+          done: function () { return !!(currentModalTheme && currentModalTheme.priority); }
+        },
+        placement: 'auto'
+      },
+      {
+        target: function () { return q('.theme-modal .theme-modal-close'); },
+        title: 'Close the Theme',
+        body: '<p>Your ratings and evidence save automatically as you go, so there’s no Save button.</p>',
+        skipIf: function () { return !modalOpen(); },
+        action: { hint: 'Click × to close.', done: function () { return !modalOpen(); } },
+        placement: 'auto'
+      },
+      {
+        target: function () { return q('.priorities-btn'); },
+        title: 'Our Priorities',
+        body: '<p>This button brings together every Theme your school has starred.</p>',
+        enter: function () { if (modalOpen()) closeThemeModal(); },
+        action: { hint: 'Click Our Priorities.', done: isPrioritiesViewShown },
+        placement: 'auto'
+      },
+      {
+        target: function () { return q('#detail .element-detail'); },
+        title: 'Your school’s priorities',
+        body: '<p>Starred Themes collect here, and on the wheel their Elements lift, with the priority Themes’ dots in full colour. More than six priorities go on further pages.</p>',
+        placement: 'left'
+      },
+      {
+        title: 'You’re ready!',
+        body: '<p>That was practice, so nothing was saved. When you close the tour, your school’s work will be exactly as it was.</p>' +
+          '<p>Want a quick look at the other features, such as History and Messages?</p>',
+        next: 'Show me more', skip: 'Finish', noBack: true, finish: true
+      }
+    ];
+
+    var MORE = [
+      {
+        target: function () { return q('#wheel-host .ew-svg'); },
+        title: 'The theme dots',
+        body: '<p>The ring of small dots around the wheel has one dot per Theme, coloured by its grade, so you can see your whole review at a glance.</p>',
+        placement: 'right', noBack: true
+      },
+      {
+        target: function () { return q('#history-open-btn'); },
+        title: 'History',
+        body: '<p>Every change is recorded here. You can save a named <strong>checkpoint</strong>, and bring the whole school back to any earlier point.</p>',
+        placement: 'bottom'
+      },
+      {
+        target: function () { return q('#messages-open-btn'); },
+        title: 'Messages',
+        body: '<p>News and reminders from the Excellence in Action team. The red number counts messages you haven’t read.</p>',
+        placement: 'bottom'
+      },
+      {
+        target: function () { return q('.app-banner-updated'); },
+        title: 'Last Updated',
+        body: '<p>Who last changed your school’s review, and when.</p>',
+        skipIf: function () { var el = q('.app-banner-updated'); return !el || el.hidden; },
+        placement: 'bottom'
+      },
+      {
+        target: function () { return q('.app-banner-school-btn'); },
+        title: 'Switch school',
+        body: '<p>You work at more than one school. Click your school’s crest to switch to another.</p>',
+        skipIf: function () { return !q('.app-banner-school-btn'); },
+        placement: 'bottom'
+      },
+      {
+        target: function () { return q('#tour-open-btn'); },
+        title: 'Need a refresher?',
+        body: '<p>Click <strong>?</strong> any time to take this tour again.</p>',
+        next: 'Finish', finish: true, placement: 'bottom'
+      }
+    ];
+
+    // -- Running a tour ---------------------------------------------------------
+
+    var steps = null;   // MAIN or MORE while a tour is open
+    var index = 0;
+    var raf = 0;
+    var pollTimer = 0;
+    var advancing = false;
+
+    function current() { return steps && steps[index]; }
+
+    function show(i, direction) {
+      direction = direction || 1;
+      // Pass over steps that don't apply right now.
+      while (steps[i] && steps[i].skipIf && steps[i].skipIf()) i += direction;
+      if (i < 0) i = 0;
+      if (!steps[i]) { end(); return; }
+      index = i;
+      advancing = false;
+      var step = steps[i];
+      if (step.enter) step.enter(step);
+      var numbered = steps.filter(function (s) { return s.target; });
+      var n = numbered.indexOf(step);
+      countEl.textContent = n >= 0 ? 'Step ' + (n + 1) + ' of ' + numbered.length : '';
+      titleEl.textContent = step.title;
+      bodyEl.innerHTML = step.body;
+      hintEl.textContent = step.action ? step.action.hint : '';
+      hintEl.hidden = !step.action;
+      nextBtn.textContent = step.next || (step.action ? 'Skip step' : 'Next');
+      nextBtn.classList.toggle('is-primary', !step.action);
+      skipBtn.textContent = step.skip || 'Exit tour';
+      backBtn.hidden = !!step.noBack || i === 0;
+      card.classList.toggle('is-centred', !step.target);
+      root.classList.toggle('is-interactive', !!step.action);
+      var target = step.target && step.target();
+      if (target && target.scrollIntoView) {
+        var r = target.getBoundingClientRect();
+        if (r.top < 0 || r.bottom > window.innerHeight) target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }
+      layout();
+      if (step.focusTarget) {
+        // The step put focus in the form itself (e.g. the title box).
+      } else {
+        (step.action ? card : nextBtn).focus({ preventScroll: true });
+      }
+      clearInterval(pollTimer);
+      if (step.action) {
+        pollTimer = setInterval(function () {
+          if (advancing || !step.action.done(step)) return;
+          advancing = true;
+          clearInterval(pollTimer);
+          setTimeout(function () { if (current() === step) show(index + 1); }, 450);
+        }, 150);
+      }
+    }
+
+    // Positions the dim blocks, the ring and the card around the target.
+    // Runs every frame while open, since the modal and panels animate.
+    var PAD = 8;
+    function setBox(el, x, y, w, h) {
+      el.style.left = x + 'px';
+      el.style.top = y + 'px';
+      el.style.width = Math.max(0, w) + 'px';
+      el.style.height = Math.max(0, h) + 'px';
+    }
+
+    function layout() {
+      var step = current();
+      if (!step) return;
+      var vw = document.documentElement.clientWidth, vh = window.innerHeight;
+      var target = step.target && step.target();
+      var rect = null;
+      if (target) {
+        var r = target.getBoundingClientRect();
+        if (r.width || r.height) {
+          rect = {
+            left: Math.max(0, r.left - PAD), top: Math.max(0, r.top - PAD),
+            right: Math.min(vw, r.right + PAD), bottom: Math.min(vh, r.bottom + PAD)
+          };
+        }
+      }
+      if (!rect) {
+        setBox(blocks.top, 0, 0, vw, vh);
+        setBox(blocks.bottom, 0, 0, 0, 0);
+        setBox(blocks.left, 0, 0, 0, 0);
+        setBox(blocks.right, 0, 0, 0, 0);
+        setBox(holeBlock, 0, 0, 0, 0);
+        ring.hidden = true;
+      } else {
+        setBox(blocks.top, 0, 0, vw, rect.top);
+        setBox(blocks.bottom, 0, rect.bottom, vw, vh - rect.bottom);
+        setBox(blocks.left, 0, rect.top, rect.left, rect.bottom - rect.top);
+        setBox(blocks.right, rect.right, rect.top, vw - rect.right, rect.bottom - rect.top);
+        setBox(holeBlock, rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top);
+        ring.hidden = false;
+        setBox(ring, rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top);
+      }
+      placeCard(rect, step.placement || 'auto', vw, vh);
+    }
+
+    function placeCard(rect, placement, vw, vh) {
+      var M = 12, GAP = 14;
+      // Keep clear of the "Practice mode" pill at the top of the screen.
+      var topMin = document.body.classList.contains('is-practice') ? 52 : M;
+      var cw = card.offsetWidth, ch = card.offsetHeight;
+      var x, y;
+      if (!rect) {
+        x = (vw - cw) / 2;
+        y = (vh - ch) / 2;
+      } else if (vw < 640) {
+        // Phones: a full-width card at whichever end the target isn't.
+        x = M;
+        var targetMid = (rect.top + rect.bottom) / 2;
+        y = targetMid > vh / 2 ? topMin : vh - ch - M;
+      } else {
+        var space = {
+          right: vw - rect.right - GAP - M,
+          left: rect.left - GAP - M,
+          bottom: vh - rect.bottom - GAP - M,
+          top: rect.top - GAP - M
+        };
+        var fits = {
+          right: space.right >= cw, left: space.left >= cw,
+          bottom: space.bottom >= ch, top: space.top >= ch
+        };
+        var side = placement;
+        if (side === 'auto' || !fits[side]) {
+          side = ['right', 'left', 'bottom', 'top'].filter(function (s) { return fits[s]; })[0];
+        }
+        if (side === 'right' || side === 'left') {
+          x = side === 'right' ? rect.right + GAP : rect.left - GAP - cw;
+          y = (rect.top + rect.bottom) / 2 - ch / 2;
+        } else if (side === 'bottom' || side === 'top') {
+          x = (rect.left + rect.right) / 2 - cw / 2;
+          y = side === 'bottom' ? rect.bottom + GAP : rect.top - GAP - ch;
+        } else {
+          // Nowhere beside it: bottom-right corner, over the target's edge.
+          x = vw - cw - M;
+          y = vh - ch - M;
+        }
+      }
+      x = Math.min(Math.max(M, x), vw - cw - M);
+      y = Math.min(Math.max(topMin, y), vh - ch - M);
+      card.style.left = Math.round(x) + 'px';
+      card.style.top = Math.round(y) + 'px';
+    }
+
+    function loop() {
+      layout();
+      raf = requestAnimationFrame(loop);
+    }
+
+    function open(tourSteps, startAt) {
+      steps = tourSteps;
+      root.hidden = false;
+      document.body.classList.add('tour-open');
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(loop);
+      show(startAt || 0);
+    }
+
+    function end() {
+      clearInterval(pollTimer);
+      cancelAnimationFrame(raf);
+      steps = null;
+      root.hidden = true;
+      document.body.classList.remove('tour-open');
+      if (window.isPractice && window.isPractice()) window.exitPractice();
+      var btn = q('#tour-open-btn');
+      if (btn) btn.focus({ preventScroll: true });
+    }
+
+    var seenSent = false;
+    function markSeen() {
+      if (seenSent) return;
+      seenSent = true;
+      if (window.__ACCESS__) window.__ACCESS__.tourSeen = true;
+      google.script.run
+        .withFailureHandler(function (err) { console.error('Could not record the tour as seen:', err); })
+        .markTourSeen();
+    }
+
+    // -- Buttons --------------------------------------------------------------
+
+    nextBtn.addEventListener('click', function () {
+      var step = current();
+      if (!step) return;
+      if (steps === MAIN && index === 0) {
+        // Start: switch to practice mode first.
+        markSeen();
+        nextBtn.disabled = true;
+        window.enterPractice(function () {
+          nextBtn.disabled = false;
+          show(1);
+        });
+        return;
+      }
+      if (step.finish) {
+        if (steps === MAIN) {
+          window.exitPractice();
+          open(MORE);
+        } else {
+          end();
+        }
+        return;
+      }
+      show(index + 1);
+    });
+
+    backBtn.addEventListener('click', function () {
+      if (index > 0) show(index - 1, -1);
+    });
+
+    skipBtn.addEventListener('click', function () {
+      if (steps === MAIN && index === 0) markSeen();
+      end();
+    });
+
+    // Escape leaves the tour (and stops the modal's own Escape handling).
+    document.addEventListener('keydown', function (e) {
+      if (!steps || e.key !== 'Escape') return;
+      e.stopImmediatePropagation();
+      e.preventDefault();
+      end();
+    }, true);
+
+    // -- Starting -------------------------------------------------------------
+
+    window.startTour = function () {
+      if (steps) return;
+      if (typeof closeHistory === 'function') closeHistory(true);
+      if (typeof closeMessages === 'function') closeMessages(true);
+      open(MAIN);
+    };
+
+    // First visit: offered once the school's work has loaded
+    // (Script_App.html's onAppEntered()).
+    window.offerTour = function () {
+      if (window.__ACCESS__ && window.__ACCESS__.tourSeen) return;
+      window.startTour();
+    };
+
+    var openBtn = q('#tour-open-btn');
+    if (openBtn) openBtn.addEventListener('click', function () { window.startTour(); });
+  })();
+</script>

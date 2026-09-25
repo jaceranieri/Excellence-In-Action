@@ -287,6 +287,31 @@ resources and messages):**
   page-dot / next buttons under the cards. Opening the view starts on
   page 1; redrawing it (after unstarring, or a reload) keeps the page.
 
+**Guided tour (`gas/` only), not yet confirmed live:**
+- `Script_Tour.html` / `Stylesheet_Tour.html`. The page dims except the
+  part being explained (four blocks around it, so only it can be
+  clicked); a card beside it explains it. Action steps wait for the
+  person to do the thing and then move on by themselves.
+- **Main tour (10 steps):** wheel → Theme cards → rate an indicator →
+  grade → Add Evidence → submit evidence → star as priority → close →
+  Our Priorities button → priorities panel. Then an optional **features
+  tour**: theme dots, History, Messages, Last Updated, school switcher
+  (skipped when they don't apply), and the ? button.
+- **Practice mode** (`enterPractice()` / `exitPractice()` in
+  `Script_App.html`): the main tour runs on the real page, but nothing
+  reaches the server. Ratings/priority saves are skipped, evidence
+  "saves" locally, deleting is local, and attaching files, History and
+  switching school are off. Every Theme is snapshotted first and put
+  back when the tour ends, however it ends. A pink "Practice mode" pill
+  shows meanwhile.
+- **Offered once** on someone's first visit, after their school's data
+  loads (`tourSeen` from `getCurrentUserAccess()`; `markTourSeen()`
+  records Start or Not now in Script Property
+  `eia.tourSeen.<email hash>`). The new lime **?** button in the banner
+  starts it any time.
+- History is now a sky blue button and Messages bright yellow, both
+  with black icons.
+
 **Open items / next steps:**
 1. **"Untitled document" copy error:** one staff member couldn't
    attach a file with that name. The root cause is unknown; nothing in

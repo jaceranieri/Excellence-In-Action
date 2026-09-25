@@ -249,10 +249,10 @@
    (display: contents) so its items can be placed on the grid directly. */
 @media (max-width: 640px) {
   .app-banner {
-    grid-template-columns: 1fr auto auto auto;
+    grid-template-columns: 1fr auto auto auto auto;
     grid-template-areas:
-      "brand  history bell    avatar"
-      "school updated updated updated";
+      "brand  tour    history bell    avatar"
+      "school updated updated updated updated";
     column-gap: 8px;
     row-gap: 12px;
     padding: 12px 16px;

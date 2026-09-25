@@ -450,7 +450,7 @@
     }
 
     function openHistory() {
-      if (!SCHOOL_NAME) return;
+      if (!SCHOOL_NAME || (window.isPractice && window.isPractice())) return;
       historyLastFocus = document.activeElement;
       historySubtitleEl.textContent = SCHOOL_NAME;
       historyUi.view = 'list';
