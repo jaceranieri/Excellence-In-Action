@@ -11,6 +11,8 @@
  *   wheel.select('differentiation');
  *   wheel.deselect();
  *   wheel.getSelected();
+ *   wheel.setHighlighted(['differentiation', 'data-analysis']); // [] clears
+ *   wheel.getWedgeSlot('differentiation'); // <g> for app shapes that lift with the wedge
  *   wheel.destroy();
  *
  * Colours and copy are pulled from the Sydney Catholic Schools
@@ -192,6 +194,74 @@
     ].join(' ');
   }
 
+  // The same annular sector with slightly softened corners: each corner
+  // is cut back by `radius` (along both the arc and the straight edge) and
+  // joined with a curve through the original corner. The radius shrinks
+  // to fit on small shapes.
+  var CORNER = { wedge: 12, ring: 10 };
+
+  // The even gap (in viewBox units) between the domain arcs, the slices
+  // and the outer ring. Checked in R above: 178 + 14 = 192, 448 + 14 = 462.
+  var SPACE = 14;
+
+  // Like roundedSectorPath(), but the straight sides are pulled in by
+  // `half` units, parallel to the slice's centre line, rather than by a
+  // fixed angle. Neighbouring slices then have an even gap between them,
+  // instead of one that narrows towards the centre.
+  function evenSectorPath(rInner, rOuter, startDeg, endDeg, half, radius) {
+    function P(r, deg) { var q = polar(r, deg); return [q.x, q.y]; }
+    function inset(r) { return Math.asin(Math.min(1, half / r)) * 180 / Math.PI; }
+    function along(p, q, d) {
+      var dx = q[0] - p[0], dy = q[1] - p[1], L = Math.sqrt(dx * dx + dy * dy);
+      return [p[0] + dx * d / L, p[1] + dy * d / L];
+    }
+    function f(p) { return p[0].toFixed(2) + ' ' + p[1].toFixed(2); }
+    var i0 = startDeg + inset(rInner), i1 = endDeg - inset(rInner);
+    var o0 = startDeg + inset(rOuter), o1 = endDeg - inset(rOuter);
+    var c = Math.min(radius || 0, (rOuter - rInner) / 2);
+    var O0 = P(rOuter, o0), O1 = P(rOuter, o1), I1 = P(rInner, i1), I0 = P(rInner, i0);
+    var dO = (c / rOuter) * 180 / Math.PI, dI = (c / rInner) * 180 / Math.PI;
+    var largeOut = o1 - o0 - 2 * dO > 180 ? 1 : 0;
+    var largeIn = i1 - i0 - 2 * dI > 180 ? 1 : 0;
+    return [
+      'M', f(P(rOuter, o0 + dO)),
+      'A', rOuter, rOuter, 0, largeOut, 1, f(P(rOuter, o1 - dO)),
+      'Q', f(O1), f(along(O1, I1, c)),
+      'L', f(along(I1, O1, c)),
+      'Q', f(I1), f(P(rInner, i1 - dI)),
+      'A', rInner, rInner, 0, largeIn, 0, f(P(rInner, i0 + dI)),
+      'Q', f(I0), f(along(I0, O0, c)),
+      'L', f(along(O0, I0, c)),
+      'Q', f(O0), f(P(rOuter, o0 + dO)),
+      'Z'
+    ].join(' ');
+  }
+
+  function roundedSectorPath(rInner, rOuter, startDeg, endDeg, radius) {
+    var r = Math.min(radius || 0, (rOuter - rInner) / 2, toRad(endDeg - startDeg) * rInner / 2);
+    if (!(r > 0)) return sectorPath(rInner, rOuter, startDeg, endDeg);
+    var dOut = (r / rOuter) * 180 / Math.PI;
+    var dIn = (r / rInner) * 180 / Math.PI;
+    function p(rad, deg) {
+      var q = polar(rad, deg);
+      return q.x.toFixed(2) + ' ' + q.y.toFixed(2);
+    }
+    var largeOut = endDeg - startDeg - 2 * dOut > 180 ? 1 : 0;
+    var largeIn = endDeg - startDeg - 2 * dIn > 180 ? 1 : 0;
+    return [
+      'M', p(rOuter, startDeg + dOut),
+      'A', rOuter, rOuter, 0, largeOut, 1, p(rOuter, endDeg - dOut),
+      'Q', p(rOuter, endDeg), p(rOuter - r, endDeg),
+      'L', p(rInner + r, endDeg),
+      'Q', p(rInner, endDeg), p(rInner, endDeg - dIn),
+      'A', rInner, rInner, 0, largeIn, 0, p(rInner, startDeg + dIn),
+      'Q', p(rInner, startDeg), p(rInner + r, startDeg),
+      'L', p(rOuter - r, startDeg),
+      'Q', p(rOuter, startDeg), p(rOuter, startDeg + dOut),
+      'Z'
+    ].join(' ');
+  }
+
   // Open arc path (for textPath curved labels), always drawn so text reads
   // upright regardless of which side of the wheel it's on: left-to-right
   // across the top half, right-to-left (reversed) across the bottom half.
@@ -331,8 +401,13 @@
   var R = {
     centerOuter: 100,
     ringInner: 100, ringOuter: 178,
-    wedgeInner: 184, wedgeOuter: 410,
-    dotRingInner: 416, dotRingOuter: 456,
+    // Each Element is one slice from wedgeInner to sliceOuter: the wedge
+    // itself, then (from dotRingInner) the band where the app draws its
+    // theme indicators. SPACE (below) separates everything evenly: domain
+    // arcs from slices, slices from each other, and slices from the dark
+    // outer ring.
+    wedgeInner: 192, wedgeOuter: 408,
+    dotRingInner: 408, dotRingOuter: 448, sliceOuter: 448,
     darkInner: 462, darkOuter: 546
   };
 
@@ -394,8 +469,6 @@
     // inside it, reserving/painting the ring where the app draws its
     // theme-overview dots (see GEOMETRY in the module's return value).
     // Animates in LAST (outermost layer) — see ENTRANCE.outerStart.
-    svg.push('<circle cx="' + CX + '" cy="' + CY + '" r="' + ((R.dotRingInner + R.dotRingOuter) / 2) +
-      '" fill="none" stroke="#ffffff" stroke-width="' + (R.dotRingOuter - R.dotRingInner) + '"/>');
     svg.push('<circle class="ew-outer-ring" cx="' + CX + '" cy="' + CY + '" r="' + ((R.darkInner + R.darkOuter) / 2) + '" fill="none" stroke="' + DARK_RING +
       '" stroke-width="' + (R.darkOuter - R.darkInner) + '" style="animation-delay:' + ENTRANCE.outerStart + 'ms"/>');
     svg.push('<text class="ew-brand-text" style="animation-delay:' + ENTRANCE.brandTextStart + 'ms"><textPath href="#ew-arc-top" startOffset="50%" text-anchor="middle">' +
@@ -411,7 +484,7 @@
       var ringDelay = ENTRANCE.ringStart + idx * ENTRANCE.ringStagger;
       svg.push('<path class="ew-ring" data-category="' + key + '" style="--ring-muted:' + style.ringMuted +
         ';--ring-full:' + style.ring + ';animation-delay:' + ringDelay + 'ms" d="' +
-        sectorPath(R.ringInner, R.ringOuter, c.startAngle + GAP, c.endAngle - GAP) + '"/>');
+        evenSectorPath(R.ringInner, R.ringOuter, c.startAngle, c.endAngle, SPACE / 2, CORNER.ring) + '"/>');
       svg.push('<text class="ew-ring-label" style="animation-delay:' + ringDelay + 'ms"><textPath href="#ew-arc-' + key +
         '" startOffset="50%" text-anchor="middle">' + escapeXML(style.label.toUpperCase()) + '</textPath></text>');
     });
@@ -431,8 +504,16 @@
       svg.push('<g class="ew-wedge" tabindex="0" role="button" data-id="' + seg.id + '" data-category="' + seg.category +
         '" aria-label="' + escapeAttr(seg.lines.join(' ')) + '" aria-pressed="false" style="--wedge-muted:' +
         style.wedgeMuted + ';--wedge-full:' + style.wedge + ';animation-delay:' + wedgeDelay + 'ms">');
-      svg.push('<path class="ew-wedge-fill" d="' +
-        sectorPath(R.wedgeInner, R.wedgeOuter, seg.startAngle + GAP, seg.endAngle - GAP) + '"/>');
+      // The whole slice, wedge and indicator band together, in the
+      // Element's colour. .ew-wedge-slot, above it, is for the app's own
+      // shapes that lift with the slice (see getWedgeSlot()); it's
+      // clipped to the slice's shape, so the app can draw plain sectors
+      // across the band and they take on the slice's corners and edges.
+      var slicePath = evenSectorPath(R.wedgeInner, R.sliceOuter, seg.startAngle, seg.endAngle, SPACE / 2, CORNER.wedge);
+      var clipId = 'ew-clip-' + seg.id;
+      svg.push('<clipPath id="' + clipId + '"><path d="' + slicePath + '"/></clipPath>');
+      svg.push('<path class="ew-wedge-fill" d="' + slicePath + '"/>');
+      svg.push('<g class="ew-wedge-slot" clip-path="url(#' + clipId + ')"></g>');
       svg.push('<g class="ew-icon" transform="translate(' + iconPt.x + ',' + iconPt.y + ')">' +
         placeholderIcon() + '</g>');
       svg.push('<text class="ew-label" x="' + textTop.x + '" y="' + textTop.y + '" font-size="' + fontSize + '">');
@@ -485,6 +566,13 @@
     var centerHub = container.querySelector('.ew-center');
     var selectedId = null;
     var hoveredId = null;
+    // Wedges picked out by setHighlighted() (e.g. the app's school
+    // priorities). They only show while nothing is selected: they lift
+    // like a selected wedge, and every other wedge dims.
+    var highlighted = {};
+    function highlightActive() {
+      return selectedId === null && Object.keys(highlighted).length > 0;
+    }
     var onSelectCb = typeof options.onSelect === 'function' ? options.onSelect : null;
 
     function segmentById(id) {
@@ -495,10 +583,14 @@
     function updateRingHighlights() {
       var hoveredCategory = hoveredId ? segmentById(hoveredId).category : null;
       var selectedCategory = selectedId ? segmentById(selectedId).category : null;
-      var anyActive = hoveredCategory !== null || selectedCategory !== null;
+      var highlightedCategories = {};
+      if (highlightActive()) {
+        Object.keys(highlighted).forEach(function (id) { highlightedCategories[segmentById(id).category] = true; });
+      }
+      var anyActive = hoveredCategory !== null || selectedCategory !== null || highlightActive();
       rings.forEach(function (ring) {
         var cat = ring.getAttribute('data-category');
-        var isActive = cat === hoveredCategory || cat === selectedCategory;
+        var isActive = cat === hoveredCategory || cat === selectedCategory || !!highlightedCategories[cat];
         ring.classList.toggle('is-dimmed', anyActive && !isActive);
       });
     }
@@ -506,12 +598,14 @@
     // Resting state is full colour for every wedge. As soon as any one
     // wedge is hovered/focused, every OTHER wedge dims — except one that's
     // selected, which always stays full colour regardless of what's being
-    // hovered elsewhere.
+    // hovered elsewhere. Highlighted wedges (see setHighlighted()) count
+    // as active too, while nothing is selected.
     function updateWedgeDimming() {
-      var anyActive = hoveredId !== null || selectedId !== null;
+      var showHighlight = highlightActive();
+      var anyActive = hoveredId !== null || selectedId !== null || showHighlight;
       wedges.forEach(function (el) {
         var id = el.getAttribute('data-id');
-        var isActive = id === hoveredId || id === selectedId;
+        var isActive = id === hoveredId || id === selectedId || (showHighlight && !!highlighted[id]);
         el.classList.toggle('is-dimmed', anyActive && !isActive);
       });
     }
@@ -525,9 +619,12 @@
     });
 
     function applySelection() {
+      var showHighlight = highlightActive();
+      svg.classList.toggle('ew-has-highlight', showHighlight);
       wedges.forEach(function (el) {
         var isSel = el.getAttribute('data-id') === selectedId;
         el.classList.toggle('is-selected', isSel);
+        el.classList.toggle('is-highlighted', showHighlight && !!highlighted[el.getAttribute('data-id')]);
         el.setAttribute('aria-pressed', isSel ? 'true' : 'false');
       });
     }
@@ -567,7 +664,22 @@
       select: function (id) { setSelected(id, false); },
       deselect: function () { setSelected(null, false); },
       getSelected: function () { return selectedId ? segmentById(selectedId) : null; },
+      // Picks out these wedge ids while nothing is selected ([] clears).
+      setHighlighted: function (ids) {
+        highlighted = {};
+        (ids || []).forEach(function (id) { if (segmentById(id)) highlighted[id] = true; });
+        applySelection();
+        updateRingHighlights();
+        updateWedgeDimming();
+      },
       getSvgRoot: function () { return svg; },
+      // A <g> inside a wedge, above its fill and clipped to the slice's
+      // shape, for the app's own shapes (e.g. theme indicators) that
+      // should lift with it.
+      getWedgeSlot: function (id) {
+        var el = container.querySelector('.ew-wedge[data-id="' + id + '"] .ew-wedge-slot');
+        return el || null;
+      },
       set onSelect(fn) { onSelectCb = typeof fn === 'function' ? fn : null; },
       get onSelect() { return onSelectCb; },
       destroy: function () {
@@ -589,6 +701,14 @@
     // annular-sector path builder the wedges/rings themselves use.
     GEOMETRY: { cx: CX, cy: CY, R: R },
     sectorPath: sectorPath,
+    roundedSectorPath: roundedSectorPath,
+    evenSectorPath: evenSectorPath,
+    // A plain circular arc at radius r (for lines along a slice).
+    arcLinePath: function (r, startDeg, endDeg) {
+      var a = polar(r, startDeg), b = polar(r, endDeg);
+      return 'M ' + a.x.toFixed(2) + ' ' + a.y.toFixed(2) + ' A ' + r + ' ' + r + ' 0 0 1 ' + b.x.toFixed(2) + ' ' + b.y.toFixed(2);
+    },
+    SPACE: SPACE,
     // Only the piece of ENTRANCE the app actually needs — when to start
     // staggering in the theme-indicator ring, so it can slot into the
     // same inside-out sequence right after the wedges finish appearing,

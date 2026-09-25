@@ -101,6 +101,7 @@
       var restore = kind === 'restore';
       var parts = [];
       if (summary.ratings) parts.push('Ratings changed in ' + plural(summary.ratings, 'theme', 'themes'));
+      if (summary.priorities) parts.push('Priorities changed in ' + plural(summary.priorities, 'theme', 'themes'));
       if (summary.added) parts.push(summary.added + ' evidence ' + (restore ? 'brought back' : 'added'));
       if (summary.edited) parts.push(summary.edited + ' evidence ' + (restore ? 'returned to an earlier version' : 'edited'));
       if (summary.deleted) parts.push(summary.deleted + ' evidence ' + (restore ? 'archived' : 'deleted'));
@@ -151,6 +152,8 @@
           return 'Grade: ' + gradeLabel(c.from) + ' → ' + gradeLabel(c.to);
         case 'rubric':
           return 'Criterion ' + (c.row + 1) + ': ' + gradeLabel(c.from) + ' → ' + gradeLabel(c.to);
+        case 'priority':
+          return c.to ? 'Flagged as a school priority' : 'Removed from school priorities';
         case 'evidence-add':
           return 'Added evidence ' + evidenceName(c) + (c.files ? ' (' + plural(c.files, 'file', 'files') + ')' : '');
         case 'evidence-delete':
@@ -329,6 +332,7 @@
       var s = p.summary || {};
       var lines = [];
       if (s.ratings) lines.push('Ratings will change in ' + plural(s.ratings, 'theme', 'themes'));
+      if (s.priorities) lines.push('Priorities will change in ' + plural(s.priorities, 'theme', 'themes'));
       if (s.added) lines.push(plural(s.added, 'evidence entry', 'evidence entries') + ' will come back');
       if (s.edited) lines.push(plural(s.edited, 'evidence entry', 'evidence entries') +
         (s.edited === 1 ? ' goes' : ' go') + ' back to an earlier version');
@@ -385,7 +389,7 @@
           historyUi.error = 'Couldn’t load the history. Please try again.';
           renderHistory();
         })
-        .getSchoolHistory(reset ? 0 : historyUi.entries.length, HISTORY_PAGE_SIZE);
+        .getSchoolHistory(reset ? 0 : historyUi.entries.length, HISTORY_PAGE_SIZE, SCHOOL_NAME);
     }
 
     function toggleEntry(id) {
@@ -403,7 +407,7 @@
             historyUi.expanded[id] = false;
             renderHistory();
           })
-          .getHistoryEntryChanges(id);
+          .getHistoryEntryChanges(id, SCHOOL_NAME);
       }
       renderHistory();
     }
@@ -446,7 +450,7 @@
     }
 
     function openHistory() {
-      if (!SCHOOL_NAME) return;
+      if (!SCHOOL_NAME || (window.isPractice && window.isPractice())) return;
       historyLastFocus = document.activeElement;
       historySubtitleEl.textContent = SCHOOL_NAME;
       historyUi.view = 'list';
@@ -503,7 +507,7 @@
             toast.update('error', 'Checkpoint not saved', (err && err.message) || 'Please try again.');
             renderHistory();
           })
-          .saveCheckpoint(label, STATE_VERSION);
+          .saveCheckpoint(label, STATE_VERSION, SCHOOL_NAME);
       });
     }
 
@@ -541,7 +545,7 @@
             renderHistory();
             createToast().update('error', 'Can’t restore to that point', (err && err.message) || 'Please try again.');
           })
-          .previewRestore(id);
+          .previewRestore(id, SCHOOL_NAME);
       });
     }
 
@@ -600,7 +604,7 @@
             ' Some files may have moved; running the restore again will finish it.');
           renderHistory();
         })
-        .restoreToPoint(preview.target.id, STATE_VERSION);
+        .restoreToPoint(preview.target.id, STATE_VERSION, SCHOOL_NAME);
     }
 
     // -- Events ------------------------------------------------------------------------

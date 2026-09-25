@@ -82,7 +82,8 @@
 }
 
 .ew-wedge:hover,
-.ew-wedge.is-selected {
+.ew-wedge.is-selected,
+.ew-wedge.is-highlighted {
   transform: scale(1.045);
 }
 
@@ -98,6 +99,7 @@
   stroke: #ffffff;
   stroke-width: 5;
 }
+
 
 .ew-icon,
 .ew-label,
@@ -128,6 +130,7 @@
 
 .ew-wedge:hover .ew-icon-placeholder,
 .ew-wedge.is-selected .ew-icon-placeholder,
+.ew-wedge.is-highlighted .ew-icon-placeholder,
 .ew-wedge:focus-visible .ew-icon-placeholder {
   opacity: 0.95;
 }
