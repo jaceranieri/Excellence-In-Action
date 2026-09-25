@@ -168,10 +168,22 @@
 .app-banner-panel-btn {
   position: relative; /* for the bell's badge */
   padding: 0;
-  background: #ffffff;
-  color: #f5b400;
+  /* Each panel button has its own bright colour (--panel-color, below)
+     with a black icon. */
+  background: var(--panel-color, #ffffff);
+  color: #000000;
   cursor: pointer;
   transition: background-color 0.15s ease, transform 0.1s ease;
+}
+
+.app-banner-history-btn {
+  --panel-color: #38b6ff;       /* sky blue */
+  --panel-color-hover: #7dd0ff;
+}
+
+.app-banner-bell-btn {
+  --panel-color: #ffde59;       /* bright yellow */
+  --panel-color-hover: #ffe98f;
 }
 
 .app-banner-panel-btn svg {
@@ -182,7 +194,7 @@
 .app-banner-panel-btn:hover,
 .app-banner-panel-btn:focus-visible,
 .app-banner-panel-btn[aria-expanded="true"] {
-  background: #fff6db;
+  background: var(--panel-color-hover, #fff6db);
   outline: none;
 }
 
