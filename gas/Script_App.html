@@ -1811,6 +1811,14 @@
     // this view from any Element.
     var PRIORITIES_EMPTY_TEXT = 'Please select a theme as a priority area to display here.';
 
+    // At most this many priority cards show at once. More go on further
+    // pages, with small carousel buttons under the cards. prioritiesPage
+    // is reset to the first page whenever the view is opened (see
+    // onSelect and the Our Priorities button), and kept when the view is
+    // only redrawn.
+    var PRIORITIES_PER_PAGE = 6;
+    var prioritiesPage = 0;
+
     // [{theme, segment}] for every priority Theme, in wheel order.
     function priorityItems() {
       var items = [];
@@ -1842,13 +1850,18 @@
       currentThemes = items.map(function (item) { return item.theme; });
       prioritiesViewStale = false;
       var body;
+      var pageCount = Math.max(1, Math.ceil(items.length / PRIORITIES_PER_PAGE));
+      prioritiesPage = Math.min(Math.max(prioritiesPage, 0), pageCount - 1);
       if (items.length) {
-        body = '<div class="theme-cards">' + items.map(function (item, i) {
+        // Cards keep their index into currentThemes (data-theme-index),
+        // so opening one works the same on every page.
+        var first = prioritiesPage * PRIORITIES_PER_PAGE;
+        body = '<div class="theme-cards">' + items.slice(first, first + PRIORITIES_PER_PAGE).map(function (item, j) {
           var data = ELEMENT_THEMES[item.segment.id];
           var accentHex = ExcellenceWheel.CATEGORY_STYLE[item.segment.category].wedge;
-          return renderThemeCard(item.theme, i, accentHex, hexToRgbString(accentHex), baseDelay + i * 35,
+          return renderThemeCard(item.theme, first + j, accentHex, hexToRgbString(accentHex), baseDelay + j * 35,
             (data && data.title) || item.segment.lines.join(' '));
-        }).join('') + '</div>';
+        }).join('') + '</div>' + renderPrioritiesPager(pageCount);
       } else {
         body = '<div class="priorities-empty" style="animation-delay:' + baseDelay + 'ms">' +
           '<p>' + escapeHtml(PRIORITIES_EMPTY_TEXT) + '</p>' +
@@ -1863,6 +1876,39 @@
         '</div>';
       updatePrioritiesButton();
     }
+
+    // Previous / page dots / next, under the priority cards. Only shown
+    // when there's more than one page.
+    function renderPrioritiesPager(pageCount) {
+      if (pageCount < 2) return '';
+      var dots = '';
+      for (var k = 0; k < pageCount; k++) {
+        dots += '<button type="button" class="priorities-pager-dot' + (k === prioritiesPage ? ' is-current' : '') + '"' +
+          ' data-page="' + k + '" aria-label="Page ' + (k + 1) + ' of ' + pageCount + '"' +
+          (k === prioritiesPage ? ' aria-current="true"' : '') + '></button>';
+      }
+      return '<nav class="priorities-pager" aria-label="Priority pages">' +
+        '<button type="button" class="priorities-pager-btn" data-page="' + (prioritiesPage - 1) + '"' +
+          ' aria-label="Previous page"' + (prioritiesPage === 0 ? ' disabled' : '') + '>&#8249;</button>' +
+        '<span class="priorities-pager-dots">' + dots + '</span>' +
+        '<button type="button" class="priorities-pager-btn" data-page="' + (prioritiesPage + 1) + '"' +
+          ' aria-label="Next page"' + (prioritiesPage === pageCount - 1 ? ' disabled' : '') + '>&#8250;</button>' +
+      '</nav>';
+    }
+
+    detailEl.addEventListener('click', function (e) {
+      var btn = e.target.closest('.priorities-pager button');
+      if (!btn || btn.disabled) return;
+      var label = btn.getAttribute('aria-label');
+      prioritiesPage = parseInt(btn.getAttribute('data-page'), 10);
+      renderPrioritiesView();
+      // Keep focus on the same control, now redrawn. Previous/Next keep
+      // their labels; a page dot's label names the page, so fall back to
+      // the current page's dot.
+      var again = detailEl.querySelector('.priorities-pager button[aria-label="' + label + '"]:not([disabled])') ||
+        detailEl.querySelector('.priorities-pager-dot.is-current');
+      if (again) again.focus();
+    });
 
     // True while the priorities panel lists a Theme whose star was
     // changed in the open modal. The panel is redrawn when the modal
@@ -1941,8 +1987,7 @@
     // outer dark ring, split into even slices per Element, one slice per
     // Theme, coloured by the Theme's grade. Each Element's slices are drawn
     // inside its wedge (wheel.getWedgeSlot()), so they lift with it on
-    // hover and selection and share its black outline and shadow when it's
-    // raised. Clicking one selects its Element, like the rest of the wedge.
+    // hover and selection. Clicking one selects its Element, like the rest of the wedge.
     // Drawn with the wheel's exposed geometry (ExcellenceWheel.GEOMETRY,
     // ExcellenceWheel.roundedSectorPath) and per-segment angles (on
     // ExcellenceWheel.SEGMENTS), so it lines up with the wedges without
@@ -1956,7 +2001,6 @@
     var INDICATOR_EDGE_GAP = 0.6;  // degrees inset from the wedge's own edges — matches the wheel's wedge-to-wedge gap
     var INDICATOR_SLICE_GAP = 1.2; // degrees between adjacent Theme slices within one Element
     var INDICATOR_CORNER = 6;      // softened corners, a little smaller than the wedges'
-    var INDICATOR_SHADOW = 12;     // matches the wedge shadow (excellence-wheel.js)
 
     // Ungraded reads as almost invisible here on purpose — barely off the
     // ring's white background, so the eye goes straight to what's
@@ -1975,8 +2019,6 @@
     // this initial "pop in" entrance already finished (see
     // loadSchoolState()), so this two-step split is what lets that
     // arrival read as a smooth 2s colour fade-in rather than a jump-cut.
-    // Each slice also has a shadow copy, drawn behind every slice of its
-    // Element, shown only while the slice is raised.
     function buildDotRing() {
       var geo = ExcellenceWheel.GEOMETRY;
       var entrance = ExcellenceWheel.ENTRANCE;
@@ -1990,22 +2032,16 @@
         var spanStart = seg.startAngle + INDICATOR_EDGE_GAP;
         var spanEnd = seg.endAngle - INDICATOR_EDGE_GAP;
         var sliceWidth = (spanEnd - spanStart) / n;
-        var shadows = '', slices = '';
+        var slices = '';
         for (var i = 0; i < n; i++) {
           var a0 = spanStart + i * sliceWidth + INDICATOR_SLICE_GAP / 2;
           var a1 = spanStart + (i + 1) * sliceWidth - INDICATOR_SLICE_GAP / 2;
           var d = ExcellenceWheel.roundedSectorPath(geo.R.dotRingInner, geo.R.dotRingOuter, a0, a1, INDICATOR_CORNER);
           var attrs = ' d="' + d + '" data-seg-id="' + seg.id + '" data-theme-idx="' + i + '"';
-          shadows += '<path class="ew-theme-indicator-shadow" transform="translate(' + INDICATOR_SHADOW + ' ' +
-            INDICATOR_SHADOW + ')"' + attrs + '/>';
-          // A white base under each slice, so a faded slice (the Our
-          // Priorities view) reads as a pale tint, not the shadow beneath.
-          slices += '<path class="ew-theme-indicator-base" style="animation-delay:' + delay + 'ms"' + attrs + '/>' +
-            '<path class="ew-theme-indicator" fill="' + INDICATOR_UNGRADED_COLOR + '"' +
+          slices += '<path class="ew-theme-indicator" fill="' + INDICATOR_UNGRADED_COLOR + '"' +
             ' style="animation-delay:' + delay + 'ms"' + attrs + '/>';
         }
         slot.innerHTML =
-          '<g class="ew-theme-indicator-shadows" aria-hidden="true">' + shadows + '</g>' +
           '<g class="ew-theme-indicator-layer is-entering" aria-hidden="true">' + slices + '</g>';
       });
     }
@@ -2028,11 +2064,10 @@
       });
     }
 
-    // Marks priority Themes' slices (and their bases and shadows) with
-    // .is-priority, which theme-dots.css uses in the Our Priorities view.
+    // Marks priority Themes' slices with .is-priority, which
+    // theme-dots.css uses in the Our Priorities view.
     function updateDotRingPriorities() {
-      var selector = '.ew-theme-indicator, .ew-theme-indicator-base, .ew-theme-indicator-shadow';
-      wheel.getSvgRoot().querySelectorAll(selector).forEach(function (path) {
+      wheel.getSvgRoot().querySelectorAll('.ew-theme-indicator').forEach(function (path) {
         var theme = themeForIndicator(path);
         path.classList.toggle('is-priority', !!(theme && theme.priority));
       });
@@ -3036,6 +3071,7 @@
         // already (see expandDetail()), and on that first expand the
         // cards' cascade waits for the 0.4s slide to finish.
         var isFirstExpand = expandDetail();
+        if (!segment) prioritiesPage = 0;
         if (!segment) renderPrioritiesView(isFirstExpand ? 400 : 0);
         else renderElementDetail(segment, isFirstExpand ? 400 : 0);
         updatePrioritiesButton();
@@ -3058,6 +3094,7 @@
     prioritiesBtn.addEventListener('click', function () {
       if (isPrioritiesViewShown()) return;
       wheel.deselect();
+      prioritiesPage = 0;
       renderPrioritiesView(expandDetail() ? 400 : 0);
     });
 

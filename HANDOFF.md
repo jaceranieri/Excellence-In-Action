@@ -266,37 +266,19 @@ resources and messages):**
 **Wheel restyle (with priorities):**
 - Wedges, the Leading/Teaching/Learning ring arcs and the indicator
   slices have slightly rounded corners (`roundedSectorPath()` in the
-  wheel; radii in `CORNER` and `INDICATOR_CORNER`).
-- A **raised** wedge (selected, or highlighted in the priorities view)
-  gets a black outline and a hard black shadow down and to the right,
-  like the cards. The shadow is a path inside the wedge, so nothing
-  moves.
-  - Raised wedges are moved to the end of the wedges in the SVG
-    (`raiseWedges()`), so their shadow falls on their neighbours.
-  - A move would replay the entrance, so wedges get `.ew-settled`
-    (no animation) once it has played.
-  - A move also makes the browser forget `:hover`, so the hover lift
-    uses an `.is-hovered` class set from pointer events instead.
+  wheel; radii in `CORNER` and `INDICATOR_CORNER`) and a black border.
+- A hard drop shadow on raised wedges was tried and removed at the
+  project owner's request.
 - The **indicator slices now live inside their wedge** (the wheel's
   `getWedgeSlot()`), not in a layer behind the wedges. They lift with
-  the wedge over the dark outer ring, share its outline and shadow when
-  it's raised, and clicking one selects the Element. Each slice has a
-  white base (so a faded slice doesn't show the shadow under it) and a
-  shadow copy.
-- **Stored in RatingsJSON** as `"priority": true` on the Theme's entry,
-  so it saves with the ratings (same debounce and toast) and needs no
-  new column. History records it ("Flagged as a school priority" /
-  "Removed from school priorities", and "Priorities changed in N
-  themes" in the summary), and restores bring it back.
-- A page opened before this deploy saves ratings without the flag.
-  `saveRatings()` keeps the saved flag when `priority` is missing, so
-  such a page can't clear a star.
-- `example.html` has the same feature, held in memory only.
-- To deploy: replace `Code.gs`, `Index.html`, `Script_App.html`,
-  `Script_History.html`, `Script_ExcellenceWheel.html`,
-  `Stylesheet_ExcellenceWheel.html`, `Stylesheet_ThemeCards.html`,
-  `Stylesheet_ThemeDots.html` and `Stylesheet_ThemeModal.html`, then
-  publish a new version.
+  the wedge over the dark outer ring, and clicking one selects the
+  Element.
+- The hover lift uses an `.is-hovered` class set from pointer events,
+  not `:hover`.
+- **Priority carousel:** the priorities panel shows at most 6 cards
+  (`PRIORITIES_PER_PAGE`). More go on further pages, with previous /
+  page-dot / next buttons under the cards. Opening the view starts on
+  page 1; redrawing it (after unstarring, or a reload) keeps the page.
 
 **Open items / next steps:**
 1. **"Untitled document" copy error:** one staff member couldn't

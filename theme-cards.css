@@ -309,6 +309,79 @@
   fill: #ffffff;
 }
 
+/* Carousel controls under the priority cards (more than 6 priorities):
+   previous, one dot per page, next. */
+.priorities-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin: 6px 10px 6px 2px;
+  animation: tc-fade-in 220ms ease backwards;
+}
+
+.priorities-pager-btn {
+  width: 32px;
+  height: 32px;
+  padding: 0 0 2px;
+  border: 2.5px solid #000000;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 3px 3px 0 0 #000000;
+  color: #000000;
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+  font-weight: 800;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform 0.1s ease, box-shadow 0.1s ease, background-color 0.15s ease;
+}
+
+.priorities-pager-btn:hover:not(:disabled),
+.priorities-pager-btn:focus-visible {
+  background: #fff6d6;
+  outline: none;
+}
+
+.priorities-pager-btn:focus-visible {
+  box-shadow: 3px 3px 0 0 #000000, 0 0 0 3px #17458f;
+}
+
+.priorities-pager-btn:active:not(:disabled) {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 0 #000000;
+}
+
+.priorities-pager-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.priorities-pager-dots {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.priorities-pager-dot {
+  width: 12px;
+  height: 12px;
+  padding: 0;
+  border: 2px solid #000000;
+  border-radius: 50%;
+  background: #ffffff;
+  cursor: pointer;
+}
+
+.priorities-pager-dot.is-current {
+  background: #000000;
+  cursor: default;
+}
+
+.priorities-pager-dot:focus-visible {
+  outline: 3px solid #17458f;
+  outline-offset: 2px;
+}
+
 /* Element resources (GAS build: links from the Users spreadsheet's
    Resources tab) — a heading and a row of link buttons under the cards. */
 .element-resources:empty {
@@ -376,7 +449,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .element-resources > *,
-  .priorities-empty {
+  .priorities-empty,
+  .priorities-pager {
     animation: none;
   }
   .priorities-btn {

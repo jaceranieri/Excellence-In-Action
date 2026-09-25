@@ -10,11 +10,10 @@
  * that Element's slices.
  *
  * Because the slices sit inside their wedge, they lift with it (over the
- * dark outer ring) on hover and selection, and click through to it.
- * While the wedge is raised (selected, or a priority Element in the Our
- * Priorities view) they share its black outline and hard shadow. Each
- * slice is coloured only by its Theme's grade, and isn't dimmed with the
- * wedges, except in the Our Priorities view (below).
+ * dark outer ring) on hover and selection, and click through to it. Each
+ * slice has a black border, like the wedges, and is coloured only by its
+ * Theme's grade. It isn't dimmed with the wedges, except in the Our
+ * Priorities view (below).
  *
  * Entrance animation: reuses `@keyframes ew-pop-in`, defined in
  * excellence-wheel.css, not redeclared here — both stylesheets are
@@ -33,44 +32,13 @@
    entrance into a slow, deliberate colour fade-in rather than a
    jump-cut; the same transition also softens any later live grade
    change (a rubric click, the grade dropdown). */
-.ew-theme-indicator-base {
-  fill: #ffffff;
-  transform-box: view-box;
-  transform-origin: 546px 546px;
-  transition: transform 0.15s ease;
-}
-
 .ew-theme-indicator {
-  stroke: transparent;
-  stroke-width: 0;
+  stroke: #000000;
+  stroke-width: 3.5;
   stroke-linejoin: round;
   transform-box: view-box;
   transform-origin: 546px 546px;
-  transition: fill 2s ease, stroke 0.1s ease, opacity 0.18s ease, transform 0.15s ease;
-}
-
-/* Raised with its wedge: the same black outline and hard shadow. The
-   shadows are separate copies, drawn behind all of the Element's slices,
-   and only shown while raised. */
-.ew-theme-indicator-shadow {
-  fill: #000000;
-  stroke: #000000;
-  stroke-width: 4.5;
-  stroke-linejoin: round;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.15s ease;
-}
-
-.ew-wedge.is-selected .ew-theme-indicator,
-.ew-wedge.is-highlighted .ew-theme-indicator.is-priority {
-  stroke: #000000;
-  stroke-width: 4.5;
-}
-
-.ew-wedge.is-selected .ew-theme-indicator-shadow,
-.ew-wedge.is-highlighted .ew-theme-indicator-shadow.is-priority {
-  opacity: 1;
+  transition: fill 2s ease, opacity 0.18s ease, transform 0.15s ease;
 }
 
 /* Our Priorities view (the wheel adds .ew-has-highlight): only priority
@@ -81,36 +49,23 @@
 }
 
 .ew-has-highlight .ew-wedge.is-hovered .ew-theme-indicator:not(.is-priority),
-.ew-has-highlight .ew-wedge.is-hovered .ew-theme-indicator-base:not(.is-priority),
-.ew-wedge.is-highlighted .ew-theme-indicator:not(.is-priority),
-.ew-wedge.is-highlighted .ew-theme-indicator-base:not(.is-priority) {
+.ew-wedge.is-highlighted .ew-theme-indicator:not(.is-priority) {
   transform: scale(0.95694); /* 1 / 1.045 */
 }
 
 /* Entrance plays once, when buildDotRing() first constructs the slices —
    a later grade change only ever updates each path's own `fill` in
-   place via updateDotRingColors(). Once the wheel marks its wedges
-   .ew-settled, the entrance is switched off, so moving a raised wedge
-   (excellence-wheel.js's raiseWedges()) doesn't replay it. */
-.ew-theme-indicator-layer.is-entering .ew-theme-indicator,
-.ew-theme-indicator-layer.is-entering .ew-theme-indicator-base {
+   place via updateDotRingColors(). */
+.ew-theme-indicator-layer.is-entering .ew-theme-indicator {
   animation: ew-pop-in 320ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
   /* animation-delay set per Element inline — see buildDotRing() */
 }
 
-.ew-wedge.ew-settled .ew-theme-indicator,
-.ew-wedge.ew-settled .ew-theme-indicator-base {
-  animation: none;
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .ew-theme-indicator-layer.is-entering .ew-theme-indicator,
-  .ew-theme-indicator-layer.is-entering .ew-theme-indicator-base {
+  .ew-theme-indicator-layer.is-entering .ew-theme-indicator {
     animation: none;
   }
-  .ew-theme-indicator,
-  .ew-theme-indicator-base,
-  .ew-theme-indicator-shadow {
+  .ew-theme-indicator {
     transition: none;
   }
 }

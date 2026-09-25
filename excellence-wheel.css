@@ -73,15 +73,14 @@
   /* animation-delay set per wedge inline, staggered clockwise */
 }
 
-.ew-wedge.ew-settled {
-  animation: none; /* after the entrance; see raiseWedges() in excellence-wheel.js */
-}
-
 .ew-wedge-fill {
   fill: var(--wedge-full);
   transition: fill 0.18s ease, stroke 0.1s ease, stroke-width 0.1s ease;
-  stroke: transparent;
-  stroke-width: 0;
+  /* Every wedge, ring arc and theme indicator has a black border, like
+     the app's cards and buttons. */
+  stroke: #000000;
+  stroke-width: 5;
+  stroke-linejoin: round;
 }
 
 .ew-wedge.is-hovered,
@@ -103,33 +102,6 @@
   stroke-width: 5;
 }
 
-/* Raised wedges (selected, or highlighted while nothing is selected)
-   match the app's neubrutalism style: a black outline and a hard black
-   shadow down and to the right. The shadow is its own path inside the
-   wedge (see buildSVG), so nothing else on the page moves. Raised wedges
-   are drawn after the others, so the shadow falls onto their neighbours
-   (raiseWedges()). */
-.ew-wedge.is-selected .ew-wedge-fill,
-.ew-wedge.is-highlighted .ew-wedge-fill {
-  stroke: #000000;
-  stroke-width: 5.5;
-  stroke-linejoin: round;
-}
-
-.ew-wedge-shadow {
-  fill: #000000;
-  stroke: #000000;
-  stroke-width: 5.5;
-  stroke-linejoin: round;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.15s ease;
-}
-
-.ew-wedge.is-selected .ew-wedge-shadow,
-.ew-wedge.is-highlighted .ew-wedge-shadow {
-  opacity: 1;
-}
 
 .ew-icon,
 .ew-label,
@@ -141,6 +113,9 @@
 
 .ew-ring {
   fill: var(--ring-full);
+  stroke: #000000;
+  stroke-width: 5;
+  stroke-linejoin: round;
   transition: fill 0.18s ease;
   pointer-events: none;
 }
@@ -231,7 +206,7 @@
 /* Motion preference ------------------------------------------------------ */
 
 @media (prefers-reduced-motion: reduce) {
-  .ew-wedge, .ew-center, .ew-wedge-fill, .ew-wedge-shadow, .ew-icon, .ew-icon-placeholder, .ew-ring {
+  .ew-wedge, .ew-center, .ew-wedge-fill, .ew-icon, .ew-icon-placeholder, .ew-ring {
     transition: none;
   }
   .ew-wedge, .ew-center, .ew-outer-ring, .ew-brand-text, .ew-ring, .ew-ring-label {
