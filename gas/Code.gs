@@ -45,7 +45,7 @@ function requireProp_(key) {
 
 // Shown small in the bottom-right corner of the app. Bump it with each
 // release you deploy (and in example.html's static copy).
-var APP_VERSION = '1.0.0';
+var APP_VERSION = '1.1.0';
 
 // Sheet tab names are just structure, not secrets — fine to hardcode.
 var TABS = {
@@ -214,7 +214,8 @@ function getSchoolFolderId_(schoolName) {
 //
 // Two tabs in the DATA_SHEET_ID spreadsheet (separate from the Users sheet):
 //   - Ratings: one row per school; RatingsJSON holds every Theme's saved
-//     state as {"<themeId>": {"grade", "rubric": [...]}, ...}.
+//     state as {"<themeId>": {"grade", "rubric": [...], "priority"?}, ...}
+//     (priority: true marks a school priority Theme).
 //   - EvidenceLog: one row per evidence entry, across all schools/themes.
 //     Attachments is a JSON array of {fileId, name, mimeType, url}; every
 //     fileId is a copy this app made inside the school's EvidenceFolder.
@@ -378,7 +379,11 @@ function getSchoolState() {
   };
 }
 
-/** Throws unless `obj` is {themeId: {grade, rubric: [level|null, ...]}}. */
+/**
+ * Throws unless `obj` is {themeId: {grade, rubric: [level|null, ...],
+ * priority?}}. `priority: true` flags the theme as a school priority;
+ * it's left out otherwise.
+ */
 function sanitizeRatings_(obj) {
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) throw new Error('Invalid ratings.');
   var out = {};
@@ -391,6 +396,7 @@ function sanitizeRatings_(obj) {
       grade: grade,
       rubric: rubric.map(function (level) { return GRADE_KEYS.indexOf(level) > 0 ? level : null; })
     };
+    if (r.priority === true) out[themeId].priority = true;
   });
   return out;
 }
@@ -403,7 +409,8 @@ function sanitizeRatings_(obj) {
  */
 function saveRatings(changesJson, stateVersion) {
   var access = requireActiveUser_();
-  var changed = sanitizeRatings_(JSON.parse(changesJson));
+  var raw = JSON.parse(changesJson);
+  var changed = sanitizeRatings_(raw);
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
@@ -412,7 +419,12 @@ function saveRatings(changesJson, stateVersion) {
     var before = state.ratings;
     var after = {};
     Object.keys(before).forEach(function (id) { after[id] = before[id]; });
-    Object.keys(changed).forEach(function (id) { after[id] = changed[id]; });
+    Object.keys(changed).forEach(function (id) {
+      after[id] = changed[id];
+      // A page from before school priorities sends no `priority` at all:
+      // keep the saved flag rather than clearing it.
+      if (!('priority' in raw[id]) && before[id] && before[id].priority) after[id].priority = true;
+    });
     var changes = diffRatings_(before, after, Object.keys(changed));
     if (!changes.length) return { ok: true };
 
@@ -713,12 +725,13 @@ function currentEvidenceVersionIds_(schoolName) {
   return ids;
 }
 
-/** { ratings: themes with rating changes, added, edited, deleted } for a change list. */
+/** { ratings: themes with rating changes, priorities, added, edited, deleted } for a change list. */
 function summarizeChanges_(changes) {
   var themes = {};
-  var summary = { ratings: 0, added: 0, edited: 0, deleted: 0 };
+  var summary = { ratings: 0, priorities: 0, added: 0, edited: 0, deleted: 0 };
   changes.forEach(function (c) {
     if (c.t === 'grade' || c.t === 'rubric') themes[c.theme] = true;
+    else if (c.t === 'priority') summary.priorities++;
     else if (c.t === 'evidence-add') summary.added++;
     else if (c.t === 'evidence-edit') summary.edited++;
     else if (c.t === 'evidence-delete') summary.deleted++;
@@ -727,7 +740,7 @@ function summarizeChanges_(changes) {
   return summary;
 }
 
-/** grade/rubric changes between two ratings blobs, for the given themes. */
+/** grade/rubric/priority changes between two ratings blobs, for the given themes. */
 function diffRatings_(before, after, themeIds) {
   var out = [];
   themeIds.forEach(function (id) {
@@ -736,6 +749,7 @@ function diffRatings_(before, after, themeIds) {
     var bGrade = b.grade || 'ungraded';
     var aGrade = a.grade || 'ungraded';
     if (bGrade !== aGrade) out.push({ t: 'grade', theme: id, from: bGrade, to: aGrade });
+    if (!!b.priority !== !!a.priority) out.push({ t: 'priority', theme: id, from: !!b.priority, to: !!a.priority });
     var bRubric = b.rubric || [];
     var aRubric = a.rubric || [];
     for (var i = 0; i < Math.max(bRubric.length, aRubric.length); i++) {
@@ -749,7 +763,7 @@ function diffRatings_(before, after, themeIds) {
 
 /**
  * Adds `incoming` changes to an entry's existing list, collapsing repeats:
- * a later grade/rubric change to the same cell updates the earlier one
+ * a later grade/rubric/priority change to the same cell updates the earlier one
  * (and disappears if it's back where it started); edits to evidence added
  * in the same entry fold into the add; deleting it drops both.
  */
@@ -761,7 +775,7 @@ function mergeChanges_(existing, incoming) {
   }
   incoming.forEach(function (c) {
     var i;
-    if (c.t === 'grade' || c.t === 'rubric') {
+    if (c.t === 'grade' || c.t === 'rubric' || c.t === 'priority') {
       i = findIndex(function (e) { return e.t === c.t && e.theme === c.theme && e.row === c.row; });
       if (i < 0) { list.push(c); return; }
       list[i] = Object.assign({}, list[i], { to: c.to });

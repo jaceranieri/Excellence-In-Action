@@ -11,6 +11,7 @@
  *   wheel.select('differentiation');
  *   wheel.deselect();
  *   wheel.getSelected();
+ *   wheel.setHighlighted(['differentiation', 'data-analysis']); // [] clears
  *   wheel.destroy();
  *
  * Colours and copy are pulled from the Sydney Catholic Schools
@@ -485,6 +486,13 @@
     var centerHub = container.querySelector('.ew-center');
     var selectedId = null;
     var hoveredId = null;
+    // Wedges picked out by setHighlighted() (e.g. the app's school
+    // priorities). They only show while nothing is selected: they lift
+    // like a selected wedge, and every other wedge dims.
+    var highlighted = {};
+    function highlightActive() {
+      return selectedId === null && Object.keys(highlighted).length > 0;
+    }
     var onSelectCb = typeof options.onSelect === 'function' ? options.onSelect : null;
 
     function segmentById(id) {
@@ -495,10 +503,14 @@
     function updateRingHighlights() {
       var hoveredCategory = hoveredId ? segmentById(hoveredId).category : null;
       var selectedCategory = selectedId ? segmentById(selectedId).category : null;
-      var anyActive = hoveredCategory !== null || selectedCategory !== null;
+      var highlightedCategories = {};
+      if (highlightActive()) {
+        Object.keys(highlighted).forEach(function (id) { highlightedCategories[segmentById(id).category] = true; });
+      }
+      var anyActive = hoveredCategory !== null || selectedCategory !== null || highlightActive();
       rings.forEach(function (ring) {
         var cat = ring.getAttribute('data-category');
-        var isActive = cat === hoveredCategory || cat === selectedCategory;
+        var isActive = cat === hoveredCategory || cat === selectedCategory || !!highlightedCategories[cat];
         ring.classList.toggle('is-dimmed', anyActive && !isActive);
       });
     }
@@ -506,12 +518,14 @@
     // Resting state is full colour for every wedge. As soon as any one
     // wedge is hovered/focused, every OTHER wedge dims — except one that's
     // selected, which always stays full colour regardless of what's being
-    // hovered elsewhere.
+    // hovered elsewhere. Highlighted wedges (see setHighlighted()) count
+    // as active too, while nothing is selected.
     function updateWedgeDimming() {
-      var anyActive = hoveredId !== null || selectedId !== null;
+      var showHighlight = highlightActive();
+      var anyActive = hoveredId !== null || selectedId !== null || showHighlight;
       wedges.forEach(function (el) {
         var id = el.getAttribute('data-id');
-        var isActive = id === hoveredId || id === selectedId;
+        var isActive = id === hoveredId || id === selectedId || (showHighlight && !!highlighted[id]);
         el.classList.toggle('is-dimmed', anyActive && !isActive);
       });
     }
@@ -525,9 +539,11 @@
     });
 
     function applySelection() {
+      var showHighlight = highlightActive();
       wedges.forEach(function (el) {
         var isSel = el.getAttribute('data-id') === selectedId;
         el.classList.toggle('is-selected', isSel);
+        el.classList.toggle('is-highlighted', showHighlight && !!highlighted[el.getAttribute('data-id')]);
         el.setAttribute('aria-pressed', isSel ? 'true' : 'false');
       });
     }
@@ -567,6 +583,14 @@
       select: function (id) { setSelected(id, false); },
       deselect: function () { setSelected(null, false); },
       getSelected: function () { return selectedId ? segmentById(selectedId) : null; },
+      // Picks out these wedge ids while nothing is selected ([] clears).
+      setHighlighted: function (ids) {
+        highlighted = {};
+        (ids || []).forEach(function (id) { if (segmentById(id)) highlighted[id] = true; });
+        applySelection();
+        updateRingHighlights();
+        updateWedgeDimming();
+      },
       getSvgRoot: function () { return svg; },
       set onSelect(fn) { onSelectCb = typeof fn === 'function' ? fn : null; },
       get onSelect() { return onSelectCb; },

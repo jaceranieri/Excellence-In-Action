@@ -54,8 +54,26 @@
   /* animation-delay set per Element inline — see buildDotRing() */
 }
 
+/* School priorities: a gold star on each priority Theme's slice (see
+   updatePriorityStars() in the app script). Drawn in its own layer on
+   top of the wedges; a newly starred Theme's star pops in. */
+.ew-priority-star-layer {
+  pointer-events: none;
+}
+
+.ew-priority-star {
+  fill: #ffc933;
+  stroke: #000000;
+  stroke-width: 3.5;
+  stroke-linejoin: round;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: ew-pop-in 320ms cubic-bezier(0.34, 1.56, 0.64, 1) backwards;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .ew-theme-indicator-layer.is-entering .ew-theme-indicator {
+  .ew-theme-indicator-layer.is-entering .ew-theme-indicator,
+  .ew-priority-star {
     animation: none;
   }
 }

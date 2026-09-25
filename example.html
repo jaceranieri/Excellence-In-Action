@@ -163,10 +163,9 @@
   }
   #detail .placeholder { color: #999; font-style: italic; margin: 0; text-align: center; }
 
-  /* Before the first Element is ever selected, the wheel sits alone,
-     centred on the whole row (#detail collapsed to nothing) — once
-     the app's onSelect removes this class on the first real
-     selection, #detail expands and the transitions above animate the
+  /* At first the wheel sits alone, centred on the whole row (#detail
+     collapsed to nothing). The app's expandDetail() removes this class
+     straight away, to show the school's priorities, so #detail expands and the transitions above animate the
      wheel sliding left into its permanent side-by-side position. It
      never reverts, even if the user later deselects. */
   .main-layout.is-empty { gap: 0; }
@@ -240,7 +239,7 @@
       </div>
     </div>
   </div>
-  <p class="app-version">v1.0.0</p>
+  <p class="app-version">v1.1.0</p>
 </div>
 
   <script src="excellence-wheel.js"></script>
@@ -1651,10 +1650,20 @@
       return attachmentGlyph() + '<span>' + count + '</span>';
     }
 
+    // The school-priority star: the modal's toggle, the cards' marker and
+    // the priorities panel's icon. Fill and outline come from CSS.
+    function starSvg() {
+      return '<svg viewBox="0 0 24 24" aria-hidden="true">' +
+        '<path d="M12 2.8l2.84 5.76 6.36.92-4.6 4.48 1.09 6.33L12 17.3l-5.69 2.99 1.09-6.33-4.6-4.48 6.36-.92z" ' +
+        'stroke-linejoin="round"/></svg>';
+    }
+
+
     // --card-accent/--card-accent-rgb (the Element's colour) aren't used by
     // the card itself any more, but openThemeModal() reads them to colour
-    // the modal.
-    function renderThemeCard(theme, idx, accentHex, accentRgb, delay) {
+    // the modal. `elementName` (the priorities panel only) names the
+    // Element the Theme belongs to, above its title.
+    function renderThemeCard(theme, idx, accentHex, accentRgb, delay, elementName) {
       var grade = GRADES[theme.grade] || GRADES.ungraded;
       var count = (theme.evidence || []).length;
       return '<div class="theme-card' + (theme.grade === 'ungraded' || !GRADES[theme.grade] ? ' is-ungraded' : '') +
@@ -1663,11 +1672,19 @@
           ';--grade-color:' + gradeCardColor(grade) + ';animation-delay:' + delay + 'ms">' +
         '<div class="theme-card-top">' +
           '<span class="theme-card-grade">' + grade.label + '</span>' +
-          '<span class="theme-card-evidence-badge" title="' + count + ' evidence piece' + (count === 1 ? '' : 's') + '">' +
-            evidenceBadgeHtml(count) +
+          '<span class="theme-card-badges">' +
+            '<span class="theme-card-priority" title="School priority"' + (theme.priority ? '' : ' hidden') + '>' +
+              starSvg() +
+            '</span>' +
+            '<span class="theme-card-evidence-badge" title="' + count + ' evidence piece' + (count === 1 ? '' : 's') + '">' +
+              evidenceBadgeHtml(count) +
+            '</span>' +
           '</span>' +
         '</div>' +
-        '<h3 class="theme-card-title">' + escapeHtml(theme.title) + '</h3>' +
+        '<div class="theme-card-bottom">' +
+          (elementName ? '<p class="theme-card-element">' + escapeHtml(elementName) + '</p>' : '') +
+          '<h3 class="theme-card-title">' + escapeHtml(theme.title) + '</h3>' +
+        '</div>' +
         '</div>';
     }
 
@@ -1716,6 +1733,84 @@
         '</div>';
     }
 
+    // -- School priorities ------------------------------------------------
+    // Any Theme can be starred as a school priority from its modal (see
+    // the modal's star button). With no Element selected, the panel
+    // beside the wheel lists every priority Theme under "Our School
+    // Priorities", in wheel order, and the wheel lifts the Elements that
+    // hold them. The "Our Priorities" button under the wheel goes back to
+    // this view from any Element.
+    var PRIORITIES_EMPTY_TEXT = 'Please select a theme as a priority area to display here.';
+
+    // [{theme, segment}] for every priority Theme, in wheel order.
+    function priorityItems() {
+      var items = [];
+      ExcellenceWheel.SEGMENTS.forEach(function (seg) {
+        var data = ELEMENT_THEMES[seg.id];
+        ((data && data.themes) || []).forEach(function (theme) {
+          if (theme.priority) items.push({ theme: theme, segment: seg });
+        });
+      });
+      return items;
+    }
+
+    // Opens #detail from its collapsed, wheel-centred starting state (see
+    // .main-layout.is-empty in this page's <style>). It never collapses
+    // again. Returns true on that first expand only: the caller then holds
+    // the cards' cascade off until the 0.4s slide has finished (see the
+    // matching opacity transition-delay on #detail).
+    function expandDetail() {
+      var mainLayout = document.querySelector('.main-layout');
+      var isFirstExpand = mainLayout.classList.contains('is-empty');
+      mainLayout.classList.remove('is-empty');
+      return isFirstExpand;
+    }
+
+    function renderPrioritiesView(cascadeBaseDelay) {
+      var baseDelay = cascadeBaseDelay || 0;
+      var items = priorityItems();
+      currentThemes = items.map(function (item) { return item.theme; });
+      prioritiesViewStale = false;
+      var body;
+      if (items.length) {
+        body = '<div class="theme-cards">' + items.map(function (item, i) {
+          var data = ELEMENT_THEMES[item.segment.id];
+          var accentHex = ExcellenceWheel.CATEGORY_STYLE[item.segment.category].wedge;
+          return renderThemeCard(item.theme, i, accentHex, hexToRgbString(accentHex), baseDelay + i * 35,
+            (data && data.title) || item.segment.lines.join(' '));
+        }).join('') + '</div>';
+      } else {
+        body = '<div class="priorities-empty" style="animation-delay:' + baseDelay + 'ms">' +
+          '<p>' + escapeHtml(PRIORITIES_EMPTY_TEXT) + '</p>' +
+          '<p class="priorities-empty-hint">Open any Theme and click the star in its top-right corner.</p>' +
+        '</div>';
+      }
+      detailEl.innerHTML =
+        '<div class="element-detail priorities-detail">' +
+          '<div class="element-icon-placeholder priorities-icon" aria-hidden="true">' + starSvg() + '</div>' +
+          '<h2 class="element-title">Our School Priorities</h2>' +
+          body +
+        '</div>';
+      updatePrioritiesButton();
+    }
+
+    // True while the priorities panel lists a Theme whose star was
+    // changed in the open modal. The panel is redrawn when the modal
+    // closes, so the card behind it doesn't vanish mid-edit.
+    var prioritiesViewStale = false;
+
+    function isPrioritiesViewShown() {
+      return !!wheel && !wheel.getSelected() && !document.querySelector('.main-layout').classList.contains('is-empty');
+    }
+
+    // Call whenever any Theme's priority flag changes (or is loaded).
+    function prioritiesChanged() {
+      var elementIds = {};
+      priorityItems().forEach(function (item) { elementIds[item.segment.id] = true; });
+      if (wheel) wheel.setHighlighted(Object.keys(elementIds));
+      updatePriorityStars();
+    }
+
     // Reflects a Theme's current grade onto its outer card, live, without a
     // full re-render (which would replay the fade-in and lose the ring).
     function syncCard(cardEl, theme) {
@@ -1731,6 +1826,8 @@
         badge.setAttribute('title', count + ' evidence piece' + (count === 1 ? '' : 's'));
         badge.innerHTML = evidenceBadgeHtml(count);
       }
+      var star = cardEl.querySelector('.theme-card-priority');
+      if (star) star.hidden = !theme.priority;
       updateDotRingColors(); // this Theme's overview dot needs the same colour update
     }
 
@@ -1794,6 +1891,56 @@
       dotLayer.classList.add('is-entering'); // plays once, on this initial build only
     }
 
+    // Each priority Theme gets a star on its slice of the indicator ring.
+    // Drawn in its own layer on top of the wedges (a lifted wedge would
+    // otherwise cover part of it). Stars are added and removed one by one,
+    // so only a newly starred Theme's star pops in.
+    var priorityStarLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    priorityStarLayer.setAttribute('class', 'ew-priority-star-layer');
+    priorityStarLayer.setAttribute('aria-hidden', 'true');
+
+    function starPoints(cx, cy, outer, inner) {
+      var pts = [];
+      for (var k = 0; k < 10; k++) {
+        var r = k % 2 ? inner : outer;
+        var a = (-90 + k * 36) * Math.PI / 180;
+        pts.push((cx + r * Math.cos(a)).toFixed(1) + ',' + (cy + r * Math.sin(a)).toFixed(1));
+      }
+      return pts.join(' ');
+    }
+
+    function updatePriorityStars() {
+      var geo = ExcellenceWheel.GEOMETRY;
+      var radius = (geo.R.dotRingInner + geo.R.dotRingOuter) / 2;
+      var wanted = {};
+      ExcellenceWheel.SEGMENTS.forEach(function (seg) {
+        var data = ELEMENT_THEMES[seg.id];
+        var themes = (data && data.themes) || [];
+        var spanStart = seg.startAngle + INDICATOR_EDGE_GAP;
+        var sliceWidth = (seg.endAngle - INDICATOR_EDGE_GAP - spanStart) / themes.length;
+        themes.forEach(function (theme, i) {
+          if (!theme.priority) return;
+          var mid = (spanStart + (i + 0.5) * sliceWidth) * Math.PI / 180;
+          wanted[seg.id + ':' + i] = {
+            x: geo.cx + radius * Math.cos(mid),
+            y: geo.cy + radius * Math.sin(mid)
+          };
+        });
+      });
+      Array.prototype.slice.call(priorityStarLayer.childNodes).forEach(function (el) {
+        var key = el.getAttribute('data-key');
+        if (wanted[key]) delete wanted[key];
+        else priorityStarLayer.removeChild(el);
+      });
+      Object.keys(wanted).forEach(function (key) {
+        var star = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+        star.setAttribute('class', 'ew-priority-star');
+        star.setAttribute('data-key', key);
+        star.setAttribute('points', starPoints(wanted[key].x, wanted[key].y, 21, 9));
+        priorityStarLayer.appendChild(star);
+      });
+    }
+
     // Repaints every slice's fill from ELEMENT_THEMES' current grades, in
     // place — call this (not buildDotRing()) whenever grades change after
     // the initial build, e.g. from syncCard() on a rubric/grade change.
@@ -1823,6 +1970,7 @@
         '<div class="theme-modal-scroll">' +
           '<div class="theme-modal-header">' +
             '<h2 id="theme-modal-title" class="theme-modal-title"></h2>' +
+            '<button type="button" class="theme-modal-priority" aria-pressed="false">' + starSvg() + '</button>' +
             '<button type="button" class="theme-modal-close" aria-label="Close">&times;</button>' +
           '</div>' +
           '<div class="theme-modal-body">' +
@@ -1871,6 +2019,7 @@
     var modalBox = modalOverlay.querySelector('.theme-modal');
     var modalTitleEl = modalOverlay.querySelector('.theme-modal-title');
     var modalCloseBtn = modalOverlay.querySelector('.theme-modal-close');
+    var modalPriorityBtn = modalOverlay.querySelector('.theme-modal-priority');
     var rubricHeaderEl = modalOverlay.querySelector('.rubric-header');
     var rubricGridEl = modalOverlay.querySelector('.rubric-grid');
     var gradeBadgeWrap = modalOverlay.querySelector('.grade-badge-wrap');
@@ -2207,6 +2356,16 @@
       gradeBadgeBtn.style.setProperty('--grade-color', grade.color); // CSS transitions the fade
       gradeBadgeBtn.style.setProperty('--grade-shadow', darkenHex(grade.color, 0.22));
       gradeDropdownEl.innerHTML = renderGradeDropdown(theme);
+      refreshPriorityButton(theme);
+    }
+
+    function refreshPriorityButton(theme) {
+      var on = !!theme.priority;
+      modalPriorityBtn.classList.toggle('is-on', on);
+      modalPriorityBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+      var label = on ? 'School priority — click to remove' : 'Flag as a school priority';
+      modalPriorityBtn.setAttribute('aria-label', label);
+      modalPriorityBtn.setAttribute('title', label);
     }
 
     function openThemeModal(theme, cardEl) {
@@ -2233,8 +2392,28 @@
       gradeBadgeWrap.classList.remove('is-open');
       setEvidenceMode('list'); // discard any unsaved compose state on close
       document.body.style.overflow = '';
+      if (prioritiesViewStale && isPrioritiesViewShown()) {
+        // The card that opened the modal is being replaced: focus the
+        // redrawn card for the same Theme, or the panel's heading if the
+        // Theme was unstarred.
+        var theme = currentModalTheme;
+        renderPrioritiesView();
+        var idx = currentThemes.indexOf(theme);
+        lastFocusedEl = idx >= 0 ? detailEl.querySelector('.theme-card[data-theme-index="' + idx + '"]') : prioritiesBtn;
+      }
+      prioritiesViewStale = false;
       if (lastFocusedEl && typeof lastFocusedEl.focus === 'function') lastFocusedEl.focus();
     }
+
+    // -- School priority star ---------------------------------------------
+    modalPriorityBtn.addEventListener('click', function () {
+      if (!currentModalTheme) return;
+      currentModalTheme.priority = !currentModalTheme.priority;
+      refreshPriorityButton(currentModalTheme);
+      syncCard(currentModalCard, currentModalTheme);
+      prioritiesChanged();
+      if (isPrioritiesViewShown()) prioritiesViewStale = true;
+    });
 
     // -- Rubric cell selection ------------------------------------------
     // Selecting a rubric cell sets that row's rating; the Theme's overall
@@ -2313,22 +2492,34 @@
 
     var wheel = ExcellenceWheel.create(document.getElementById('wheel-host'), {
       onSelect: function (segment) {
-        if (!segment) {
-          detailEl.innerHTML = '<p class="placeholder">Select an Element to see its Themes here.</p>';
-          return;
-        }
-        // Permanently expands the cards column from its collapsed,
-        // wheel-centred starting state — see .main-layout.is-empty in
-        // this page's <style>. Never re-added, even on later
-        // deselection, so the layout stays put once expanded.
-        var mainLayout = document.querySelector('.main-layout');
-        var isFirstExpand = mainLayout.classList.contains('is-empty');
-        mainLayout.classList.remove('is-empty');
-        // On that first expand only, hold the cards' cascade off until the
-        // 0.4s wheel-slide (#detail's width transition) has finished —
-        // see the matching opacity transition-delay on #detail above.
-        renderElementDetail(segment, isFirstExpand ? 400 : 0);
+        // Deselecting goes back to the school's priorities. Either way the
+        // panel expands from its wheel-centred starting state if it hasn't
+        // already (see expandDetail()), and on that first expand the
+        // cards' cascade waits for the 0.4s slide to finish.
+        var isFirstExpand = expandDetail();
+        if (!segment) renderPrioritiesView(isFirstExpand ? 400 : 0);
+        else renderElementDetail(segment, isFirstExpand ? 400 : 0);
+        updatePrioritiesButton();
       }
+    });
+
+    // "Our Priorities", under the wheel: deselects any Element and shows
+    // the school's priorities. Pressed while that view is showing.
+    var prioritiesBtnRow = document.createElement('div');
+    prioritiesBtnRow.className = 'priorities-btn-row';
+    prioritiesBtnRow.innerHTML =
+      '<button type="button" class="priorities-btn" aria-pressed="false">' + starSvg() + '<span>Our Priorities</span></button>';
+    document.getElementById('wheel-host').appendChild(prioritiesBtnRow);
+    var prioritiesBtn = prioritiesBtnRow.querySelector('.priorities-btn');
+
+    function updatePrioritiesButton() {
+      prioritiesBtn.setAttribute('aria-pressed', isPrioritiesViewShown() ? 'true' : 'false');
+    }
+
+    prioritiesBtn.addEventListener('click', function () {
+      if (isPrioritiesViewShown()) return;
+      wheel.deselect();
+      renderPrioritiesView(expandDetail() ? 400 : 0);
     });
 
     // Insert the indicator layer BEFORE the wedges in the SVG's own DOM
@@ -2339,6 +2530,17 @@
     var svgRoot = wheel.getSvgRoot();
     svgRoot.insertBefore(dotLayer, svgRoot.querySelector('.ew-wedge'));
     buildDotRing();
+    // The priority stars go after the wedges, so they paint on top.
+    var lastWedge = svgRoot.querySelectorAll('.ew-wedge');
+    lastWedge = lastWedge[lastWedge.length - 1];
+    lastWedge.parentNode.insertBefore(priorityStarLayer, lastWedge.nextSibling);
+
+
+    // This page has no saved work to load, so it opens straight to the
+    // (in-memory) school priorities.
+    prioritiesChanged();
+    renderPrioritiesView(expandDetail() ? 400 : 0);
+
 
     // Other things you can do with the returned handle:
     // wheel.select('differentiation');

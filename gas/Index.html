@@ -180,10 +180,11 @@
   }
   #detail .placeholder { color: #999; font-style: italic; margin: 0; text-align: center; }
 
-  /* Before the first Element is ever selected, the wheel sits alone,
-     centred on the whole row (#detail collapsed to nothing) — once
-     Script_App.html's onSelect removes this class on the first real
-     selection, #detail expands and the transitions above animate the
+  /* Until the school's saved work has loaded, the wheel sits alone,
+     centred on the whole row (#detail collapsed to nothing). Then
+     Script_App.html's expandDetail() removes this class (to show the
+     school's priorities, or on the first Element selection if that comes
+     sooner), #detail expands and the transitions above animate the
      wheel sliding left into its permanent side-by-side position. It
      never reverts, even if the user later deselects. */
   .main-layout.is-empty { gap: 0; }

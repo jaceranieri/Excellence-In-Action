@@ -244,6 +244,39 @@ resources and messages):**
      header rows the first time anyone opens the app (or when you run
      `checkSetup`).
 
+**School priorities (v1.1.0), not yet confirmed live:**
+- A **star button** in the Theme modal's header, left of the close
+  button, flags the Theme as a school priority. Anyone at the school
+  can change it; it's shared by everyone at the school.
+- With **no Element selected**, the panel beside the wheel shows **"Our
+  School Priorities"**: every priority Theme's card, in wheel order,
+  with its Element's name above the title. With none, it shows "Please
+  select a theme as a priority area to display here." The app now opens
+  on this view once the school's work has loaded (the wheel slides
+  left as it did on the first Element click), and deselecting an
+  Element returns to it.
+- The **"Our Priorities" button** under the wheel deselects any Element
+  and shows the view. It's gold while the view is showing.
+- On the wheel, the Elements holding priority Themes lift and the rest
+  dim (`wheel.setHighlighted()`, new in the wheel component; it only
+  shows while nothing is selected). Each priority Theme also gets a
+  gold star on its slice of the indicator ring, and a small star badge
+  on its card.
+- **Stored in RatingsJSON** as `"priority": true` on the Theme's entry,
+  so it saves with the ratings (same debounce and toast) and needs no
+  new column. History records it ("Flagged as a school priority" /
+  "Removed from school priorities", and "Priorities changed in N
+  themes" in the summary), and restores bring it back.
+- A page opened before this deploy saves ratings without the flag.
+  `saveRatings()` keeps the saved flag when `priority` is missing, so
+  such a page can't clear a star.
+- `example.html` has the same feature, held in memory only.
+- To deploy: replace `Code.gs`, `Index.html`, `Script_App.html`,
+  `Script_History.html`, `Script_ExcellenceWheel.html`,
+  `Stylesheet_ExcellenceWheel.html`, `Stylesheet_ThemeCards.html`,
+  `Stylesheet_ThemeDots.html` and `Stylesheet_ThemeModal.html`, then
+  publish a new version.
+
 **Open items / next steps:**
 1. **"Untitled document" copy error:** one staff member couldn't
    attach a file with that name. The root cause is unknown; nothing in
@@ -370,7 +403,8 @@ tabs.
   LastUpdatedBy, LastUpdatedAt, RestoreCount, LastHistoryId,
   LastHistoryRow`. `RatingsJSON` is
   `{"<themeId>": {"grade": "sustaining", "rubric": [<selected level per
-  rubric row, in array order, or null>, ...]}, ...}` for every theme.
+  rubric row, in array order, or null>, ...], "priority": true}, ...}`
+  for every theme (`priority` only when the Theme is a school priority).
   The last three columns are history bookkeeping (see "School history").
 - **EvidenceLog** — one row per evidence entry (not per school):
   `EntryId, SchoolName, ThemeId, EntryNumber, Type, Date, Text,
