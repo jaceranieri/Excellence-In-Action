@@ -11,6 +11,7 @@
  *   wheel.deselect();
  *   wheel.getSelected();
  *   wheel.setHighlighted(['differentiation', 'data-analysis']); // [] clears
+ *   wheel.getWedgeSlot('differentiation'); // <g> for app shapes that lift with the wedge
  *   wheel.destroy();
  *
  * Colours and copy are pulled from the Sydney Catholic Schools
@@ -146,6 +147,7 @@
   var START_ANGLE = 210; // degrees; 0 = 3 o'clock, 90 = 6 o'clock (clockwise, SVG y-down)
   var SEGMENT_SWEEP = 40; // 9 segments * 40 = 360
   var GAP = 0.6; // degrees inset on each side of a wedge, for the white divider lines
+  var SHADOW_OFFSET = 12; // a raised wedge's hard shadow, down and right, in viewBox units
 
   SEGMENTS.forEach(function (seg, i) {
     seg.startAngle = START_ANGLE + i * SEGMENT_SWEEP;
@@ -188,6 +190,37 @@
       'A', rOuter, rOuter, 0, large, 1, eo.x, eo.y,
       'L', ei.x, ei.y,
       'A', rInner, rInner, 0, large, 0, si.x, si.y,
+      'Z'
+    ].join(' ');
+  }
+
+  // The same annular sector with slightly softened corners: each corner
+  // is cut back by `radius` (along both the arc and the straight edge) and
+  // joined with a curve through the original corner. The radius shrinks
+  // to fit on small shapes.
+  var CORNER = { wedge: 12, ring: 10 };
+
+  function roundedSectorPath(rInner, rOuter, startDeg, endDeg, radius) {
+    var r = Math.min(radius || 0, (rOuter - rInner) / 2, toRad(endDeg - startDeg) * rInner / 2);
+    if (!(r > 0)) return sectorPath(rInner, rOuter, startDeg, endDeg);
+    var dOut = (r / rOuter) * 180 / Math.PI;
+    var dIn = (r / rInner) * 180 / Math.PI;
+    function p(rad, deg) {
+      var q = polar(rad, deg);
+      return q.x.toFixed(2) + ' ' + q.y.toFixed(2);
+    }
+    var largeOut = endDeg - startDeg - 2 * dOut > 180 ? 1 : 0;
+    var largeIn = endDeg - startDeg - 2 * dIn > 180 ? 1 : 0;
+    return [
+      'M', p(rOuter, startDeg + dOut),
+      'A', rOuter, rOuter, 0, largeOut, 1, p(rOuter, endDeg - dOut),
+      'Q', p(rOuter, endDeg), p(rOuter - r, endDeg),
+      'L', p(rInner + r, endDeg),
+      'Q', p(rInner, endDeg), p(rInner, endDeg - dIn),
+      'A', rInner, rInner, 0, largeIn, 0, p(rInner, startDeg + dIn),
+      'Q', p(rInner, startDeg), p(rInner + r, startDeg),
+      'L', p(rOuter - r, startDeg),
+      'Q', p(rOuter, startDeg), p(rOuter, startDeg + dOut),
       'Z'
     ].join(' ');
   }
@@ -411,7 +444,7 @@
       var ringDelay = ENTRANCE.ringStart + idx * ENTRANCE.ringStagger;
       svg.push('<path class="ew-ring" data-category="' + key + '" style="--ring-muted:' + style.ringMuted +
         ';--ring-full:' + style.ring + ';animation-delay:' + ringDelay + 'ms" d="' +
-        sectorPath(R.ringInner, R.ringOuter, c.startAngle + GAP, c.endAngle - GAP) + '"/>');
+        roundedSectorPath(R.ringInner, R.ringOuter, c.startAngle + GAP, c.endAngle - GAP, CORNER.ring) + '"/>');
       svg.push('<text class="ew-ring-label" style="animation-delay:' + ringDelay + 'ms"><textPath href="#ew-arc-' + key +
         '" startOffset="50%" text-anchor="middle">' + escapeXML(style.label.toUpperCase()) + '</textPath></text>');
     });
@@ -431,8 +464,16 @@
       svg.push('<g class="ew-wedge" tabindex="0" role="button" data-id="' + seg.id + '" data-category="' + seg.category +
         '" aria-label="' + escapeAttr(seg.lines.join(' ')) + '" aria-pressed="false" style="--wedge-muted:' +
         style.wedgeMuted + ';--wedge-full:' + style.wedge + ';animation-delay:' + wedgeDelay + 'ms">');
-      svg.push('<path class="ew-wedge-fill" d="' +
-        sectorPath(R.wedgeInner, R.wedgeOuter, seg.startAngle + GAP, seg.endAngle - GAP) + '"/>');
+      var wedgePath = roundedSectorPath(R.wedgeInner, R.wedgeOuter, seg.startAngle + GAP, seg.endAngle - GAP, CORNER.wedge);
+      // A raised wedge (selected, or highlighted) gets a black outline and
+      // a hard black shadow, down and to the right (excellence-wheel.css).
+      // The shadow is a copy of the wedge's shape, hidden until raised.
+      // .ew-wedge-slot is for the app's own shapes that should lift with
+      // the wedge (see getWedgeSlot()); it sits above the shadow and below
+      // the wedge's fill.
+      svg.push('<path class="ew-wedge-shadow" transform="translate(' + SHADOW_OFFSET + ' ' + SHADOW_OFFSET + ')" d="' + wedgePath + '"/>');
+      svg.push('<g class="ew-wedge-slot"></g>');
+      svg.push('<path class="ew-wedge-fill" d="' + wedgePath + '"/>');
       svg.push('<g class="ew-icon" transform="translate(' + iconPt.x + ',' + iconPt.y + ')">' +
         placeholderIcon() + '</g>');
       svg.push('<text class="ew-label" x="' + textTop.x + '" y="' + textTop.y + '" font-size="' + fontSize + '">');
@@ -531,14 +572,53 @@
 
     wedges.forEach(function (el) {
       var id = el.getAttribute('data-id');
-      el.addEventListener('pointerenter', function () { hoveredId = id; updateRingHighlights(); updateWedgeDimming(); });
-      el.addEventListener('pointerleave', function () { if (hoveredId === id) hoveredId = null; updateRingHighlights(); updateWedgeDimming(); });
+      // .is-hovered, not :hover, lifts the wedge (excellence-wheel.css): a
+      // browser forgets :hover when raiseWedges() moves the wedge under the
+      // pointer, which made a just-clicked wedge drop and lift again.
+      el.addEventListener('pointerenter', function () { el.classList.add('is-hovered'); hoveredId = id; updateRingHighlights(); updateWedgeDimming(); });
+      el.addEventListener('pointerleave', function () { el.classList.remove('is-hovered'); if (hoveredId === id) hoveredId = null; updateRingHighlights(); updateWedgeDimming(); });
       el.addEventListener('focus', function () { hoveredId = id; updateRingHighlights(); updateWedgeDimming(); });
       el.addEventListener('blur', function () { if (hoveredId === id) hoveredId = null; updateRingHighlights(); updateWedgeDimming(); });
     });
 
+    // A raised wedge's shadow falls onto its neighbours, so raised wedges
+    // are drawn last. SVG has no z-index: they're moved to the end of the
+    // wedges in the DOM (before the centre hub) *before* their classes
+    // change, and the style is read once in between, so the lift still
+    // transitions rather than jumping. Keyboard focus is put back if a
+    // move took it away.
+    function raiseWedges(raisedIds) {
+      var seenRaised = false, inOrder = true;
+      Array.prototype.forEach.call(svg.querySelectorAll('.ew-wedge'), function (el) {
+        if (raisedIds[el.getAttribute('data-id')]) seenRaised = true;
+        else if (seenRaised) inOrder = false;
+      });
+      if (inOrder) return;
+      var focused = document.activeElement;
+      var moved = wedges.filter(function (el) { return raisedIds[el.getAttribute('data-id')]; });
+      moved.forEach(function (el) {
+        el.classList.add('ew-settled'); // a move would otherwise replay its entrance
+        svg.insertBefore(el, centerHub);
+      });
+      if (focused && focused !== document.activeElement && typeof focused.focus === 'function') focused.focus();
+      moved.forEach(function (el) { getComputedStyle(el).transform; }); // style them before the class change
+    }
+
+    // Once the entrance has played, turn the entrance animations off, so
+    // raiseWedges() can move a wedge without replaying them.
+    setTimeout(function () {
+      wedges.forEach(function (el) { el.classList.add('ew-settled'); });
+    }, ENTRANCE.indicatorStart + SEGMENTS.length * ENTRANCE.indicatorStagger + 600);
+
     function applySelection() {
       var showHighlight = highlightActive();
+      var raisedIds = {};
+      wedges.forEach(function (el) {
+        var id = el.getAttribute('data-id');
+        if (id === selectedId || (showHighlight && highlighted[id])) raisedIds[id] = true;
+      });
+      raiseWedges(raisedIds);
+      svg.classList.toggle('ew-has-highlight', showHighlight);
       wedges.forEach(function (el) {
         var isSel = el.getAttribute('data-id') === selectedId;
         el.classList.toggle('is-selected', isSel);
@@ -591,6 +671,12 @@
         updateWedgeDimming();
       },
       getSvgRoot: function () { return svg; },
+      // A <g> inside a wedge, behind its fill, for the app's own shapes
+      // (e.g. theme indicators) that should lift and be raised with it.
+      getWedgeSlot: function (id) {
+        var el = container.querySelector('.ew-wedge[data-id="' + id + '"] .ew-wedge-slot');
+        return el || null;
+      },
       set onSelect(fn) { onSelectCb = typeof fn === 'function' ? fn : null; },
       get onSelect() { return onSelectCb; },
       destroy: function () {
@@ -612,6 +698,7 @@
     // annular-sector path builder the wedges/rings themselves use.
     GEOMETRY: { cx: CX, cy: CY, R: R },
     sectorPath: sectorPath,
+    roundedSectorPath: roundedSectorPath,
     // Only the piece of ENTRANCE the app actually needs — when to start
     // staggering in the theme-indicator ring, so it can slot into the
     // same inside-out sequence right after the wedges finish appearing,

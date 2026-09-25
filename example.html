@@ -1807,8 +1807,9 @@
     function prioritiesChanged() {
       var elementIds = {};
       priorityItems().forEach(function (item) { elementIds[item.segment.id] = true; });
-      if (wheel) wheel.setHighlighted(Object.keys(elementIds));
-      updatePriorityStars();
+      if (!wheel) return;
+      updateDotRingPriorities();
+      wheel.setHighlighted(Object.keys(elementIds));
     }
 
     // Reflects a Theme's current grade onto its outer card, live, without a
@@ -1832,23 +1833,26 @@
     }
 
     // =======================================================================
-    // Theme indicator ring — the whole ring band (between the wedges and
-    // the outer dark ring) split into even arc slices per Element, one
-    // slice per Theme, filling the wedge's full angular width — always
-    // visible, not affected by hover/selection dimming. Purely visual, no
-    // hover/click/keyboard interaction of its own (removed on request) —
-    // getting to a specific Theme is only ever done by selecting the
-    // Element on the wheel and then its Theme card, as normal. Drawn as
-    // a plain SVG layer inserted directly into the wheel's own <svg>
-    // (via wheel.getSvgRoot()), using the wheel's exposed geometry
-    // (ExcellenceWheel.GEOMETRY, ExcellenceWheel.sectorPath) and
-    // per-segment angles (already on ExcellenceWheel.SEGMENTS) — so it's
-    // guaranteed to line up with the wedges without duplicating the
-    // wheel's own arc-drawing math.
+    // Theme indicator ring — the ring band between the wedges and the
+    // outer dark ring, split into even slices per Element, one slice per
+    // Theme, coloured by the Theme's grade. Each Element's slices are drawn
+    // inside its wedge (wheel.getWedgeSlot()), so they lift with it on
+    // hover and selection and share its black outline and shadow when it's
+    // raised. Clicking one selects its Element, like the rest of the wedge.
+    // Drawn with the wheel's exposed geometry (ExcellenceWheel.GEOMETRY,
+    // ExcellenceWheel.roundedSectorPath) and per-segment angles (on
+    // ExcellenceWheel.SEGMENTS), so it lines up with the wedges without
+    // duplicating the wheel's own arc-drawing math.
+    //
+    // In the Our Priorities view (theme-dots.css): only the priority
+    // Themes' slices lift with their wedge; every other slice stays put
+    // and fades.
     // =======================================================================
 
     var INDICATOR_EDGE_GAP = 0.6;  // degrees inset from the wedge's own edges — matches the wheel's wedge-to-wedge gap
     var INDICATOR_SLICE_GAP = 1.2; // degrees between adjacent Theme slices within one Element
+    var INDICATOR_CORNER = 6;      // softened corners, a little smaller than the wedges'
+    var INDICATOR_SHADOW = 12;     // matches the wedge shadow (excellence-wheel.js)
 
     // Ungraded reads as almost invisible here on purpose — barely off the
     // ring's white background, so the eye goes straight to what's
@@ -1857,100 +1861,73 @@
     // break legibility (e.g. the badge's white text).
     var INDICATOR_UNGRADED_COLOR = '#EEEFF2';
 
-    var dotLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    dotLayer.setAttribute('class', 'ew-theme-indicator-layer');
-    dotLayer.setAttribute('aria-hidden', 'true'); // decorative only — the same info is reachable, accessibly, via the cards
-
     // Built once, structure-only (every slice starts grey/"ungraded") —
     // updateDotRingColors() below is what actually paints real grades in,
     // by changing each path's own `fill` in place rather than rebuilding
-    // the layer, so a CSS `transition: fill` (see theme-dots.css) has
-    // something to animate between.
+    // it. That split matters: a CSS `transition: fill` (see
+    // theme-dots.css) only animates a change on the SAME element: it
+    // can't do anything for a freshly-inserted replacement path, so a
+    // grade change reads as a smooth colour fade rather than a jump-cut.
+    // Each slice also has a shadow copy, drawn behind every slice of its
+    // Element, shown only while the slice is raised.
     function buildDotRing() {
       var geo = ExcellenceWheel.GEOMETRY;
       var entrance = ExcellenceWheel.ENTRANCE;
-      var html = '';
       ExcellenceWheel.SEGMENTS.forEach(function (seg, segIdx) {
+        var slot = wheel.getWedgeSlot(seg.id);
         var data = ELEMENT_THEMES[seg.id];
         var themes = (data && data.themes) || [];
         var n = themes.length;
-        if (!n) return;
+        if (!slot || !n) return;
         var delay = entrance.indicatorStart + segIdx * entrance.indicatorStagger;
         var spanStart = seg.startAngle + INDICATOR_EDGE_GAP;
         var spanEnd = seg.endAngle - INDICATOR_EDGE_GAP;
         var sliceWidth = (spanEnd - spanStart) / n;
+        var shadows = '', slices = '';
         for (var i = 0; i < n; i++) {
           var a0 = spanStart + i * sliceWidth + INDICATOR_SLICE_GAP / 2;
           var a1 = spanStart + (i + 1) * sliceWidth - INDICATOR_SLICE_GAP / 2;
-          var d = ExcellenceWheel.sectorPath(geo.R.dotRingInner, geo.R.dotRingOuter, a0, a1);
-          html += '<path class="ew-theme-indicator" d="' + d + '" fill="' + INDICATOR_UNGRADED_COLOR + '"' +
-            ' style="animation-delay:' + delay + 'ms" data-seg-id="' + seg.id + '" data-theme-idx="' + i + '"/>';
+          var d = ExcellenceWheel.roundedSectorPath(geo.R.dotRingInner, geo.R.dotRingOuter, a0, a1, INDICATOR_CORNER);
+          var attrs = ' d="' + d + '" data-seg-id="' + seg.id + '" data-theme-idx="' + i + '"';
+          shadows += '<path class="ew-theme-indicator-shadow" transform="translate(' + INDICATOR_SHADOW + ' ' +
+            INDICATOR_SHADOW + ')"' + attrs + '/>';
+          // A white base under each slice, so a faded slice (the Our
+          // Priorities view) reads as a pale tint, not the shadow beneath.
+          slices += '<path class="ew-theme-indicator-base" style="animation-delay:' + delay + 'ms"' + attrs + '/>' +
+            '<path class="ew-theme-indicator" fill="' + INDICATOR_UNGRADED_COLOR + '"' +
+            ' style="animation-delay:' + delay + 'ms"' + attrs + '/>';
         }
-      });
-      dotLayer.innerHTML = html;
-      dotLayer.classList.add('is-entering'); // plays once, on this initial build only
-    }
-
-    // Each priority Theme gets a star on its slice of the indicator ring.
-    // Drawn in its own layer on top of the wedges (a lifted wedge would
-    // otherwise cover part of it). Stars are added and removed one by one,
-    // so only a newly starred Theme's star pops in.
-    var priorityStarLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    priorityStarLayer.setAttribute('class', 'ew-priority-star-layer');
-    priorityStarLayer.setAttribute('aria-hidden', 'true');
-
-    function starPoints(cx, cy, outer, inner) {
-      var pts = [];
-      for (var k = 0; k < 10; k++) {
-        var r = k % 2 ? inner : outer;
-        var a = (-90 + k * 36) * Math.PI / 180;
-        pts.push((cx + r * Math.cos(a)).toFixed(1) + ',' + (cy + r * Math.sin(a)).toFixed(1));
-      }
-      return pts.join(' ');
-    }
-
-    function updatePriorityStars() {
-      var geo = ExcellenceWheel.GEOMETRY;
-      var radius = (geo.R.dotRingInner + geo.R.dotRingOuter) / 2;
-      var wanted = {};
-      ExcellenceWheel.SEGMENTS.forEach(function (seg) {
-        var data = ELEMENT_THEMES[seg.id];
-        var themes = (data && data.themes) || [];
-        var spanStart = seg.startAngle + INDICATOR_EDGE_GAP;
-        var sliceWidth = (seg.endAngle - INDICATOR_EDGE_GAP - spanStart) / themes.length;
-        themes.forEach(function (theme, i) {
-          if (!theme.priority) return;
-          var mid = (spanStart + (i + 0.5) * sliceWidth) * Math.PI / 180;
-          wanted[seg.id + ':' + i] = {
-            x: geo.cx + radius * Math.cos(mid),
-            y: geo.cy + radius * Math.sin(mid)
-          };
-        });
-      });
-      Array.prototype.slice.call(priorityStarLayer.childNodes).forEach(function (el) {
-        var key = el.getAttribute('data-key');
-        if (wanted[key]) delete wanted[key];
-        else priorityStarLayer.removeChild(el);
-      });
-      Object.keys(wanted).forEach(function (key) {
-        var star = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
-        star.setAttribute('class', 'ew-priority-star');
-        star.setAttribute('data-key', key);
-        star.setAttribute('points', starPoints(wanted[key].x, wanted[key].y, 21, 9));
-        priorityStarLayer.appendChild(star);
+        slot.innerHTML =
+          '<g class="ew-theme-indicator-shadows" aria-hidden="true">' + shadows + '</g>' +
+          '<g class="ew-theme-indicator-layer is-entering" aria-hidden="true">' + slices + '</g>';
       });
     }
 
-    // Repaints every slice's fill from ELEMENT_THEMES' current grades, in
-    // place — call this (not buildDotRing()) whenever grades change after
-    // the initial build, e.g. from syncCard() on a rubric/grade change.
+    function themeForIndicator(path) {
+      var data = ELEMENT_THEMES[path.getAttribute('data-seg-id')];
+      return data && data.themes && data.themes[parseInt(path.getAttribute('data-theme-idx'), 10)];
+    }
+
+    // Repaints every slice's fill from ELEMENT_THEMES' current grades,
+    // in place — call this (not buildDotRing()) whenever grades change
+    // after the initial build: loading saved state, a rubric click, a
+    // grade-dropdown change.
     function updateDotRingColors() {
-      dotLayer.querySelectorAll('.ew-theme-indicator').forEach(function (path) {
-        var data = ELEMENT_THEMES[path.getAttribute('data-seg-id')];
-        var theme = data && data.themes && data.themes[parseInt(path.getAttribute('data-theme-idx'), 10)];
+      wheel.getSvgRoot().querySelectorAll('.ew-theme-indicator').forEach(function (path) {
+        var theme = themeForIndicator(path);
         var grade = theme && theme.grade;
         var g = GRADES[grade] || GRADES.ungraded;
         path.setAttribute('fill', (!grade || grade === 'ungraded') ? INDICATOR_UNGRADED_COLOR : g.color);
+      });
+    }
+
+    // Marks priority Themes' slices (and their bases and shadows) with
+    // .is-priority, which theme-dots.css uses in the Our Priorities view.
+    function updateDotRingPriorities() {
+      var selector = '.ew-theme-indicator, .ew-theme-indicator-base, .ew-theme-indicator-shadow';
+      wheel.getSvgRoot().querySelectorAll(selector).forEach(function (path) {
+        var theme = themeForIndicator(path);
+        path.classList.toggle('is-priority', !!(theme && theme.priority));
       });
     }
 
@@ -2522,19 +2499,8 @@
       renderPrioritiesView(expandDetail() ? 400 : 0);
     });
 
-    // Insert the indicator layer BEFORE the wedges in the SVG's own DOM
-    // order (not appended at the end) — so it paints behind them, and a
-    // wedge's hover/selected scale-up visually covers the indicator ring
-    // where they overlap, rather than the indicators floating on top of
-    // an enlarging wedge.
-    var svgRoot = wheel.getSvgRoot();
-    svgRoot.insertBefore(dotLayer, svgRoot.querySelector('.ew-wedge'));
+    // The theme indicators go inside each wedge (see buildDotRing()).
     buildDotRing();
-    // The priority stars go after the wedges, so they paint on top.
-    var lastWedge = svgRoot.querySelectorAll('.ew-wedge');
-    lastWedge = lastWedge[lastWedge.length - 1];
-    lastWedge.parentNode.insertBefore(priorityStarLayer, lastWedge.nextSibling);
-
 
     // This page has no saved work to load, so it opens straight to the
     // (in-memory) school priorities.

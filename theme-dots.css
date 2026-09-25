@@ -1,24 +1,20 @@
 /*!
  * Theme indicator ring — the ring the wheel reserves between its wedges
  * and its outer dark ring (see GEOMETRY in excellence-wheel.js), split
- * by the app into one arc slice per Theme, filling each Element's full
+ * by the app into one slice per Theme, filling each Element's full
  * angular width evenly regardless of how many Themes it has. This is an
  * app-level overlay, not part of the wheel component itself: the wheel
- * has no idea Themes or grades exist, it just exposes its centre point,
- * radii, and its own annular-sector path builder (`sectorPath`), plus a
- * handle to its own <svg> so this layer can be drawn in true alignment
- * with it (see buildDotRing() in the demo script).
+ * has no idea Themes or grades exist. It exposes its centre point,
+ * radii and path builders, plus a slot inside each wedge
+ * (wheel.getWedgeSlot()) where buildDotRing() in the app script draws
+ * that Element's slices.
  *
- * Purely visual — no hover, click, or keyboard interaction (`pointer-
- * events: none`, and the layer is `aria-hidden`); reaching a specific
- * Theme is only ever done via the Element wedge + its Theme card, same
- * as before this existed. Always visible, coloured only by that Theme's
- * grade — deliberately NOT affected by the wheel's own hover/selected
- * dimming, since the point is a same-glance comparison across every
- * Element regardless of what's selected. Inserted BEHIND the wedges in
- * the SVG's paint order (not appended on top), so a wedge's own hover/
- * selected scale-up visually covers the indicator ring where they
- * overlap.
+ * Because the slices sit inside their wedge, they lift with it (over the
+ * dark outer ring) on hover and selection, and click through to it.
+ * While the wedge is raised (selected, or a priority Element in the Our
+ * Priorities view) they share its black outline and hard shadow. Each
+ * slice is coloured only by its Theme's grade, and isn't dimmed with the
+ * wedges, except in the Our Priorities view (below).
  *
  * Entrance animation: reuses `@keyframes ew-pop-in`, defined in
  * excellence-wheel.css, not redeclared here — both stylesheets are
@@ -29,51 +25,92 @@
  * inside-out sequence right after the wedges finish appearing.
  */
 
-.ew-theme-indicator-layer {
-  pointer-events: none;
-}
-
 /* Each slice is built once, grey ("ungraded"), then only ever has its
    `fill` attribute changed in place (see updateDotRingColors() in the
-   demo script) — never replaced/rebuilt — specifically so this
+   app script) — never replaced/rebuilt — specifically so this
    transition has something to animate between. That's what turns the
    real per-Theme grades arriving a moment after the wheel's own initial
-   entrance (a separate animation, below) into a slow, deliberate colour
-   fade-in rather than a jump-cut; the same transition also softens any
-   later live grade change (a rubric click, the grade dropdown). */
-.ew-theme-indicator {
-  transition: fill 2s ease;
+   entrance into a slow, deliberate colour fade-in rather than a
+   jump-cut; the same transition also softens any later live grade
+   change (a rubric click, the grade dropdown). */
+.ew-theme-indicator-base {
+  fill: #ffffff;
+  transform-box: view-box;
+  transform-origin: 546px 546px;
+  transition: transform 0.15s ease;
 }
 
-/* Entrance plays once, when buildDotRing() first constructs this layer
-   (see the demo script) — a later grade change only ever updates each
-   path's own `fill` in place via updateDotRingColors(), never rebuilds
-   the layer, so .is-entering is never re-added and this never replays. */
-.ew-theme-indicator-layer.is-entering .ew-theme-indicator {
+.ew-theme-indicator {
+  stroke: transparent;
+  stroke-width: 0;
+  stroke-linejoin: round;
+  transform-box: view-box;
+  transform-origin: 546px 546px;
+  transition: fill 2s ease, stroke 0.1s ease, opacity 0.18s ease, transform 0.15s ease;
+}
+
+/* Raised with its wedge: the same black outline and hard shadow. The
+   shadows are separate copies, drawn behind all of the Element's slices,
+   and only shown while raised. */
+.ew-theme-indicator-shadow {
+  fill: #000000;
+  stroke: #000000;
+  stroke-width: 4.5;
+  stroke-linejoin: round;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+.ew-wedge.is-selected .ew-theme-indicator,
+.ew-wedge.is-highlighted .ew-theme-indicator.is-priority {
+  stroke: #000000;
+  stroke-width: 4.5;
+}
+
+.ew-wedge.is-selected .ew-theme-indicator-shadow,
+.ew-wedge.is-highlighted .ew-theme-indicator-shadow.is-priority {
+  opacity: 1;
+}
+
+/* Our Priorities view (the wheel adds .ew-has-highlight): only priority
+   Themes' slices lift with their wedge. Every other slice stays where it
+   is, by undoing its wedge's 1.045 lift, and fades. */
+.ew-has-highlight .ew-theme-indicator:not(.is-priority) {
+  opacity: 0.3;
+}
+
+.ew-has-highlight .ew-wedge.is-hovered .ew-theme-indicator:not(.is-priority),
+.ew-has-highlight .ew-wedge.is-hovered .ew-theme-indicator-base:not(.is-priority),
+.ew-wedge.is-highlighted .ew-theme-indicator:not(.is-priority),
+.ew-wedge.is-highlighted .ew-theme-indicator-base:not(.is-priority) {
+  transform: scale(0.95694); /* 1 / 1.045 */
+}
+
+/* Entrance plays once, when buildDotRing() first constructs the slices —
+   a later grade change only ever updates each path's own `fill` in
+   place via updateDotRingColors(). Once the wheel marks its wedges
+   .ew-settled, the entrance is switched off, so moving a raised wedge
+   (excellence-wheel.js's raiseWedges()) doesn't replay it. */
+.ew-theme-indicator-layer.is-entering .ew-theme-indicator,
+.ew-theme-indicator-layer.is-entering .ew-theme-indicator-base {
   animation: ew-pop-in 320ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
   /* animation-delay set per Element inline — see buildDotRing() */
 }
 
-/* School priorities: a gold star on each priority Theme's slice (see
-   updatePriorityStars() in the app script). Drawn in its own layer on
-   top of the wedges; a newly starred Theme's star pops in. */
-.ew-priority-star-layer {
-  pointer-events: none;
-}
-
-.ew-priority-star {
-  fill: #ffc933;
-  stroke: #000000;
-  stroke-width: 3.5;
-  stroke-linejoin: round;
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: ew-pop-in 320ms cubic-bezier(0.34, 1.56, 0.64, 1) backwards;
+.ew-wedge.ew-settled .ew-theme-indicator,
+.ew-wedge.ew-settled .ew-theme-indicator-base {
+  animation: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .ew-theme-indicator-layer.is-entering .ew-theme-indicator,
-  .ew-priority-star {
+  .ew-theme-indicator-layer.is-entering .ew-theme-indicator-base {
     animation: none;
+  }
+  .ew-theme-indicator,
+  .ew-theme-indicator-base,
+  .ew-theme-indicator-shadow {
+    transition: none;
   }
 }

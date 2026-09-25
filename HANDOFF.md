@@ -257,11 +257,32 @@ resources and messages):**
   Element returns to it.
 - The **"Our Priorities" button** under the wheel deselects any Element
   and shows the view. It's gold while the view is showing.
-- On the wheel, the Elements holding priority Themes lift and the rest
-  dim (`wheel.setHighlighted()`, new in the wheel component; it only
-  shows while nothing is selected). Each priority Theme also gets a
-  gold star on its slice of the indicator ring, and a small star badge
-  on its card.
+- On the wheel, the Elements holding priority Themes are raised and
+  the rest dim (`wheel.setHighlighted()`, new in the wheel component;
+  it only shows while nothing is selected). Only the priority Themes'
+  indicator slices lift with them; every other slice stays put and
+  fades. Priority Themes' cards get a small star badge.
+
+**Wheel restyle (with priorities):**
+- Wedges, the Leading/Teaching/Learning ring arcs and the indicator
+  slices have slightly rounded corners (`roundedSectorPath()` in the
+  wheel; radii in `CORNER` and `INDICATOR_CORNER`).
+- A **raised** wedge (selected, or highlighted in the priorities view)
+  gets a black outline and a hard black shadow down and to the right,
+  like the cards. The shadow is a path inside the wedge, so nothing
+  moves.
+  - Raised wedges are moved to the end of the wedges in the SVG
+    (`raiseWedges()`), so their shadow falls on their neighbours.
+  - A move would replay the entrance, so wedges get `.ew-settled`
+    (no animation) once it has played.
+  - A move also makes the browser forget `:hover`, so the hover lift
+    uses an `.is-hovered` class set from pointer events instead.
+- The **indicator slices now live inside their wedge** (the wheel's
+  `getWedgeSlot()`), not in a layer behind the wedges. They lift with
+  the wedge over the dark outer ring, share its outline and shadow when
+  it's raised, and clicking one selects the Element. Each slice has a
+  white base (so a faded slice doesn't show the shadow under it) and a
+  shadow copy.
 - **Stored in RatingsJSON** as `"priority": true` on the Theme's entry,
   so it saves with the ratings (same debounce and toast) and needs no
   new column. History records it ("Flagged as a school priority" /
