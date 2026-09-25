@@ -83,6 +83,38 @@
   text-align: center;
 }
 
+/* School switcher (someone at several schools): the crest becomes a
+   button with a chevron that opens the school dropdown (.school-menu,
+   styled with the login gate). */
+.app-banner-school.has-switcher {
+  position: relative;
+}
+
+.app-banner-school-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px 4px 10px;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.app-banner-school-btn:hover,
+.app-banner-school-btn:focus-visible,
+.app-banner-school-btn[aria-expanded="true"] {
+  background: #f4f5f5;
+  border-color: #000000;
+  outline: none;
+}
+
+.app-banner-school-crest {
+  display: flex;
+  align-items: center;
+}
+
 /* Last Updated, History, avatar ------------------------------------------*/
 
 .app-banner-tools {
@@ -219,6 +251,7 @@
   .app-banner-avatar { grid-area: avatar; }
   .app-banner-updated { grid-area: updated; justify-self: end; margin-right: 0; }
   .app-banner-school { justify-content: flex-start; }
+  .app-banner-school .school-menu { left: 0; transform: none; }
   .app-banner-brand-top { font-size: 14px; }
   .app-banner-brand-script { font-size: 28px; margin-left: 10px; }
   .app-banner-school img { max-height: 40px; max-width: 170px; }

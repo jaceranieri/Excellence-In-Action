@@ -20,10 +20,12 @@
  * that — the Users sheet read would then run as the visitor, who
  * likely has no access to it at all.)
  *
- * Every server function the page calls re-derives the visitor's school
- * from their session (requireActiveUser_()), never from a client-supplied
- * argument — anyone on the domain can call google.script.run functions
- * straight from the browser console with whatever arguments they like.
+ * Every server function the page calls checks the visitor's access from
+ * their session (requireActiveUser_()). The page says which of their
+ * schools it has open (the last argument), and that is only ever accepted
+ * if the Users sheet lists them as active at it — anyone on the domain
+ * can call google.script.run functions straight from the browser console
+ * with whatever arguments they like.
  */
 
 /**
@@ -123,50 +125,96 @@ function shortHash_(value) {
 
 /**
  * Looks up the signed-in visitor on the Users tab (columns, in order:
- * Email, Name, SchoolName, CrestURL, Active). Never throws on an unknown
- * email — just comes back with found: false:
- *   { email, found, active, name, schoolName, crestUrl }
+ * Email, Name, SchoolName, CrestURL, Active). Someone at several schools
+ * has one row per school; each row's Active applies to that school only.
+ * Never throws on an unknown email — just comes back with found: false:
+ *   { email, found, active, name, schoolName, crestUrl, schools }
+ * `schools` is every school they're active at, [{schoolName, crestUrl}],
+ * with the one they last opened first (see rememberSchool_()).
+ * schoolName/crestUrl are that first school's, so single-school code
+ * paths keep working; if no row is active they're the first row's, for
+ * the "Insufficient Access" screen.
  */
 function getCurrentUserAccess() {
   var email = activeEmail_();
-  var result = { email: email, found: false, active: false, name: '', schoolName: '', crestUrl: '' };
+  var result = { email: email, found: false, active: false, name: '', schoolName: '', crestUrl: '', schools: [] };
   if (!email) return result;
 
   var ss = SpreadsheetApp.openById(requireProp_('USERS_SHEET_ID'));
   var sheet = ss.getSheetByName(TABS.USERS) || ss.getSheets()[0];
   var rows = sheet.getDataRange().getValues();
+  var seen = {};
   for (var i = 1; i < rows.length; i++) {
     var row = rows[i];
     var rowEmail = String(row[0] || '').toLowerCase().trim();
-    if (rowEmail && rowEmail === email) {
+    if (!rowEmail || rowEmail !== email) continue;
+    var schoolName = String(row[2] || '').trim();
+    var crestUrl = String(row[3] || '').trim();
+    if (!result.found) {
       result.found = true;
-      result.name = String(row[1] || '').trim();
-      result.schoolName = String(row[2] || '').trim();
-      result.crestUrl = String(row[3] || '').trim();
-      result.active = row[4] === true || String(row[4]).trim().toUpperCase() === 'TRUE';
-      break;
+      result.schoolName = schoolName;
+      result.crestUrl = crestUrl;
     }
+    if (!result.name) result.name = String(row[1] || '').trim();
+    var active = row[4] === true || String(row[4]).trim().toUpperCase() === 'TRUE';
+    var key = schoolName.toLowerCase();
+    if (!active || !schoolName || seen[key]) continue;
+    seen[key] = true;
+    result.schools.push({ schoolName: schoolName, crestUrl: crestUrl });
+  }
+  if (result.schools.length) {
+    result.active = true;
+    var last = String(PropertiesService.getScriptProperties().getProperty(lastSchoolKey_(email)) || '').toLowerCase();
+    result.schools.sort(function (a, b) {
+      return (b.schoolName.toLowerCase() === last) - (a.schoolName.toLowerCase() === last);
+    });
+    result.lastSchool = result.schools.length > 1 && result.schools[0].schoolName.toLowerCase() === last
+      ? result.schools[0].schoolName : '';
+    result.schoolName = result.schools[0].schoolName;
+    result.crestUrl = result.schools[0].crestUrl;
   }
   return result;
 }
 
+function lastSchoolKey_(email) { return 'eia.lastSchool.' + shortHash_(email); }
+
+/** Remembers the school someone opened, so it's first next visit (only matters with several). */
+function rememberSchool_(access) {
+  if (!access.schools || access.schools.length < 2) return;
+  var props = PropertiesService.getScriptProperties();
+  var key = lastSchoolKey_(access.email);
+  if (props.getProperty(key) !== access.schoolName) props.setProperty(key, access.schoolName);
+}
+
 /**
- * The gate for every google.script.run entry point. Cached for 5 minutes
- * so a burst of saves doesn't re-read the Users sheet each time (so a
- * deactivation takes up to 5 minutes to bite for someone mid-session).
+ * The gate for every google.script.run entry point. `school` is the
+ * school the page has open (someone can be at several). It must be one
+ * the visitor is active at; the returned access then has that school's
+ * schoolName/crestUrl. Without it (a page from before multi-school
+ * support), their first school is used.
+ *
+ * The Users lookup is cached for 5 minutes, so a burst of saves doesn't
+ * re-read the Users sheet each time (so a deactivation takes up to 5
+ * minutes to bite for someone mid-session).
  */
-function requireActiveUser_() {
+function requireActiveUser_(school) {
   var email = activeEmail_();
   if (!email) throw new Error('Could not identify your Google account. Reload the page and try again.');
   var cache = CacheService.getScriptCache();
-  var key = 'eia.access.' + shortHash_(email);
+  var key = 'eia.access2.' + shortHash_(email);
   var cached = cache.get(key);
   var access = cached ? JSON.parse(cached) : getCurrentUserAccess();
-  if (!access.found || !access.active || !access.schoolName) {
+  if (!access.found || !access.active || !access.schools || !access.schools.length) {
     throw new Error('Your account does not have access to Excellence in Action.');
   }
   if (!cached) cache.put(key, JSON.stringify(access), 300);
-  return access;
+  var wanted = String(school || '').trim().toLowerCase();
+  var match = wanted
+    ? access.schools.filter(function (sc) { return sc.schoolName.toLowerCase() === wanted; })[0]
+    : access.schools[0];
+  if (!match) throw new Error('Your account does not have access to that school.');
+  return { email: access.email, name: access.name, found: true, active: true,
+    schoolName: match.schoolName, crestUrl: match.crestUrl, schools: access.schools };
 }
 
 /** Folder ID from a Drive folder URL (or a bare ID), or '' if unparseable. */
@@ -361,8 +409,9 @@ function isStaleSave_(state, clientVersion) {
  * Returns { ratings: {<themeId>: {grade, rubric}}, evidence: [entries],
  * stateVersion } — the page sends stateVersion back with every save.
  */
-function getSchoolState() {
-  var access = requireActiveUser_();
+function getSchoolState(school) {
+  var access = requireActiveUser_(school);
+  rememberSchool_(access);
   var state = readSchoolRow_(access.schoolName, false);
   var lastUpdated = null;
   if (state.lastUpdated) {
@@ -407,8 +456,8 @@ function sanitizeRatings_(obj) {
  * Returns { ok: true } or { ok: false, stale: true } (see isStaleSave_()).
  * Pages from before per-theme saves send every theme; that still works.
  */
-function saveRatings(changesJson, stateVersion) {
-  var access = requireActiveUser_();
+function saveRatings(changesJson, stateVersion, school) {
+  var access = requireActiveUser_(school);
   var raw = JSON.parse(changesJson);
   var changed = sanitizeRatings_(raw);
   var lock = LockService.getScriptLock();
@@ -478,8 +527,8 @@ function normalizeAttachments_(list, folderId) {
  *   { ok: false, stale: true }  page is older than the school's last restore
  *   { ok: false, gone: true }   the entry being edited no longer exists
  */
-function saveEvidenceEntry(themeId, entry) {
-  var access = requireActiveUser_();
+function saveEvidenceEntry(themeId, entry, school) {
+  var access = requireActiveUser_(school);
   if (!/^[A-Za-z0-9_]+$/.test(String(themeId || ''))) throw new Error('Invalid theme.');
   entry = entry || {};
   var list = entry.attachments || [];
@@ -610,8 +659,8 @@ function evidenceEditChange_(themeId, entryId, number, oldRow, title, text, oldA
  * rows stay, so a restore can bring it back.
  * Returns { ok }, or { ok: false, stale: true } (see isStaleSave_()).
  */
-function deleteEvidenceEntry(entryId, stateVersion) {
-  var access = requireActiveUser_();
+function deleteEvidenceEntry(entryId, stateVersion, school) {
+  var access = requireActiveUser_(school);
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
@@ -955,8 +1004,8 @@ function findSchoolHistoryRow_(sheet, historyId, schoolName) {
  * startedAt/updatedAt are ms since the epoch. `offset` pages through it
  * (a page can repeat an entry if new ones arrive meanwhile; de-dupe by id).
  */
-function getSchoolHistory(offset, limit) {
-  var access = requireActiveUser_();
+function getSchoolHistory(offset, limit, school) {
+  var access = requireActiveUser_(school);
   offset = Math.max(0, parseInt(offset, 10) || 0);
   limit = Math.min(100, Math.max(1, parseInt(limit, 10) || 50));
   var state = readSchoolRow_(access.schoolName, false);
@@ -990,8 +1039,8 @@ function getSchoolHistory(offset, limit) {
 }
 
 /** The full change list of one history entry (for expanding it in the list). */
-function getHistoryEntryChanges(historyId) {
-  var access = requireActiveUser_();
+function getHistoryEntryChanges(historyId, school) {
+  var access = requireActiveUser_(school);
   var found = findSchoolHistoryRow_(ensureSheet_(TABS.HISTORY, HISTORY_HEADERS), historyId, access.schoolName);
   if (!found) return { ok: false };
   var changes;
@@ -1003,8 +1052,8 @@ function getHistoryEntryChanges(historyId) {
  * Saves the school's current state as a named checkpoint.
  * Returns { ok, entry } or { ok: false, stale: true }.
  */
-function saveCheckpoint(label, stateVersion) {
-  var access = requireActiveUser_();
+function saveCheckpoint(label, stateVersion, school) {
+  var access = requireActiveUser_(school);
   label = String(label || '').replace(/\s+/g, ' ').trim().slice(0, MAX_CHECKPOINT_LABEL);
   if (!label) throw new Error('Give the checkpoint a name.');
   var lock = LockService.getScriptLock();
@@ -1143,8 +1192,8 @@ function planRestore_(access, state, historyId) {
  *   { ok, target, changes, summary, nothingToChange, stateVersion }
  * `changes` uses the same format as a history entry's changes.
  */
-function previewRestore(historyId) {
-  var access = requireActiveUser_();
+function previewRestore(historyId, school) {
+  var access = requireActiveUser_(school);
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
@@ -1215,8 +1264,8 @@ function restoreTargetLabel_(target) {
  *   { ok: false, stale: true }     page is older than the school's last restore
  *   { ok: false, notFound: true }
  */
-function restoreToPoint(historyId, stateVersion) {
-  var access = requireActiveUser_();
+function restoreToPoint(historyId, stateVersion, school) {
+  var access = requireActiveUser_(school);
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
@@ -1556,8 +1605,8 @@ function listPermissionEmails_(token, fileId) {
  * sharing files one by one, and without anyone being given edit. Called by
  * the page, fire-and-forget, right after login. Cached for 6 hours.
  */
-function ensureSchoolFolderAccess() {
-  var access = requireActiveUser_();
+function ensureSchoolFolderAccess(school) {
+  var access = requireActiveUser_(school);
   var folderId = getSchoolFolderId_(access.schoolName);
   var cache = CacheService.getScriptCache();
   var key = 'eia.folderaccess.' + shortHash_(folderId + '|' + access.email);

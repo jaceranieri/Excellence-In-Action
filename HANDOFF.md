@@ -266,9 +266,10 @@ resources and messages):**
 **Wheel restyle (with priorities):**
 - Wedges, the Leading/Teaching/Learning ring arcs and the indicator
   slices have slightly rounded corners (`roundedSectorPath()` in the
-  wheel; radii in `CORNER` and `INDICATOR_CORNER`) and a black border.
-- A hard drop shadow on raised wedges was tried and removed at the
-  project owner's request.
+  wheel; radii in `CORNER` and `INDICATOR_CORNER`).
+- A hard drop shadow on raised wedges, and later black outlines on
+  every wedge, arc and slice, were both tried and removed at the
+  project owner's request (too busy).
 - The **indicator slices now live inside their wedge** (the wheel's
   `getWedgeSlot()`), not in a layer behind the wedges. They lift with
   the wedge over the dark outer ring, and clicking one selects the
@@ -372,7 +373,22 @@ in `import-eia.py` itself; not run by the app.
   Properties in the Apps Script editor — not hardcoded in `Code.gs`).
 - `Code.gs`'s `getCurrentUserAccess()` reads `Session.getActiveUser().getEmail()`
   and looks it up (case-insensitive) against the **Users** tab (falling
-  back to the first tab). Returns `{email, found, active, name, schoolName, crestUrl}`.
+  back to the first tab). Returns `{email, found, active, name, schoolName, crestUrl, schools, lastSchool}`.
+- **Several schools:** someone at more than one school has **one row per
+  school** (same email). Each row's `Active` applies to that school only;
+  `schools` lists the active ones, the last one they opened first
+  (Script Property `eia.lastSchool.<email hash>`, set by
+  `getSchoolState()`). `schoolName`/`crestUrl` are that first school.
+  - The welcome screen then shows a "Choose your school" dropdown of
+    crests (the last used one tagged), and the banner crest becomes a
+    dropdown to switch school in place (`window.switchSchool()` in
+    `Script_App.html`: waits for saves in flight, then reloads the
+    school's work and goes back to its priorities).
+  - Every school-specific server function takes the open school as its
+    **last argument**, and `requireActiveUser_(school)` refuses one the
+    visitor isn't active at. Without it (a page from before this), the
+    first school is used. Messages, resources and Drive auth aren't
+    per school.
   The same spreadsheet's **Schools** tab maps each school to its evidence
   folder — see "Attachments" below. Its **Resources** and **Messages**
   tabs hold the Element links and team messages (see "Element resources

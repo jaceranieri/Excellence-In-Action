@@ -261,4 +261,124 @@
     opacity: 1;
   }
 }
+
+/* School dropdown (someone at several schools) ------------------------
+   The welcome screen's "Choose your school" button and the banner's
+   school switcher both open this menu of crests (createSchoolMenu() in
+   Script_LoginGate.html). It sits below its button, centred. */
+.school-picker {
+  position: relative;
+  width: 100%;
+}
+
+.login-gate-choose {
+  font-weight: 800;
+  font-size: 16px;
+  color: #14151d;
+}
+
+.school-menu-chevron {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  color: #14151d;
+  transition: transform 0.15s ease;
+}
+
+[aria-expanded="true"] > .school-menu-chevron {
+  transform: rotate(180deg);
+}
+
+.school-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  width: max-content;
+  min-width: 100%;
+  max-width: min(360px, calc(100vw - 32px));
+  max-height: min(420px, 60vh);
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: #ffffff;
+  border: 2px solid #14151d;
+  border-radius: 12px;
+  box-shadow: 0 6px 0 0 #10132e;
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+  text-align: left;
+}
+
+.school-menu[hidden] {
+  display: none;
+}
+
+.school-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  color: #14151d;
+}
+
+.school-menu-item:hover,
+.school-menu-item:focus-visible {
+  background: #f0f1f4;
+  outline: none;
+}
+
+.school-menu-item:focus-visible {
+  box-shadow: inset 0 0 0 2px #17458f;
+}
+
+.school-menu-item.is-current {
+  background: #fff6d6;
+}
+
+.school-menu-crest-box {
+  flex: none;
+  width: 96px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* .school-menu img.…: stronger than the banner's own crest rule
+   (.app-banner-school img), which would otherwise apply in its menu. */
+.school-menu img.school-menu-crest {
+  display: block;
+  max-width: 96px;
+  max-height: 40px;
+  object-fit: contain;
+}
+
+.school-menu-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-weight: 700;
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.school-menu-tag {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #14151d;
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 11px;
+}
 </style>

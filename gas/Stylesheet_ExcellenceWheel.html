@@ -77,11 +77,8 @@
 .ew-wedge-fill {
   fill: var(--wedge-full);
   transition: fill 0.18s ease, stroke 0.1s ease, stroke-width 0.1s ease;
-  /* Every wedge, ring arc and theme indicator has a black border, like
-     the app's cards and buttons. */
-  stroke: #000000;
-  stroke-width: 5;
-  stroke-linejoin: round;
+  stroke: transparent;
+  stroke-width: 0;
 }
 
 .ew-wedge:hover,
@@ -114,9 +111,6 @@
 
 .ew-ring {
   fill: var(--ring-full);
-  stroke: #000000;
-  stroke-width: 5;
-  stroke-linejoin: round;
   transition: fill 0.18s ease;
   pointer-events: none;
 }

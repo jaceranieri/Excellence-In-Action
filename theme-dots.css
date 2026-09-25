@@ -11,8 +11,7 @@
  *
  * Because the slices sit inside their wedge, they lift with it as one
  * piece (over the dark outer ring) on hover and selection, and click
- * through to it. Each slice has a black border, like the wedges, and is
- * coloured only by its Theme's grade. It isn't dimmed with the wedges,
+ * through to it. Each slice is coloured only by its Theme's grade. It isn't dimmed with the wedges,
  * except in the Our Priorities view (below).
  *
  * Entrance animation: reuses `@keyframes ew-pop-in`, defined in
@@ -33,9 +32,6 @@
    jump-cut; the same transition also softens any later live grade
    change (a rubric click, the grade dropdown). */
 .ew-theme-indicator {
-  stroke: #000000;
-  stroke-width: 3.5;
-  stroke-linejoin: round;
   transform-box: view-box;
   transform-origin: 546px 546px;
   transition: fill 2s ease, opacity 0.18s ease;

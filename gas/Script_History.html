@@ -389,7 +389,7 @@
           historyUi.error = 'Couldn’t load the history. Please try again.';
           renderHistory();
         })
-        .getSchoolHistory(reset ? 0 : historyUi.entries.length, HISTORY_PAGE_SIZE);
+        .getSchoolHistory(reset ? 0 : historyUi.entries.length, HISTORY_PAGE_SIZE, SCHOOL_NAME);
     }
 
     function toggleEntry(id) {
@@ -407,7 +407,7 @@
             historyUi.expanded[id] = false;
             renderHistory();
           })
-          .getHistoryEntryChanges(id);
+          .getHistoryEntryChanges(id, SCHOOL_NAME);
       }
       renderHistory();
     }
@@ -507,7 +507,7 @@
             toast.update('error', 'Checkpoint not saved', (err && err.message) || 'Please try again.');
             renderHistory();
           })
-          .saveCheckpoint(label, STATE_VERSION);
+          .saveCheckpoint(label, STATE_VERSION, SCHOOL_NAME);
       });
     }
 
@@ -545,7 +545,7 @@
             renderHistory();
             createToast().update('error', 'Can’t restore to that point', (err && err.message) || 'Please try again.');
           })
-          .previewRestore(id);
+          .previewRestore(id, SCHOOL_NAME);
       });
     }
 
@@ -604,7 +604,7 @@
             ' Some files may have moved; running the restore again will finish it.');
           renderHistory();
         })
-        .restoreToPoint(preview.target.id, STATE_VERSION);
+        .restoreToPoint(preview.target.id, STATE_VERSION, SCHOOL_NAME);
     }
 
     // -- Events ------------------------------------------------------------------------

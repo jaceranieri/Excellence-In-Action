@@ -2,7 +2,9 @@
   // ACCESS is embedded by Index.html from the server-side
   // getCurrentUserAccess() lookup (see Code.gs) — already resolved
   // before this script runs, so no round trip is needed here.
-  //   { email, found, active, name, schoolName, crestUrl }
+  //   { email, found, active, name, schoolName, crestUrl, schools, lastSchool }
+  // `schools` lists every school they're active at (someone can be at
+  // several); with more than one, they pick which to open.
 
   function escapeHtml(str) {
     return String(str == null ? '' : str).replace(/[&<>"']/g, function (c) {
@@ -10,7 +12,92 @@
     });
   }
 
+  // -- School dropdown ---------------------------------------------------
+  // For someone at several schools: a menu of their schools, each with its
+  // crest, opened from `trigger`. Used on the welcome screen and by the
+  // banner's school switcher. `opts`:
+  //   current   the school now open (ticked), if any
+  //   lastUsed  the school they opened last time (tagged "Last used")
+  //   onPick(school)  called with the chosen {schoolName, crestUrl}
+  var CHEVRON_SVG = '<svg class="school-menu-chevron" viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
+    '<path d="M6 9.5l6 6 6-6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+  function schoolCrestHtml(school, cls) {
+    return school.crestUrl
+      ? '<img class="' + cls + '" src="' + escapeHtml(school.crestUrl) + '" alt="">'
+      : '';
+  }
+
+  var schoolMenuCount = 0;
+
+  function createSchoolMenu(trigger, schools, opts) {
+    var wrap = trigger.parentNode;
+    var menu = document.createElement('div');
+    menu.className = 'school-menu';
+    menu.id = 'school-menu-' + (++schoolMenuCount);
+    menu.setAttribute('role', 'menu');
+    menu.hidden = true;
+    menu.innerHTML = schools.map(function (school, i) {
+      var isCurrent = opts.current && school.schoolName === opts.current;
+      var isLast = !opts.current && opts.lastUsed && school.schoolName === opts.lastUsed;
+      return '<button type="button" class="school-menu-item' + (isCurrent ? ' is-current' : '') + '" role="menuitem" data-idx="' + i + '"' +
+          (isCurrent ? ' aria-current="true"' : '') + '>' +
+          '<span class="school-menu-crest-box">' + schoolCrestHtml(school, 'school-menu-crest') + '</span>' +
+          '<span class="school-menu-name">' + escapeHtml(school.schoolName) + '</span>' +
+          (isCurrent ? '<span class="school-menu-tag">Current</span>' : '') +
+          (isLast ? '<span class="school-menu-tag">Last used</span>' : '') +
+        '</button>';
+    }).join('');
+    wrap.appendChild(menu);
+    // A crest that fails to load leaves just the name.
+    Array.prototype.forEach.call(menu.querySelectorAll('img'), function (img) {
+      img.addEventListener('error', function () { img.remove(); });
+    });
+    trigger.setAttribute('aria-haspopup', 'true');
+    trigger.setAttribute('aria-expanded', 'false');
+    trigger.setAttribute('aria-controls', menu.id);
+
+    function items() { return Array.prototype.slice.call(menu.querySelectorAll('.school-menu-item')); }
+    function open() {
+      menu.hidden = false;
+      trigger.setAttribute('aria-expanded', 'true');
+      var first = menu.querySelector('.school-menu-item.is-current') || items()[0];
+      if (first) first.focus();
+    }
+    function close(focusTrigger) {
+      if (menu.hidden) return;
+      menu.hidden = true;
+      trigger.setAttribute('aria-expanded', 'false');
+      if (focusTrigger) trigger.focus();
+    }
+    trigger.addEventListener('click', function () {
+      if (menu.hidden) open(); else close(false);
+    });
+    menu.addEventListener('click', function (e) {
+      var item = e.target.closest('.school-menu-item');
+      if (!item) return;
+      close(false);
+      opts.onPick(schools[parseInt(item.getAttribute('data-idx'), 10)]);
+    });
+    menu.addEventListener('keydown', function (e) {
+      var list = items();
+      var i = list.indexOf(document.activeElement);
+      if (e.key === 'ArrowDown') { e.preventDefault(); list[(i + 1) % list.length].focus(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); list[(i - 1 + list.length) % list.length].focus(); }
+      else if (e.key === 'Escape') { e.preventDefault(); close(true); }
+      else if (e.key === 'Tab') close(false);
+    });
+    document.addEventListener('click', function (e) {
+      if (!wrap.contains(e.target)) close(false);
+    });
+    return { open: open, close: close };
+  }
+
   function renderLoginGateFound(access) {
+    if (access.schools && access.schools.length > 1) {
+      renderLoginGateChooseSchool(access);
+      return;
+    }
     var card = document.getElementById('login-gate-card');
     var schoolLabel = access.schoolName || 'your school';
     // The crest image itself carries the school's name (per the actual
@@ -24,7 +111,25 @@
           ? '<img class="login-gate-continue-crest" src="' + escapeHtml(access.crestUrl) + '" alt="' + escapeHtml(schoolLabel) + '">'
           : '<span class="login-gate-continue-school">' + escapeHtml(schoolLabel) + '</span>') +
       '</button>';
-    document.getElementById('login-gate-continue-btn').addEventListener('click', enterApp);
+    document.getElementById('login-gate-continue-btn').addEventListener('click', function () { enterApp(); });
+  }
+
+  // Several schools: the button opens a dropdown of their crests, and
+  // picking one opens that school.
+  function renderLoginGateChooseSchool(access) {
+    var card = document.getElementById('login-gate-card');
+    card.innerHTML =
+      '<h2 class="login-gate-card-heading">Welcome, ' + escapeHtml(access.name || 'there') + '!</h2>' +
+      '<p class="login-gate-card-sub">You have access to ' + access.schools.length + ' schools’ EIA Tools.<br>Choose a school to get started!</p>' +
+      '<div class="school-picker">' +
+        '<button type="button" class="login-gate-continue login-gate-choose" id="login-gate-continue-btn">' +
+          '<span class="login-gate-choose-label">Choose your school</span>' + CHEVRON_SVG +
+        '</button>' +
+      '</div>';
+    createSchoolMenu(document.getElementById('login-gate-continue-btn'), access.schools, {
+      lastUsed: access.lastSchool,
+      onPick: function (school) { enterApp(school); }
+    });
   }
 
   function renderLoginGateInsufficient(access) {
@@ -77,20 +182,51 @@
   // replacing the placeholders documented in app-banner.css/README as
   // "will come from the roster/session lookup once auth is wired up" —
   // that lookup is exactly what getCurrentUserAccess() now is.
-  function enterApp() {
-    var access = window.__ACCESS__;
-    // The school's crest (which usually includes its name), or just its
-    // name if it has none, or if the crest image fails to load.
+  // The banner's school: its crest (which usually includes its name), or
+  // just its name if it has none, or if the crest image fails to load.
+  // For someone at several schools it's also a button that opens a
+  // dropdown to switch school (window.switchSchool() in Script_App.html).
+  window.renderBannerSchool = function (access) {
     var schoolEl = document.querySelector('.app-banner-school');
-    if (schoolEl) {
-      var nameHtml = '<span class="app-banner-school-name">' + escapeHtml(access.schoolName || '') + '</span>';
-      if (access.crestUrl) {
-        schoolEl.innerHTML = '<img src="' + escapeHtml(access.crestUrl) + '" alt="' + escapeHtml(access.schoolName || '') + '">';
-        schoolEl.querySelector('img').addEventListener('error', function () { schoolEl.innerHTML = nameHtml; });
-      } else {
-        schoolEl.innerHTML = nameHtml;
-      }
+    if (!schoolEl) return;
+    var nameHtml = '<span class="app-banner-school-name">' + escapeHtml(access.schoolName || '') + '</span>';
+    var crestHtml = access.crestUrl
+      ? '<img src="' + escapeHtml(access.crestUrl) + '" alt="' + escapeHtml(access.schoolName || '') + '">'
+      : nameHtml;
+    var several = access.schools && access.schools.length > 1;
+    schoolEl.classList.toggle('has-switcher', !!several);
+    schoolEl.innerHTML = several
+      ? '<button type="button" class="app-banner-school-btn" aria-label="' + escapeHtml(access.schoolName || '') +
+          ' — switch school" title="Switch school">' +
+          '<span class="app-banner-school-crest">' + crestHtml + '</span>' + CHEVRON_SVG +
+        '</button>'
+      : crestHtml;
+    var img = schoolEl.querySelector('img');
+    if (img) {
+      img.addEventListener('error', function () {
+        var box = schoolEl.querySelector('.app-banner-school-crest');
+        if (box) box.innerHTML = nameHtml; else schoolEl.innerHTML = nameHtml;
+      });
     }
+    if (several) {
+      createSchoolMenu(schoolEl.querySelector('.app-banner-school-btn'), access.schools, {
+        current: access.schoolName,
+        onPick: function (school) {
+          if (typeof window.switchSchool === 'function') window.switchSchool(school);
+        }
+      });
+    }
+  };
+
+  // `school` is the one picked from the welcome screen's dropdown; with a
+  // single school it's left out.
+  function enterApp(school) {
+    var access = window.__ACCESS__;
+    if (school) {
+      access.schoolName = school.schoolName;
+      access.crestUrl = school.crestUrl;
+    }
+    window.renderBannerSchool(access);
 
     var avatarEl = document.querySelector('.app-banner-avatar');
     var initials = initialsFor(access.name);

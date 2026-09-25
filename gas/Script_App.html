@@ -1429,7 +1429,7 @@
           console.error('Failed to load saved ratings/evidence:', err);
           if (onError) onError(err);
         })
-        .getSchoolState();
+        .getSchoolState(SCHOOL_NAME);
     }
 
     // A save was refused because the school has been restored to an
@@ -1503,6 +1503,62 @@
       showLastUpdated({ name: USER_NAME, at: Date.now() });
     }
 
+    // -- Switching school ----------------------------------------------------
+    // Someone at several schools switches from the banner's dropdown
+    // (renderBannerSchool() in Script_LoginGate.html). The page stays put:
+    // any saves already on their way finish first (they're for the old
+    // school), then the new school's work loads in place and the view
+    // goes back to its priorities.
+    var switchingSchool = false;
+
+    window.switchSchool = function (school) {
+      if (!school || school.schoolName === SCHOOL_NAME || switchingSchool) return;
+      if (typeof historyUi !== 'undefined' && historyUi.busy) {
+        createToast().update('error', 'Can’t switch school yet', 'Wait for the checkpoint or restore to finish.', 5000);
+        return;
+      }
+      switchingSchool = true;
+      var toast = createToast();
+      var waiting = false;
+      function whenSavesDone(cb) {
+        if (savesInFlight > 0 || Object.keys(dirtyThemeIds).length || ratingsSavesInFlight > 0) {
+          if (!waiting) toast.update('busy', 'Saving your changes first…');
+          waiting = true;
+          whenRatingsSaved(function () { setTimeout(function () { whenSavesDone(cb); }, 300); });
+          return;
+        }
+        cb();
+      }
+      whenSavesDone(function () {
+        if (typeof closeHistory === 'function') closeHistory(true);
+        if (modalOverlay.classList.contains('is-open')) closeThemeModal();
+        SCHOOL_NAME = school.schoolName;
+        var access = window.__ACCESS__;
+        access.schoolName = school.schoolName;
+        access.crestUrl = school.crestUrl;
+        window.renderBannerSchool(access);
+        wheel.deselect();
+        prioritiesPage = 0;
+        toast.update('busy', 'Loading ' + school.schoolName + '’s data…');
+        loadSchoolState(function () {
+          switchingSchool = false;
+          toast.update('success', 'Now viewing ' + school.schoolName, '', 2500);
+          ensureFolderAccess();
+        }, function () {
+          switchingSchool = false;
+          toast.update('error', 'Couldn’t load ' + school.schoolName + '’s data', 'Reload the page to try again.');
+        });
+      });
+    };
+
+    // Gives this visitor view access to their school's evidence folder,
+    // so attachment links open for everyone at the school.
+    function ensureFolderAccess() {
+      google.script.run
+        .withFailureHandler(function (err) { console.error('Could not confirm evidence folder access:', err); })
+        .ensureSchoolFolderAccess(SCHOOL_NAME);
+    }
+
     window.onAppEntered = function (access) {
       SCHOOL_NAME = access.schoolName || '';
       USER_EMAIL = access.email || '';
@@ -1516,11 +1572,7 @@
         loadToast.update('error', 'Couldn’t load your school’s data', 'Reload the page to try again.');
       });
       loadSiteContent();
-      // Gives this visitor view access to their school's evidence folder,
-      // so attachment links open for everyone at the school.
-      google.script.run
-        .withFailureHandler(function (err) { console.error('Could not confirm evidence folder access:', err); })
-        .ensureSchoolFolderAccess();
+      ensureFolderAccess();
     };
 
     // -- Autosave: Ratings -------------------------------------------------
@@ -1650,7 +1702,7 @@
           ratingsSaveTimer = setTimeout(flushRatingsSave, 4000);
           ratingsSaveSettled();
         })
-        .saveRatings(JSON.stringify(buildRatingsPayload(themeIds)), STATE_VERSION);
+        .saveRatings(JSON.stringify(buildRatingsPayload(themeIds)), STATE_VERSION, SCHOOL_NAME);
     }
 
     function scheduleSaveRatings(theme) {
@@ -2368,7 +2420,7 @@
               else if (result && result.ok) markUpdatedByMe();
             })
             .withFailureHandler(function (err) { console.error('Failed to delete evidence entry:', err); })
-            .deleteEvidenceEntry(removed.entryId, STATE_VERSION);
+            .deleteEvidenceEntry(removed.entryId, STATE_VERSION, SCHOOL_NAME);
         }
         return;
       }
@@ -2829,7 +2881,7 @@
           attachments: entry.attachments.map(function (a) {
             return a.pickedId ? { pickedId: a.pickedId, name: a.name } : { fileId: a.fileId };
           })
-        });
+        }, SCHOOL_NAME);
     }
 
     // The school was restored to an earlier point, so the server refused
