@@ -863,15 +863,15 @@ computed margins directly.
 
 `icons.js` / `gas/Script_Icons.html` expose `EIAIcons`: stroke-only line
 icons on a 100x100 grid, each split into named parts (`intervention` =
-`shield`, `hand`, `heart`). Every part's colour comes from a CSS custom
+`shield`, `hand`, `heart`; `differentiation` = `circle`, `diamond`, `star`). Every part's colour comes from a CSS custom
 property — `--ei-icon-<part>`, falling back to `--ei-icon-color`, then
 `currentColor` — and stroke width from `--ei-icon-stroke` (default 4).
 Use `EIAIcons.svg(name, {size, colors, stroke})` for a standalone `<svg>`
 string or `EIAIcons.group(name, size)` for a `<g>` centred on 0,0 to drop
 into another SVG (the wheel). Icons must be inlined, not `<img>`.
-`icons-preview.html` shows the colour scenarios. Only `intervention` is
+`icons-preview.html` shows the colour scenarios. Only `intervention` and `differentiation` are
 converted so far and it is **not yet wired into the wheel** (which still
-uses `placeholderIcon()`); add the other seven to `ICONS` in `icons.js`
+uses `placeholderIcon()`); add the other six to `ICONS` in `icons.js`
 using the same part-naming approach.
 
 ## Deploying a change
