@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EIA icons — colour scenarios</title>
+<style>
+  body { font: 14px/1.4 system-ui, sans-serif; margin: 24px; color: #1C1F4F; background: #f4f4f7; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  p.note { margin: 0 0 20px; color: #555; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; }
+  .card { border-radius: 12px; padding: 14px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  .card small { font-size: 12px; opacity: .85; text-align: center; }
+  .card code { font-size: 11px; }
+  .sizes { display: flex; align-items: flex-end; gap: 14px; }
+
+  /* Scenario 1 — full colour on white */
+  .on-white   { background: #fff; --ei-icon-shield: #1C1F4F; --ei-icon-hand: #1C1F4F; --ei-icon-heart: #c6302c; }
+  /* Scenario 2 — all black */
+  .all-black  { background: #fff; --ei-icon-color: #000; }
+  /* Scenario 3 — all white on a wedge colour */
+  .all-white  { background: #003278; --ei-icon-color: #fff; }
+  /* Scenario 4 — white with accent-coloured heart (the wheel's two-tone) */
+  .two-tone   { background: #FDB40F; --ei-icon-color: #fff; --ei-icon-heart: #F3712D; }
+  .two-tone-b { background: #003278; --ei-icon-color: #fff; --ei-icon-heart: #14A1DE; }
+  .two-tone-c { background: #016C36; --ei-icon-color: #fff; --ei-icon-heart: #C1D82F; }
+  /* Scenario 5 — one colour via currentColor only */
+  .current    { background: #fff; color: #016C36; }
+  /* Scenario 6 — heavier stroke */
+  .bold       { background: #fff; --ei-icon-color: #1C1F4F; --ei-icon-heart: #c6302c; --ei-icon-stroke: 6; }
+</style>
+</head>
+<body>
+<h1>Intervention icon — one SVG, many colourings</h1>
+<p class="note">Same markup every time; only CSS custom properties change.</p>
+<div class="grid" id="grid"></div>
+<script src="icons.js"></script>
+<script>
+  var scenarios = [
+    ['on-white',   'Full colour on white',        '--ei-icon-shield/hand navy, --ei-icon-heart red'],
+    ['all-black',  'All black',                   '--ei-icon-color: #000'],
+    ['all-white',  'All white on dark blue',      '--ei-icon-color: #fff'],
+    ['two-tone',   'White + orange heart',        'heart = wedge accent'],
+    ['two-tone-b', 'White + blue heart',          ''],
+    ['two-tone-c', 'White + lime heart',          ''],
+    ['current',    'currentColor only',           'color: #016C36'],
+    ['bold',       'Heavier stroke',              '--ei-icon-stroke: 6']
+  ];
+  var html = '';
+  scenarios.forEach(function (s) {
+    var white = /white|two-tone/.test(s[0]) && s[0] !== 'on-white';
+    html += '<div class="card ' + s[0] + '" style="color:' + (white ? '#fff' : '') + '">' +
+      '<div class="sizes">' + [24, 44, 110].map(function (n) {
+        return EIAIcons.svg('intervention', { size: n, title: 'Intervention' });
+      }).join('') + '</div><strong>' + s[1] + '</strong><small>' + s[2] + '</small></div>';
+  });
+  document.getElementById('grid').innerHTML = html;
+</script>
+</body>
+</html>

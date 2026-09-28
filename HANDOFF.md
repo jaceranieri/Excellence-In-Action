@@ -300,6 +300,7 @@ real GAS deployment.
 | Root file | GAS partial |
 |---|---|
 | `excellence-wheel.js` | `gas/Script_ExcellenceWheel.html` |
+| `icons.js` (line icon set — see "Icons" below) | `gas/Script_Icons.html` |
 | `theme-cards.css` | `gas/Stylesheet_ThemeCards.html` |
 | `theme-modal.css` | `gas/Stylesheet_ThemeModal.html` |
 | `theme-dots.css` | `gas/Stylesheet_ThemeDots.html` |
@@ -857,6 +858,21 @@ computed margins directly.
 - The rubric grid's 4-col/1-col breakpoint is viewport-based (`@media`),
   not container-based — documented as a known simplification in the
   original README section of this project's history, still true.
+
+## Icons
+
+`icons.js` / `gas/Script_Icons.html` expose `EIAIcons`: stroke-only line
+icons on a 100x100 grid, each split into named parts (`intervention` =
+`shield`, `hand`, `heart`). Every part's colour comes from a CSS custom
+property — `--ei-icon-<part>`, falling back to `--ei-icon-color`, then
+`currentColor` — and stroke width from `--ei-icon-stroke` (default 4).
+Use `EIAIcons.svg(name, {size, colors, stroke})` for a standalone `<svg>`
+string or `EIAIcons.group(name, size)` for a `<g>` centred on 0,0 to drop
+into another SVG (the wheel). Icons must be inlined, not `<img>`.
+`icons-preview.html` shows the colour scenarios. Only `intervention` is
+converted so far and it is **not yet wired into the wheel** (which still
+uses `placeholderIcon()`); add the other seven to `ICONS` in `icons.js`
+using the same part-naming approach.
 
 ## Deploying a change
 
