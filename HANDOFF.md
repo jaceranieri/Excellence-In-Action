@@ -861,25 +861,34 @@ computed margins directly.
 
 ## Icons
 
-`icons.js` / `gas/Script_Icons.html` expose `EIAIcons`: stroke-only line
-icons on a 100x100 grid, each split into named parts (`intervention` =
-`shield`, `hand`, `heart`; `differentiation` = `circle`, `diamond`, `star`;
-`highlyEffectiveTeaching` = `document`, `bubble`, `teacher`, `students`;
-`collaborativePlanning` = `back`, `front`, `chart`, `lines`, `pencil`;
-`dataAnalysis` = `ring`, `person`, `pie`, `slice`;
-`instructionalCoaching` = `left`, `right`, `bubble`).
-The last four are *solid-shape* icons, not line icons: their parts are marked
-`'fill'` and their overlaps (the white masks in the source art) are cut out as real
-transparent gaps, so it works on any background). Every part's colour comes from a CSS custom
-property — `--ei-icon-<part>`, falling back to `--ei-icon-color`, then
-`currentColor` — and stroke width from `--ei-icon-stroke` (default 4; ignored by `'fill'` parts).
+`icons.js` / `gas/Script_Icons.html` expose `EIAIcons`: icons on a 100x100
+grid, each split into named parts that can be coloured independently:
+
+| Icon | Parts | Style |
+|---|---|---|
+| `intervention` | `shield`, `hand`, `heart` | line |
+| `differentiation` | `circle`, `diamond`, `star` | line |
+| `highlyEffectiveTeaching` | `document`, `bubble`, `teacher`, `students` | solid |
+| `collaborativePlanning` | `back`, `front`, `chart`, `lines`, `pencil` | solid |
+| `dataAnalysis` | `ring`, `person`, `pie`, `slice` | solid |
+| `instructionalCoaching` | `left`, `right`, `bubble` | solid |
+
+Solid icons have parts marked `'fill'`; the white shapes in the source art
+were masks, so they are cut out as real transparent gaps and the icon works
+on any background.
+
+Every part's colour comes from a CSS custom property — `--ei-icon-<part>`,
+falling back to `--ei-icon-color`, then `currentColor`. Line parts take
+their width from `--ei-icon-stroke` (default 4; ignored by `'fill'` parts).
 Use `EIAIcons.svg(name, {size, colors, stroke})` for a standalone `<svg>`
-string or `EIAIcons.group(name, size)` for a `<g>` centred on 0,0 to drop
+string, or `EIAIcons.group(name, size)` for a `<g>` centred on 0,0 to drop
 into another SVG (the wheel). Icons must be inlined, not `<img>`.
-`icons-preview.html` shows the colour scenarios. Six of the nine are converted so far (all but `knowEngageLearner`,
-`safeSupportive` and `assessmentFeedback`) and it is **not yet wired into the wheel** (which still
-uses `placeholderIcon()`); add the remaining three to `ICONS` in `icons.js`
-using the same part-naming approach.
+`icons-preview.html` shows the colour scenarios.
+
+Six of the nine are converted. Still to do: `knowEngageLearner`,
+`safeSupportive`, `assessmentFeedback`. The icons are **not yet wired into
+the wheel**, which still uses `placeholderIcon()`; add the remaining three to
+`ICONS` in `icons.js` with the same part-naming approach.
 
 ## Deploying a change
 
