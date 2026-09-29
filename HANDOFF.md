@@ -404,6 +404,16 @@ in `import-eia.py` itself; not run by the app.
 
 ## Login gate + access control (`gas/` only)
 
+**Sydney Catholic Schools logo.** The login gate's brand block opens with the
+SCS logo (`.scs-logo` in `gas/Index.html`, replacing the old placeholder
+compass glyph): the emblem and the wordmark are two inline SVGs so they can
+animate in sequence on load — the emblem blooms open from its centre
+(circular clip reveal + turn/scale, ~1.1s), glides left, then the wordmark
+wipes in (~2.4s total). All timings and sizes are in the "Sydney Catholic
+Schools logo" block of `gas/Stylesheet_LoginGate.html`; with reduced motion the
+logo just appears. It's drawn in black (`.scs-logo { color }`).
+
+
 - **Users sheet**: `https://docs.google.com/spreadsheets/d/1OQXaRVUJopdjr4OWQbOvNLjoq-_bwaiNS3Rfu1-C62I/`
   — columns `Email, Name, SchoolName, CrestURL, Active`. The sheet ID is
   the `USERS_SHEET_ID` Script Property (Project Settings → Script

@@ -65,9 +65,98 @@
   gap: 6px;
 }
 
-.login-gate-logo {
-  width: 64px;
-  height: 64px;
+.login-gate-brand .scs-logo {
+  margin-bottom: 14px;
+}
+
+/* Sydney Catholic Schools logo ------------------------------------------
+   One sequence, ~2.5s, on page load:
+     1. bloom (0-1.1s): a circular reveal grows from the emblem's centre
+        while the emblem itself unfurls — turning and opening out, with a
+        slight overshoot — like a flower opening; the outer ring settles in
+        as the reveal reaches it.
+     2. shift (1.2-1.9s): the emblem, which starts centred on the lockup,
+        glides left into its place.
+     3. wordmark (1.55-2.4s): "Sydney Catholic Schools" wipes in from the
+        left beside it.
+   Sizes: emblem 84px; the wordmark and gap keep the logo's own
+   proportions (0.1949 px per logo unit). --scs-shift = half the lockup
+   width (215.1px) minus half the emblem, so the emblem starts dead centre.
+   The resting styles ARE the final state, so with reduced motion (below)
+   the logo simply appears complete. */
+.scs-logo {
+  --scs-shift: 65.6px;
+  display: flex;
+  align-items: center;
+  gap: 10.9px;
+  color: #000000;
+}
+
+.scs-logo svg {
+  display: block;
+  fill: currentColor;
+  overflow: visible;
+}
+
+.scs-emblem {
+  width: 84px;
+  height: 84px;
+  animation:
+    scs-reveal 1.1s cubic-bezier(0.25, 0.8, 0.25, 1) both,
+    scs-shift 0.7s cubic-bezier(0.65, 0, 0.35, 1) 1.2s both;
+}
+
+.scs-bloom,
+.scs-ring {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.scs-bloom {
+  animation: scs-bloom 1.1s cubic-bezier(0.25, 0.8, 0.25, 1) both;
+}
+
+.scs-ring {
+  animation: scs-ring 0.75s cubic-bezier(0.25, 0.8, 0.25, 1) 0.4s both;
+}
+
+.scs-wordmark {
+  width: 120.2px;
+  height: 61.4px;
+  animation: scs-wordmark 0.85s cubic-bezier(0.25, 0.8, 0.25, 1) 1.55s both;
+}
+
+@keyframes scs-reveal {
+  from { clip-path: circle(0% at 50% 50%); }
+  to   { clip-path: circle(72% at 50% 50%); }
+}
+
+@keyframes scs-bloom {
+  0%   { transform: rotate(-70deg) scale(0.35); opacity: 0; }
+  25%  { opacity: 1; }
+  70%  { transform: rotate(6deg) scale(1.05); }
+  100% { transform: rotate(0deg) scale(1); opacity: 1; }
+}
+
+@keyframes scs-ring {
+  from { transform: scale(0.82); opacity: 0; }
+  to   { transform: scale(1); opacity: 1; }
+}
+
+@keyframes scs-shift {
+  from { transform: translateX(var(--scs-shift)); }
+  to   { transform: translateX(0); }
+}
+
+@keyframes scs-wordmark {
+  from { clip-path: inset(0 100% 0 0); transform: translateX(-14px); opacity: 0; }
+  to   { clip-path: inset(0 0 0 0); transform: translateX(0); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scs-emblem, .scs-bloom, .scs-ring, .scs-wordmark {
+    animation: none;
+  }
 }
 
 .login-gate-title {
