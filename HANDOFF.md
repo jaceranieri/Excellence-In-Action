@@ -244,6 +244,85 @@ resources and messages):**
      header rows the first time anyone opens the app (or when you run
      `checkSetup`).
 
+**School priorities (v1.1.0), not yet confirmed live:**
+- A **star button** in the Theme modal's header, left of the close
+  button, flags the Theme as a school priority. Anyone at the school
+  can change it; it's shared by everyone at the school.
+- With **no Element selected**, the panel beside the wheel shows **"Our
+  School Priorities"**: every priority Theme's card, in wheel order,
+  with its Element's name above the title. With none, it shows "Please
+  select a theme as a priority area to display here." The app now opens
+  on this view once the school's work has loaded (the wheel slides
+  left as it did on the first Element click), and deselecting an
+  Element returns to it.
+- The **"Our Priorities" button** under the wheel deselects any Element
+  and shows the view. It's gold while the view is showing.
+- On the wheel, the Elements holding priority Themes are raised and
+  the rest dim (`wheel.setHighlighted()`, new in the wheel component;
+  it only shows while nothing is selected). Only the priority Themes'
+  indicator slices lift with them; every other slice stays put and
+  fades. Priority Themes' cards get a small star badge.
+
+**Wheel restyle (with priorities):**
+- Wedges, the Leading/Teaching/Learning ring arcs and the indicator
+  slices have slightly rounded corners (`roundedSectorPath()` in the
+  wheel; radii in `CORNER` and `INDICATOR_CORNER`).
+- **Joined slices (option E):** each Element is one slice from the
+  domain arcs out to the dark ring: the wedge, then the Theme indicator
+  band joined onto it, with thin white lines along the join and between
+  indicators. An Element's indicators fade (0.35) whenever its wedge is
+  dimmed, i.e. another Element is hovered or selected. The
+  slot the app draws into is clipped to the slice's shape, so the app
+  draws plain sectors. Every gap is the same even width (`SPACE`, 14
+  units): arcs to slices, slice to slice, arc to arc, and slice to outer
+  ring (`evenSectorPath()`, whose straight sides are parallel, so a gap
+  doesn't narrow towards the centre).
+- A hard drop shadow on raised wedges, and later black outlines on
+  every wedge, arc and slice, were both tried and removed at the
+  project owner's request (too busy).
+- The **indicator slices now live inside their wedge** (the wheel's
+  `getWedgeSlot()`), not in a layer behind the wedges. They lift with
+  the wedge over the dark outer ring, and clicking one selects the
+  Element.
+- The hover lift is plain CSS `:hover`. A class set from pointer
+  events was tried and left wedges stuck lifted on the live site.
+- In the priorities view every slice lifts with its wedge, but only
+  priority Themes' slices keep full colour; the rest fade (a white base
+  under each slice keeps a faded one pale over the dark ring).
+- A bottom-left toast ("Loading your school's data…", then "Your
+  school's data is ready") shows while the school's work loads after
+  the login gate (`onAppEntered()`).
+- **Priority carousel:** the priorities panel shows at most 6 cards
+  (`PRIORITIES_PER_PAGE`). More go on further pages, with previous /
+  page-dot / next buttons under the cards. Opening the view starts on
+  page 1; redrawing it (after unstarring, or a reload) keeps the page.
+
+**Guided tour (`gas/` only), not yet confirmed live:**
+- `Script_Tour.html` / `Stylesheet_Tour.html`. The page dims except the
+  part being explained (four blocks around it, so only it can be
+  clicked); a card beside it explains it. Action steps wait for the
+  person to do the thing and then move on by themselves.
+- **Main tour (10 steps):** wheel → Theme cards → rate an indicator →
+  grade → Add Evidence → submit evidence → star as priority → close →
+  Our Priorities button → priorities panel. Then an optional **features
+  tour**: theme dots, History, Messages, Last Updated, school switcher
+  (skipped when they don't apply), and the ? button.
+- **Practice mode** (`enterPractice()` / `exitPractice()` in
+  `Script_App.html`): the main tour runs on the real page, but nothing
+  reaches the server. Ratings/priority saves are skipped, evidence
+  "saves" locally, deleting is local, and attaching files, History and
+  switching school are off. Every Theme is snapshotted first and put
+  back when the tour ends, however it ends. A pink "Practice mode" pill
+  shows meanwhile.
+- **Offered once** on someone's first visit, after their school's data
+  loads (`tourSeen` from `getCurrentUserAccess()`; `markTourSeen()`
+  records Start or Not now in Script Property
+  `eia.tourSeen.<email hash>`). The new lime **?** button in the banner
+  starts it any time.
+- Banner buttons: Help (?) navy `#183864` with a white ?, History lime
+  `#a3e634` and Messages red `#de2b48`, both with black icons. The
+  unread badge is white so it shows on the red bell.
+
 **Open items / next steps:**
 1. **"Untitled document" copy error:** one staff member couldn't
    attach a file with that name. The root cause is unknown; nothing in
@@ -330,7 +409,22 @@ in `import-eia.py` itself; not run by the app.
   Properties in the Apps Script editor — not hardcoded in `Code.gs`).
 - `Code.gs`'s `getCurrentUserAccess()` reads `Session.getActiveUser().getEmail()`
   and looks it up (case-insensitive) against the **Users** tab (falling
-  back to the first tab). Returns `{email, found, active, name, schoolName, crestUrl}`.
+  back to the first tab). Returns `{email, found, active, name, schoolName, crestUrl, schools, lastSchool}`.
+- **Several schools:** someone at more than one school has **one row per
+  school** (same email). Each row's `Active` applies to that school only;
+  `schools` lists the active ones, the last one they opened first
+  (Script Property `eia.lastSchool.<email hash>`, set by
+  `getSchoolState()`). `schoolName`/`crestUrl` are that first school.
+  - The welcome screen then shows a "Choose your school" dropdown of
+    crests (the last used one tagged), and the banner crest becomes a
+    dropdown to switch school in place (`window.switchSchool()` in
+    `Script_App.html`: waits for saves in flight, then reloads the
+    school's work and goes back to its priorities).
+  - Every school-specific server function takes the open school as its
+    **last argument**, and `requireActiveUser_(school)` refuses one the
+    visitor isn't active at. Without it (a page from before this), the
+    first school is used. Messages, resources and Drive auth aren't
+    per school.
   The same spreadsheet's **Schools** tab maps each school to its evidence
   folder — see "Attachments" below. Its **Resources** and **Messages**
   tabs hold the Element links and team messages (see "Element resources
@@ -370,7 +464,8 @@ tabs.
   LastUpdatedBy, LastUpdatedAt, RestoreCount, LastHistoryId,
   LastHistoryRow`. `RatingsJSON` is
   `{"<themeId>": {"grade": "sustaining", "rubric": [<selected level per
-  rubric row, in array order, or null>, ...]}, ...}` for every theme.
+  rubric row, in array order, or null>, ...], "priority": true}, ...}`
+  for every theme (`priority` only when the Theme is a school priority).
   The last three columns are history bookkeeping (see "School history").
 - **EvidenceLog** — one row per evidence entry (not per school):
   `EntryId, SchoolName, ThemeId, EntryNumber, Type, Date, Text,
