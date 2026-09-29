@@ -46,23 +46,19 @@
     ['current',    'currentColor only',           'color: #016C36'],
     ['bold',       'Heavier stroke',              '--ei-icon-stroke: 6']
   ];
+  // The accent part used for the two-tone cards (parts are named in icons.js)
+  var ACCENT = { intervention: 'heart', differentiation: 'star', highlyEffectiveTeaching: 'bubble', collaborativePlanning: 'chart', dataAnalysis: 'slice', instructionalCoaching: 'bubble', assessmentFeedback: 'papers', safeSupportive: 'child', knowEngageLearner: 'students' };
+  // Full-colour card: the icon's own brand colours from icons.js
+  function fullStyle(name) {
+    var c = EIAIcons.brand(name);
+    return Object.keys(c).map(function (k) { return '--ei-icon-' + k + ':' + c[k]; }).join(';');
+  }
   var html = '';
-  // Per-icon colours for the "full colour" card (parts are named in icons.js)
-  var ACCENT = { intervention: 'heart', differentiation: 'star', highlyEffectiveTeaching: 'bubble', collaborativePlanning: 'pencil', dataAnalysis: 'slice', instructionalCoaching: 'bubble', assessmentFeedback: 'papers', safeSupportive: 'child', knowEngageLearner: 'students' };
-  var FULL = { intervention: '--ei-icon-shield:#1C1F4F;--ei-icon-hand:#1C1F4F;--ei-icon-heart:#c6302c',
-               differentiation: '--ei-icon-circle:#000;--ei-icon-diamond:#de2c48;--ei-icon-star:#de2c48',
-               highlyEffectiveTeaching: '--ei-icon-document:#24cdd6;--ei-icon-teacher:#24cdd6;--ei-icon-students:#24cdd6;--ei-icon-bubble:#a3e635',
-               collaborativePlanning: '--ei-icon-back:#de2c48;--ei-icon-front:#de2c48;--ei-icon-pencil:#de2c48;--ei-icon-chart:#193965;--ei-icon-lines:#193965',
-               dataAnalysis: '--ei-icon-ring:#193965;--ei-icon-person:#193965;--ei-icon-pie:#193965;--ei-icon-slice:#de2c48',
-               instructionalCoaching: '--ei-icon-left:#193965;--ei-icon-right:#193965;--ei-icon-bubble:#de2c48',
-               assessmentFeedback: '--ei-icon-desk:#193965;--ei-icon-chair:#193965;--ei-icon-student:#193965;--ei-icon-teacher:#193965;--ei-icon-papers:#de2c48;--ei-icon-cap:#de2c48',
-               safeSupportive: '--ei-icon-book:#193965;--ei-icon-person:#193965;--ei-icon-hands:#193965;--ei-icon-child:#de2c48',
-               knowEngageLearner: '--ei-icon-board:#193965;--ei-icon-lines:#193965;--ei-icon-teacher:#193965;--ei-icon-students:#de2c48' };
   EIAIcons.names().forEach(function (name) {
   html += '<h2 style="grid-column:1/-1;margin:14px 0 0;font-size:15px">' + name + '</h2>';
   scenarios.forEach(function (s) {
     var white = /white|two-tone/.test(s[0]) && s[0] !== 'on-white';
-    html += '<div class="card ' + s[0] + '" style="' + (s[0] === 'on-white' ? FULL[name] + ';' : /^two-tone/.test(s[0]) ? '--ei-icon-' + ACCENT[name] + ':var(--accent);' : '') + 'color:' + (white ? '#fff' : '') + '">' +
+    html += '<div class="card ' + s[0] + '" style="' + (s[0] === 'on-white' ? fullStyle(name) + ';' : /^two-tone/.test(s[0]) ? '--ei-icon-' + ACCENT[name] + ':var(--accent);' : '') + 'color:' + (white ? '#fff' : '') + '">' +
       '<div class="sizes">' + [24, 44, 110].map(function (n) {
         return EIAIcons.svg(name, { size: n, title: name });
       }).join('') + '</div><strong>' + s[1] + '</strong><small>' + s[2] + '</small></div>';

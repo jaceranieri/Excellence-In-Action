@@ -18,6 +18,8 @@
  *   EIAIcons.group('intervention', 44);                 // <g> centred on 0,0,
  *                                                       // for use inside another <svg>
  *   EIAIcons.names();                                   // ['intervention', ...]
+ *   EIAIcons.parts('intervention');                     // ['shield', 'hand', 'heart']
+ *   EIAIcons.svg('intervention', { colors: EIAIcons.brand('intervention') });  // brand colours
  *
  * Colour variables (set on the icon, or on any ancestor):
  *   --ei-icon-<part>   colour of one part, e.g. --ei-icon-heart
@@ -86,28 +88,55 @@
       ['bubble', 'M26.5 7.5 25.5 8.6 24.9 9.4 24.2 10.6 23.8 11.5 23.4 12.9 23.3 13.8 23.2 15.1 23.3 16.1 23.5 17.2 23.9 18.2 24.3 19.1 25 20.3 25.6 21.2 26.6 22.2 27.4 22.9 28.6 23.8 28.6 28.2 28.8 28.7 29.3 29.1 29.9 29.2 30.4 29.1 34.7 26.2 37.4 26.5 40.1 26.5 41.3 26.3 43 26 44.1 25.6 45.6 25 46.6 24.6 48 23.7 49.2 22.8 50 22.1 51 21 51.6 20.2 52.5 18.5 52.9 17.2 53.1 16.2 53.2 14.3 52.9 12.4 52.6 11.5 52 10.2 51 8.6 50.3 7.8 49.2 6.8 48 5.8 47.1 5.3 45.1 4.3 43.5 3.8 42.4 3.5 40.1 3.1 37.6 3 35.2 3.2 32.9 3.8 31.9 4.1 30.3 4.8 28.5 5.8 27.2 6.8ZM32.8 16.2 32.2 16.7 31.3 16.9 30.5 16.8 29.8 16.3 29.3 15.7 29.1 14.9 29.3 14 29.7 13.3 30.4 12.8 31.2 12.6 32 12.8 32.7 13.2 33.2 13.9 33.4 14.7 33.3 15.5ZM39.8 16.2 39.2 16.7 38.4 16.9 37.5 16.8 36.8 16.4 36.3 15.7 36.1 14.9 36.2 14.1 36.6 13.4 37.3 12.9 38.1 12.6 38.9 12.8 39.6 13.2 40.2 13.8 40.4 14.6 40.3 15.5ZM46.8 16.1 46.2 16.7 45.4 16.9 44.6 16.8 43.8 16.4 43.3 15.8 43.1 15 43.1 14.2 43.5 13.4 44.2 12.9 45 12.6 45.8 12.7 46.6 13.1 47.1 13.8 47.3 14.6 47.2 15.4Z', 'fill']
     ],
     differentiation: [
-      ['circle', 'M56.8 25.6a18.4 18.4 0 1 0 36.7 0a18.4 18.4 0 1 0 -36.7 0ZM63.3 25.6a11.9 11.9 0 1 0 23.8 0a11.9 11.9 0 1 0 -23.8 0ZM8.6 76.6a18.4 18.4 0 1 0 36.7 0a18.4 18.4 0 1 0 -36.7 0ZM15.1 76.6a11.9 11.9 0 1 0 23.8 0a11.9 11.9 0 1 0 -23.8 0Z'],
-      ['diamond', 'M27 5L47.6 25.6L27 46.2L6.4 25.6ZM27 16.1L36.4 25.6L27 35.1L17.5 25.6Z'],
-      ['star', 'M75.2 58.2L80.8 69.4L93.2 71.2L84.2 80L86.3 92.4L75.2 86.6L64.1 92.4L66.2 80L57.2 71.2L69.6 69.4ZM75.2 72L76.7 75L80 75.5L77.6 77.9L78.2 81.2L75.2 79.6L72.2 81.2L72.8 77.9L70.4 75.5L73.7 75Z']
+      ['circle', 'M56.8 25.6a18.4 18.4 0 1 0 36.7 0a18.4 18.4 0 1 0 -36.7 0ZM8.6 76.6a18.4 18.4 0 1 0 36.7 0a18.4 18.4 0 1 0 -36.7 0Z'],
+      ['circle', 'M63.3 25.6a11.9 11.9 0 1 0 23.8 0a11.9 11.9 0 1 0 -23.8 0ZM15.1 76.6a11.9 11.9 0 1 0 23.8 0a11.9 11.9 0 1 0 -23.8 0Z', 'both'],
+      ['diamond', 'M27 5L47.6 25.6L27 46.2L6.4 25.6Z'],
+      ['diamond', 'M27 16.1L36.4 25.6L27 35.1L17.5 25.6Z', 'both'],
+      ['star', 'M75.2 58.2L80.8 69.4L93.2 71.2L84.2 80L86.3 92.4L75.2 86.6L64.1 92.4L66.2 80L57.2 71.2L69.6 69.4Z'],
+      ['star', 'M75.2 72L76.7 75L80 75.5L77.6 77.9L78.2 81.2L75.2 79.6L72.2 81.2L72.8 77.9L70.4 75.5L73.7 75Z', 'both']
     ],
     intervention: [
       ['shield', 'M93.4 35.5C92 42.7 89.1 49.9 85.3 55.3C80.9 61.5 74.2 67.2 65.8 71.3C57.6 67.2 50.9 61.5 46.5 55.3C42.7 49.9 39.8 42.7 38.4 35.5C37.1 29 37.1 22.6 37.4 18.7C37.4 17.5 37.5 16.2 37.8 13.9C41.2 13.3 43.8 12.8 46.7 12.1C51.9 10.8 58.7 8.8 65.9 5C73.2 8.8 79.9 10.8 85.1 12.1C88.1 12.8 90.6 13.3 94 13.9C94.2 16.2 94.4 17.5 94.4 18.7C94.7 22.6 94.7 29 93.4 35.5Z'],
       ['hand', 'M19.4 93.7C17.6 94.8 15.4 95.2 14.4 94.9C13.1 94.4 11 92.4 9.3 89.6L7.8 87.1C6.1 84.3 5.3 81.5 5.5 80.2C5.7 79.1 7 77.4 8.8 76.3L12.9 73.8L23.5 91.2L19.4 93.7ZM91.1 82.7L60.8 94.6C56.2 95.9 48.7 93.8 42.7 92C37.6 90.5 33.9 89.2 31.2 90L23.5 91.2L13 73.7L23.4 69.7C30.2 67 35 68.3 41.6 70.5C45.6 71.9 50.5 73.5 57.4 74.6C63.3 75.6 65.8 79.9 66.2 81C66.6 82.3 66.2 84.7 65.6 85.4C64.8 86.2 63.1 86.5 60.2 85.7L58.5 85.3L45.3 84.7L58.6 85.3C59.3 85.5 59.8 85.6 60.2 85.8C61.6 86.1 62.5 86.4 63.5 86.4C64.6 86.4 64.7 86.4 65.6 85.5C66.6 84.5 66.7 83.9 66.4 81.3L88.3 74.1C89.2 73.8 91.4 74.5 92.2 75.3C93 76.2 93.7 78.5 93.5 79.7C93.3 80.7 91.9 82.3 91.1 82.7Z'],
-      ['heart', 'M82.5 28.9C80.5 18.5 70.3 18.5 65.9 28.2C61.6 18.5 51.4 18.5 49.4 28.9C47.5 38.3 65.9 51.5 65.9 51.5S84.3 38.3 82.5 28.9Z']
+      ['heart', 'M82.5 28.9C80.5 18.5 70.3 18.5 65.9 28.2C61.6 18.5 51.4 18.5 49.4 28.9C47.5 38.3 65.9 51.5 65.9 51.5S84.3 38.3 82.5 28.9Z', 'both']
     ]
   };
 
+  // Brand colouring for each icon (the artwork's own palette). The icons carry
+  // no colour of their own — this is just the one place these live, so any
+  // page can do EIAIcons.svg(name, { colors: EIAIcons.brand(name) }).
+  var NAVY = '#193965', RED = '#de2c48';
+  var BRAND = {
+    intervention: { shield: '#1C1F4F', hand: '#1C1F4F', heart: '#c6302c' },
+    differentiation: { circle: '#000000', diamond: RED, star: RED },
+    highlyEffectiveTeaching: { document: NAVY, teacher: NAVY, students: NAVY, bubble: RED },
+    collaborativePlanning: { back: NAVY, front: NAVY, pencil: NAVY, chart: RED, lines: RED },
+    dataAnalysis: { ring: NAVY, person: NAVY, pie: NAVY, slice: RED },
+    instructionalCoaching: { left: NAVY, right: NAVY, bubble: RED },
+    assessmentFeedback: { desk: NAVY, chair: NAVY, student: NAVY, teacher: NAVY, papers: RED, cap: RED },
+    safeSupportive: { book: NAVY, person: NAVY, hands: NAVY, child: RED },
+    knowEngageLearner: { board: NAVY, lines: NAVY, teacher: NAVY, students: RED }
+  };
+
+  // Part types (3rd element of a part): omitted = line (stroke only),
+  // 'fill' = solid shape, 'both' = solid shape plus a same-colour outline
+  // (a filled shape that still grows with --ei-icon-stroke).
   function partMarkup(part) {
     var name = part[0];
     var colour = 'var(--ei-icon-' + name + ',var(--ei-icon-color,currentColor))';
+    var stroke = ' stroke-linecap="round" stroke-linejoin="round"';
+    var width = 'stroke-width:var(--ei-icon-stroke,4)';
     if (part[2] === 'fill') {
       // Solid shape: coloured by fill, no outline. Holes use even-odd.
       return '<path class="ei-part ei-' + name + '" d="' + part[1] + '" fill-rule="evenodd"' +
         ' style="fill:' + colour + '"/>';
     }
-    return '<path class="ei-part ei-' + name + '" d="' + part[1] + '" fill="none"' +
-      ' stroke-linecap="round" stroke-linejoin="round"' +
-      ' style="stroke:' + colour + ';stroke-width:var(--ei-icon-stroke,4)"/>';
+    if (part[2] === 'both') {
+      return '<path class="ei-part ei-' + name + '" d="' + part[1] + '"' + stroke +
+        ' style="fill:' + colour + ';stroke:' + colour + ';' + width + '"/>';
+    }
+    return '<path class="ei-part ei-' + name + '" d="' + part[1] + '" fill="none"' + stroke +
+      ' style="stroke:' + colour + ';' + width + '"/>';
   }
 
   function inner(name) {
@@ -154,6 +183,16 @@
     svg: svg,
     group: group,
     names: function () { return Object.keys(ICONS); },
-    parts: function (name) { return ICONS[name].map(function (p) { return p[0]; }); }
+    // Part names (unique, in drawing order) — the keys for --ei-icon-<part>.
+    parts: function (name) {
+      return ICONS[name].map(function (p) { return p[0]; })
+        .filter(function (n, i, a) { return a.indexOf(n) === i; });
+    },
+    // A copy of the icon's brand colours, keyed by part name.
+    brand: function (name) {
+      var out = {}, src = BRAND[name] || {};
+      Object.keys(src).forEach(function (k) { out[k] = src[k]; });
+      return out;
+    }
   };
 });

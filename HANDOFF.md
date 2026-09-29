@@ -866,8 +866,8 @@ grid, each split into named parts that can be coloured independently:
 
 | Icon | Parts | Style |
 |---|---|---|
-| `intervention` | `shield`, `hand`, `heart` | line |
-| `differentiation` | `circle`, `diamond`, `star` | line |
+| `intervention` | `shield`, `hand`, `heart` | line (heart is solid) |
+| `differentiation` | `circle`, `diamond`, `star` | line (inner shapes are solid) |
 | `highlyEffectiveTeaching` | `document`, `bubble`, `teacher`, `students` | solid |
 | `collaborativePlanning` | `back`, `front`, `chart`, `lines`, `pencil` | solid |
 | `dataAnalysis` | `ring`, `person`, `pie`, `slice` | solid |
@@ -876,7 +876,10 @@ grid, each split into named parts that can be coloured independently:
 | `safeSupportive` | `book`, `person`, `hands`, `child` | solid |
 | `knowEngageLearner` | `board`, `lines`, `teacher`, `students` | solid |
 
-Solid icons have parts marked `'fill'`; the white shapes in the source art
+Part types: line (stroke only), `'fill'` (solid) and `'both'` (solid plus a
+same-colour outline, so it still grows with `--ei-icon-stroke`); a part name
+can appear more than once so, for example, `circle` is an outline plus a
+solid inner disc. Solid icons have parts marked `'fill'`; the white shapes in the source art
 were masks, so they are cut out as real transparent gaps and the icon works
 on any background.
 
@@ -886,7 +889,9 @@ their width from `--ei-icon-stroke` (default 4; ignored by `'fill'` parts).
 Use `EIAIcons.svg(name, {size, colors, stroke})` for a standalone `<svg>`
 string, or `EIAIcons.group(name, size)` for a `<g>` centred on 0,0 to drop
 into another SVG (the wheel). Icons must be inlined, not `<img>`.
-`icons-preview.html` shows the colour scenarios.
+`EIAIcons.brand(name)` returns each icon's brand colours (navy `#193965`,
+red `#de2c48`; the icons themselves carry no colour) and `EIAIcons.parts(name)`
+lists the part names. `icons-preview.html` shows the colour scenarios.
 
 All nine wheel icons are converted. They are **not yet wired into the
 wheel**, which still uses `placeholderIcon()` in `excellence-wheel.js`; the
