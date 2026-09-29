@@ -404,14 +404,19 @@ in `import-eia.py` itself; not run by the app.
 
 ## Login gate + access control (`gas/` only)
 
-**Sydney Catholic Schools logo.** The login gate's brand block opens with the
-SCS logo (`.scs-logo` in `gas/Index.html`, replacing the old placeholder
-compass glyph): the emblem and the wordmark are two inline SVGs so they can
-animate in sequence on load — the emblem blooms open from its centre
-(circular clip reveal + turn/scale, ~1.1s), glides left, then the wordmark
-wipes in (~2.4s total). All timings and sizes are in the "Sydney Catholic
-Schools logo" block of `gas/Stylesheet_LoginGate.html`; with reduced motion the
-logo just appears. It's drawn in black (`.scs-logo { color }`).
+**Sydney Catholic Schools logo.** The login gate opens with an animated
+SCS logo. Its markup is its own file, `gas/Logo_SCS.html`, included by
+`gas/Index.html` inside `.login-gate-scs`. It's kept out of `Index.html` and
+wrapped onto short lines on purpose: an earlier version inlined it as one
+~74k-character line, which can get cut off when pasted into the Apps Script
+editor and swallow every script after it (the gate then sticks on "Logging you
+in"). Sequence (~4s): the logo blooms open alone in the middle of the screen,
+glides into its lockup, the wordmark wipes in, the logo rises to the top
+(`--scs-top`), then "Excellence in Action", the card and the footer fade up.
+All timings and sizes are in the "Sydney Catholic Schools logo" block of
+`gas/Stylesheet_LoginGate.html`; with reduced motion everything just appears,
+and on screens under 620px tall the logo sits in the column instead of
+rising. It's drawn in black (`.scs-logo { color }`).
 
 
 - **Users sheet**: `https://docs.google.com/spreadsheets/d/1OQXaRVUJopdjr4OWQbOvNLjoq-_bwaiNS3Rfu1-C62I/`
