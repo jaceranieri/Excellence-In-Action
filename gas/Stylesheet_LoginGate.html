@@ -144,6 +144,13 @@
 .login-gate-card   { animation: scs-enter 0.5s cubic-bezier(0.25, 0.8, 0.25, 1) 2.67s both; }
 .login-gate-footer { animation: scs-enter 0.5s cubic-bezier(0.25, 0.8, 0.25, 1) 2.79s both; }
 
+/* The fade-up above gives each of these its own layer, and the footer comes
+   last in the page, so it would otherwise paint over the card's school
+   dropdown. Keep the card (and its dropdown) in front, the footer at the
+   back. */
+.login-gate-card   { position: relative; z-index: 2; }
+.login-gate-footer { position: relative; z-index: 0; }
+
 @keyframes scs-reveal {
   from { clip-path: circle(0% at 50% 50%); }
   to   { clip-path: circle(72% at 50% 50%); }
