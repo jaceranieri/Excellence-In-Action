@@ -20,7 +20,8 @@
  *                                                       // for use inside another <svg>
  *   EIAIcons.names();                                   // ['intervention', ...]
  *   EIAIcons.parts('intervention');                     // ['shield', 'hand', 'heart']
- *   EIAIcons.accent('intervention');                    // 'heart' — the part to highlight
+ *   EIAIcons.accent('intervention');                    // ['heart'] — the part(s) to highlight
+ *   EIAIcons.bounds('intervention');                    // [x0, y0, x1, y1] visible extent
  *   EIAIcons.svg('intervention', { colors: EIAIcons.brand('intervention') });  // brand colours
  *
  * Colour variables (set on the icon, or on any ancestor):
@@ -120,12 +121,12 @@
     knowEngageLearner: { board: NAVY, lines: NAVY, teacher: NAVY, students: RED }
   };
 
-  // The one part of each icon that takes the accent colour when the rest is
-  // a single colour (the wheel draws icons white with this part in the
-  // category accent).
+  // The part(s) of each icon that take the accent colour when the rest is a
+  // single colour (the wheel draws icons white with these in the category
+  // accent).
   var ACCENT = {
     intervention: 'heart',
-    differentiation: 'star',
+    differentiation: ['diamond', 'star'],
     highlyEffectiveTeaching: 'bubble',
     collaborativePlanning: 'chart',
     dataAnalysis: 'slice',
@@ -133,6 +134,23 @@
     assessmentFeedback: 'papers',
     safeSupportive: 'child',
     knowEngageLearner: 'students'
+  };
+
+  // Visible extent of each icon on the 100x100 grid, [x0, y0, x1, y1],
+  // including line strokes at the default width. Icons are fitted to the
+  // grid by their longer side, so wide ones have empty space above and
+  // below; this lets a caller line up the real edges (the wheel keeps an
+  // even gap between each icon's bottom edge and its label).
+  var BOUNDS = {
+    intervention: [3.5, 3, 96.6, 97],
+    differentiation: [4.4, 3, 95.6, 98.4],
+    highlyEffectiveTeaching: [8.6, 3, 91.4, 97],
+    collaborativePlanning: [4.2, 3, 95.7, 97],
+    dataAnalysis: [3, 15.4, 97, 84.6],
+    instructionalCoaching: [8.3, 3, 91.7, 97],
+    assessmentFeedback: [3, 16.4, 97, 83.6],
+    safeSupportive: [3, 13.3, 97, 86.7],
+    knowEngageLearner: [4.7, 3, 95.4, 97]
   };
 
   // Part types (3rd element of a part): omitted = line (stroke only),
@@ -205,8 +223,11 @@
       return ICONS[name].map(function (p) { return p[0]; })
         .filter(function (n, i, a) { return a.indexOf(n) === i; });
     },
-    // The single accent part (see ACCENT above), e.g. 'heart'.
-    accent: function (name) { return ACCENT[name]; },
+    // The accent part names (see ACCENT above), always an array,
+    // e.g. ['heart'] or ['diamond', 'star'].
+    accent: function (name) { return [].concat(ACCENT[name] || []); },
+    // Visible extent on the 100x100 grid (see BOUNDS above).
+    bounds: function (name) { return (BOUNDS[name] || [0, 0, 100, 100]).slice(); },
     // A copy of the icon's brand colours, keyed by part name.
     brand: function (name) {
       var out = {}, src = BRAND[name] || {};

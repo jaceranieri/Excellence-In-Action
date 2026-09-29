@@ -990,13 +990,20 @@ lists the part names. `icons-preview.html` shows the colour scenarios.
 
 All nine wheel icons are converted and **wired into the wheel**.
 `iconMarkup()` in `excellence-wheel.js` (mirrored in
-`gas/Script_ExcellenceWheel.html`) draws each icon white, with a single accent
-part — `EIAIcons.accent(name)` — in the wedge's category accent colour
-(`CATEGORY_STYLE.accent`: light blue / orange / lime). Icon size and position
-are `ICON_SIZE` (76) and `ICON_UP` (38); resting/hover opacity is `.ew-icon-art`
-in the wheel stylesheet. `icons.js` must load before the wheel (`example.html`
+`gas/Script_ExcellenceWheel.html`) draws each icon all white at rest; on
+hover, selection, tour highlight or keyboard focus its accent part(s) —
+`EIAIcons.accent(name)`, e.g. differentiation's diamond and star — turn to the
+category accent (`CATEGORY_STYLE.accent`: light blue / orange / lime) via the
+`--ew-icon-accent` variable on `.ew-icon-art` in the wheel stylesheet.
+Placement: every icon's visible bottom edge sits `ICON_LABEL_GAP` (11.7 units)
+above its label's cap height, using `EIAIcons.bounds(name)`; per-segment
+`iconScale` and `iconNudge` in `SEGMENTS` tweak individual icons, `nudge`
+moves icon and label together (1 on-screen px at the app's ~520px wheel is
+about 2.1 units). `ICON_SIZE` (76) is the base icon box. The Element header
+beside the wheel (`elementIconPlaceholder(segment)` in `example.html` /
+`gas/Script_App.html`) shows the same icon, white with accent, in its circle. `icons.js` must load before the wheel (`example.html`
 and `gas/Index.html` both do). If an icon's accent part or size needs tweaking,
-change `ACCENT` in `icons.js` or the two constants above. To add another icon,
+change `ACCENT` in `icons.js` or the segment's fields above. To add another icon,
 follow the existing entries in `ICONS` in `icons.js`.
 
 `excellence-wheel-preview.html` is the stale single-file preview (see above)

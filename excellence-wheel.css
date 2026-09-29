@@ -123,6 +123,7 @@
 }
 
 .ew-icon-art {
+  --ew-icon-accent: #ffffff; /* accent part(s) stay white until hover/selection */
   opacity: 0.85;
   transition: opacity 0.18s ease;
 }
@@ -131,6 +132,7 @@
 .ew-wedge.is-selected .ew-icon-art,
 .ew-wedge.is-highlighted .ew-icon-art,
 .ew-wedge:focus-visible .ew-icon-art {
+  --ew-icon-accent: var(--ew-accent);
   opacity: 1;
 }
 

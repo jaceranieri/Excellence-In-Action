@@ -1885,10 +1885,17 @@
     var detailEl = document.getElementById('detail');
     var currentThemes = null; // the array behind whichever Element is currently shown
 
-    function elementIconPlaceholder() {
-      // Same "image placeholder" glyph style as the wheel's own wedge
-      // icons — frame, dot, mountain outline — for visual consistency
-      // with the other spot in the app already marked as a placeholder.
+    function elementIconPlaceholder(segment) {
+      // The Element's own icon (icons.js), white with its accent part(s) in
+      // the category accent — the same colouring as the selected wedge.
+      if (segment && typeof EIAIcons !== 'undefined' && EIAIcons.names().indexOf(segment.icon) !== -1) {
+        var colors = { all: '#ffffff' };
+        var accent = ExcellenceWheel.CATEGORY_STYLE[segment.category].accent;
+        EIAIcons.accent(segment.icon).forEach(function (part) { colors[part] = accent; });
+        return '<div class="element-icon-placeholder" aria-hidden="true">' +
+          EIAIcons.svg(segment.icon, { colors: colors }) + '</div>';
+      }
+      // Fallback: the generic "image placeholder" glyph.
       return '<div class="element-icon-placeholder" aria-hidden="true">' +
         '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">' +
           '<rect x="3" y="3" width="18" height="18" rx="4" stroke="currentColor" stroke-width="1.6"/>' +
@@ -1922,7 +1929,7 @@
       currentSegment = segment;
       detailEl.innerHTML =
         '<div class="element-detail" style="--element-color:' + accentHex + '">' +
-          elementIconPlaceholder() +
+          elementIconPlaceholder(segment) +
           '<h2 class="element-title">' + escapeHtml(title) + '</h2>' +
           '<div class="theme-cards">' + cardsHtml + '</div>' +
           '<div class="element-resources"></div>' +

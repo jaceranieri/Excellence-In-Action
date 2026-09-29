@@ -114,35 +114,41 @@
   // label's line count, and an upright (non-rotated) icon+text block. If you
   // edit a label's wording enough to change its wrapped line count, re-run
   // the fit (see README) rather than guessing a new radius.
+  // `iconScale` (default 1) shrinks/grows one icon; `iconNudge` {x,y} moves
+  // the icon alone, after `nudge` has moved icon and label together.
   // `nudge` is a small manual on-screen offset {x,y} in viewBox units, on
   // top of contentR, for fine visual placement within the wedge — re-checked
   // against the same containment fit so it doesn't reopen the overflow bug.
   var SEGMENTS = [
     { id: 'instructional-coaching', category: 'leading', icon: 'instructionalCoaching',
-      lines: ['Instructional', 'Coaching'], contentR: 290, nudge: { x: -10, y: -10 } },
+      lines: ['Instructional', 'Coaching'], contentR: 290, nudge: { x: -10, y: -10 }, iconScale: 0.85 },
     { id: 'data-analysis', category: 'leading', icon: 'dataAnalysis',
-      lines: ['Data Analysis', 'and Decision', 'Making'], contentR: 331, nudge: { x: 0, y: 10 } },
+      lines: ['Data Analysis', 'and Decision', 'Making'], contentR: 331, nudge: { x: 0, y: 20.5 } },
     { id: 'collaborative-planning', category: 'leading', icon: 'collaborativePlanning',
-      lines: ['Collaborative', 'Planning and', 'Programming:', 'Reflect, Review', 'and Refine'], italicFrom: 2, contentR: 348, nudge: { x: -18, y: 0 } },
+      lines: ['Collaborative', 'Planning and', 'Programming:', 'Reflect, Review', 'and Refine'], italicFrom: 2, contentR: 348, nudge: { x: -39, y: 0 }, iconScale: 0.95 },
     { id: 'highly-effective-teaching', category: 'teaching', icon: 'highlyEffectiveTeaching',
-      lines: ['Highly', 'Effective', 'Teaching'], contentR: 287, nudge: { x: 10, y: -18 } },
+      lines: ['Highly', 'Effective', 'Teaching'], contentR: 287, nudge: { x: 20.5, y: -18 } },
     { id: 'differentiation', category: 'teaching', icon: 'differentiation',
-      lines: ['Differentiation'], contentR: 292, nudge: { x: 0, y: 0 } },
+      lines: ['Differentiation'], contentR: 292, nudge: { x: 10.5, y: 10.5 }, iconScale: 0.9 },
     { id: 'intervention', category: 'teaching', icon: 'intervention',
-      lines: ['Intervention'], contentR: 280, nudge: { x: 10, y: 10 } },
+      lines: ['Intervention'], contentR: 280, nudge: { x: 10, y: 31 }, iconNudge: { x: -10.5, y: 0 } },
     { id: 'know-engage-learner', category: 'learning', icon: 'knowEngageLearner',
-      lines: ['Know and', 'Engage the', 'Learner'], contentR: 280, nudge: { x: 0, y: 0 } },
+      lines: ['Know and', 'Engage the', 'Learner'], contentR: 280, nudge: { x: -10.5, y: 0 }, iconScale: 0.9 },
     { id: 'safe-supportive-environment', category: 'learning', icon: 'safeSupportive',
-      lines: ['Safe and', 'Supportive', 'Environment'], contentR: 299, nudge: { x: 0, y: -18 } },
+      lines: ['Safe and', 'Supportive', 'Environment'], contentR: 299, nudge: { x: -6.3, y: -18 } },
     { id: 'assessment-feedback', category: 'learning', icon: 'assessmentFeedback',
-      lines: ['Assessment', 'and', 'Feedback'], contentR: 290, nudge: { x: 0, y: -10 } }
+      lines: ['Assessment', 'and', 'Feedback'], contentR: 290, nudge: { x: -10.5, y: -10 } }
   ];
 
   // Label type scales with how many lines it wraps to, so a 5-line label
   // doesn't need as much vertical room per line as a 1-line one.
   var FONT_BY_LINES = { 1: 23, 2: 23, 3: 23, 4: 20, 5: 17 };
   var LINE_HEIGHT_BY_LINES = { 1: 0, 2: 26, 3: 26, 4: 22, 5: 19 };
-  var ICON_UP = 38;   // anchor -> icon centre, straight up
+  // Icons sit a fixed gap above their label: ICON_LABEL_GAP is the space
+  // between the icon's visible bottom edge and the top of the label's
+  // capital letters (matches Know and Engage the Learner's original look).
+  var ICON_LABEL_GAP = 11.7;
+  var CAP_HEIGHT = 0.72; // Figtree cap height, as a fraction of font-size
   var TEXT_GAP = 26;  // anchor -> first label line, straight down
 
   var START_ANGLE = 210; // degrees; 0 = 3 o'clock, 90 = 6 o'clock (clockwise, SVG y-down)
@@ -289,7 +295,7 @@
   //    generic placeholder glyph is drawn instead, so the wheel still works.
   // ---------------------------------------------------------------------
 
-  var ICON_SIZE = 76; // icon box, in wheel units
+  var ICON_SIZE = 76; // icon box, in wheel units (before a segment's iconScale)
 
   function placeholderIcon() {
     return '<g class="ew-icon-art">' +
@@ -299,13 +305,33 @@
       '</g>';
   }
 
-  function iconMarkup(seg, style) {
-    if (typeof EIAIcons === 'undefined' || EIAIcons.names().indexOf(seg.icon) === -1) {
-      return placeholderIcon();
-    }
+  function hasIcon(seg) {
+    return typeof EIAIcons !== 'undefined' && EIAIcons.names().indexOf(seg.icon) !== -1;
+  }
+
+  // Where to put an icon's centre so its visible bottom edge lands on
+  // `bottomY` and its visible middle on `centreX` (plus any iconNudge).
+  function iconPosition(seg, scale, bottomY, centreX) {
+    var b = hasIcon(seg) ? EIAIcons.bounds(seg.icon) : [31, 31, 69, 69];
+    var k = ICON_SIZE * scale / 100;
+    var n = seg.iconNudge || { x: 0, y: 0 };
+    return {
+      x: centreX - ((b[0] + b[2]) / 2 - 50) * k + n.x,
+      y: bottomY - (b[3] - 50) * k + n.y
+    };
+  }
+
+  // White icon; its accent part(s) read --ew-icon-accent, which is white at
+  // rest and turns to the category accent on hover/selection (see
+  // .ew-icon-art in the wheel stylesheet).
+  function iconMarkup(seg, style, scale) {
+    if (!hasIcon(seg)) return placeholderIcon();
     var colors = { all: '#ffffff' };
-    colors[EIAIcons.accent(seg.icon)] = style.accent;
-    return '<g class="ew-icon-art">' + EIAIcons.group(seg.icon, ICON_SIZE, { colors: colors }) + '</g>';
+    EIAIcons.accent(seg.icon).forEach(function (part) {
+      colors[part] = 'var(--ew-icon-accent,#ffffff)';
+    });
+    return '<g class="ew-icon-art" style="--ew-accent:' + style.accent + '">' +
+      EIAIcons.group(seg.icon, ICON_SIZE * (scale || 1), { colors: colors }) + '</g>';
   }
 
   // ---------------------------------------------------------------------
@@ -420,8 +446,9 @@
       var lh = LINE_HEIGHT_BY_LINES[n] || 25;
       var anchor = polar(seg.contentR, seg.midAngle);
       anchor = { x: anchor.x + (seg.nudge ? seg.nudge.x : 0), y: anchor.y + (seg.nudge ? seg.nudge.y : 0) };
-      var iconPt = { x: anchor.x, y: anchor.y - ICON_UP };
+      var iconScale = seg.iconScale || 1;
       var textTop = { x: anchor.x, y: anchor.y + TEXT_GAP };
+      var iconPt = iconPosition(seg, iconScale, textTop.y - CAP_HEIGHT * fontSize - ICON_LABEL_GAP, anchor.x);
       var wedgeDelay = ENTRANCE.wedgeStart + idx * ENTRANCE.wedgeStagger;
 
       svg.push('<g class="ew-wedge" tabindex="0" role="button" data-id="' + seg.id + '" data-category="' + seg.category +
@@ -438,7 +465,7 @@
       svg.push('<path class="ew-wedge-fill" d="' + slicePath + '"/>');
       svg.push('<g class="ew-wedge-slot" clip-path="url(#' + clipId + ')"></g>');
       svg.push('<g class="ew-icon" transform="translate(' + iconPt.x + ',' + iconPt.y + ')">' +
-        iconMarkup(seg, style) + '</g>');
+        iconMarkup(seg, style, iconScale) + '</g>');
       svg.push('<text class="ew-label" x="' + textTop.x + '" y="' + textTop.y + '" font-size="' + fontSize + '">');
       seg.lines.forEach(function (line, i) {
         var cls = seg.italicFrom !== undefined && i >= seg.italicFrom ? ' class="ew-italic"' : '';

@@ -47,7 +47,7 @@
     ['bold',       'Heavier stroke',              '--ei-icon-stroke: 6']
   ];
   // The accent part used for the two-tone cards (parts are named in icons.js)
-  var ACCENT = { intervention: 'heart', differentiation: 'star', highlyEffectiveTeaching: 'bubble', collaborativePlanning: 'chart', dataAnalysis: 'slice', instructionalCoaching: 'bubble', assessmentFeedback: 'papers', safeSupportive: 'child', knowEngageLearner: 'students' };
+  var ACCENT = { intervention: 'heart', differentiation: ['diamond', 'star'], highlyEffectiveTeaching: 'bubble', collaborativePlanning: 'chart', dataAnalysis: 'slice', instructionalCoaching: 'bubble', assessmentFeedback: 'papers', safeSupportive: 'child', knowEngageLearner: 'students' };
   // Full-colour card: the icon's own brand colours from icons.js
   function fullStyle(name) {
     var c = EIAIcons.brand(name);
@@ -58,7 +58,7 @@
   html += '<h2 style="grid-column:1/-1;margin:14px 0 0;font-size:15px">' + name + '</h2>';
   scenarios.forEach(function (s) {
     var white = /white|two-tone/.test(s[0]) && s[0] !== 'on-white';
-    html += '<div class="card ' + s[0] + '" style="' + (s[0] === 'on-white' ? fullStyle(name) + ';' : /^two-tone/.test(s[0]) ? '--ei-icon-' + ACCENT[name] + ':var(--accent);' : '') + 'color:' + (white ? '#fff' : '') + '">' +
+    html += '<div class="card ' + s[0] + '" style="' + (s[0] === 'on-white' ? fullStyle(name) + ';' : /^two-tone/.test(s[0]) ? [].concat(ACCENT[name]).map(function (p) { return '--ei-icon-' + p + ':var(--accent);'; }).join('') : '') + 'color:' + (white ? '#fff' : '') + '">' +
       '<div class="sizes">' + [24, 44, 110].map(function (n) {
         return EIAIcons.svg(name, { size: n, title: name });
       }).join('') + '</div><strong>' + s[1] + '</strong><small>' + s[2] + '</small></div>';
