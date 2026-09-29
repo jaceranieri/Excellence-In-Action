@@ -84,6 +84,38 @@
   text-align: center;
 }
 
+/* School switcher (someone at several schools): the crest becomes a
+   button with a chevron that opens the school dropdown (.school-menu,
+   styled with the login gate). */
+.app-banner-school.has-switcher {
+  position: relative;
+}
+
+.app-banner-school-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px 4px 10px;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.app-banner-school-btn:hover,
+.app-banner-school-btn:focus-visible,
+.app-banner-school-btn[aria-expanded="true"] {
+  background: #f4f5f5;
+  border-color: #000000;
+  outline: none;
+}
+
+.app-banner-school-crest {
+  display: flex;
+  align-items: center;
+}
+
 /* Last Updated, History, avatar ------------------------------------------*/
 
 .app-banner-tools {
@@ -136,10 +168,22 @@
 .app-banner-panel-btn {
   position: relative; /* for the bell's badge */
   padding: 0;
-  background: #ffffff;
-  color: #f5b400;
+  /* Each panel button has its own bright colour (--panel-color, below)
+     with a black icon. */
+  background: var(--panel-color, #ffffff);
+  color: #000000;
   cursor: pointer;
   transition: background-color 0.15s ease, transform 0.1s ease;
+}
+
+.app-banner-history-btn {
+  --panel-color: #a3e634;       /* lime green */
+  --panel-color-hover: #bff06e;
+}
+
+.app-banner-bell-btn {
+  --panel-color: #de2b48;       /* red */
+  --panel-color-hover: #e85a70;
 }
 
 .app-banner-panel-btn svg {
@@ -150,7 +194,7 @@
 .app-banner-panel-btn:hover,
 .app-banner-panel-btn:focus-visible,
 .app-banner-panel-btn[aria-expanded="true"] {
-  background: #fff6db;
+  background: var(--panel-color-hover, #fff6db);
   outline: none;
 }
 
@@ -173,7 +217,7 @@
   padding: 0 5px;
   border: 2px solid #000000;
   border-radius: 999px;
-  background: #FF5F5E;
+  background: #ffffff; /* white, to stand out on the red bell */
   color: #000000;
   font-family: 'Figtree', 'Segoe UI', sans-serif;
   font-weight: 800;
@@ -206,10 +250,10 @@
    (display: contents) so its items can be placed on the grid directly. */
 @media (max-width: 640px) {
   .app-banner {
-    grid-template-columns: 1fr auto auto auto;
+    grid-template-columns: 1fr auto auto auto auto;
     grid-template-areas:
-      "brand  history bell    avatar"
-      "school updated updated updated";
+      "brand  tour    history bell    avatar"
+      "school updated updated updated updated";
     column-gap: 8px;
     row-gap: 12px;
     padding: 12px 16px;
@@ -220,6 +264,7 @@
   .app-banner-avatar { grid-area: avatar; }
   .app-banner-updated { grid-area: updated; justify-self: end; margin-right: 0; }
   .app-banner-school { justify-content: flex-start; }
+  .app-banner-school .school-menu { left: 0; transform: none; }
   .app-banner-brand-top { font-size: 14px; }
   .app-banner-brand-script { font-size: 28px; margin-left: 10px; }
   .app-banner-school img { max-height: 40px; max-width: 170px; }

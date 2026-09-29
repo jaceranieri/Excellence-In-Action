@@ -1,6 +1,8 @@
 /*!
  * Theme cards — the 1–6 cards shown beside the wheel once an Element
- * (wedge) is selected, under the Element's icon and title.
+ * (wedge) is selected, under the Element's icon and title. With no
+ * Element selected, the same cards list the school's priority Themes
+ * instead ("Our School Priorities"; see renderPrioritiesView()).
  * Neubrutalism style: flat colour, black borders, hard black shadows.
  *
  * Each card is filled with its Theme's overall grade colour (--grade-color,
@@ -129,6 +131,36 @@
   text-overflow: ellipsis;
 }
 
+.theme-card-badges {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* A gold star in a black pill, beside the evidence count, on a school
+   priority Theme's card. */
+.theme-card-priority {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 20px;
+  border-radius: 999px;
+  background: #000000;
+}
+
+.theme-card-priority[hidden] {
+  display: none;
+}
+
+.theme-card-priority svg {
+  width: 13px;
+  height: 13px;
+  fill: #ffc933;
+}
+
 .theme-card-evidence-badge {
   flex: none;
   display: inline-flex;
@@ -150,6 +182,22 @@
   flex: none;
 }
 
+.theme-card-bottom {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+/* The priorities panel names each card's Element above its title. */
+.theme-card-element {
+  margin: 0;
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+  font-weight: 700;
+  font-size: 11.5px;
+  line-height: 1.2;
+  color: #000000;
+}
+
 .theme-card-title {
   margin: 0;
   font-family: 'Figtree', 'Segoe UI', sans-serif;
@@ -163,6 +211,175 @@
 /* Ungraded cards are light grey, so their title is black. */
 .theme-card.is-ungraded .theme-card-title {
   color: #000000;
+}
+
+/* School priorities -------------------------------------------------- */
+/* The panel shown beside the wheel when no Element is selected: every
+   Theme starred as a school priority, or a prompt to star one. */
+.priorities-icon {
+  --element-color: #ffc933;
+  color: #000000;
+}
+
+.priorities-icon svg {
+  fill: #000000;
+}
+
+.priorities-empty {
+  margin: 0 10px 12px 2px; /* room for the shadow, like .theme-cards */
+  padding: 20px 22px;
+  border: 2.5px solid #000000;
+  border-radius: 10px;
+  background: #fff6d6;
+  box-shadow: 6px 6px 0 0 #000000;
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+  animation: tc-fade-in 220ms ease backwards;
+}
+
+.priorities-empty p {
+  margin: 0;
+  font-weight: 700;
+  font-size: 17px;
+  line-height: 1.35;
+  color: #000000;
+}
+
+.priorities-empty .priorities-empty-hint {
+  margin-top: 8px;
+  font-weight: 500;
+  font-size: 14px;
+  color: #3a3c47;
+}
+
+/* "Our Priorities", centred under the wheel. Gold while its view shows. */
+.priorities-btn-row {
+  display: flex;
+  justify-content: center;
+  margin-top: 14px;
+  padding: 0 4px 4px 0; /* room for the shadow */
+}
+
+.priorities-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 18px 8px 14px;
+  border: 2.5px solid #000000;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 4px 4px 0 0 #000000;
+  color: #000000;
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+  font-weight: 800;
+  font-size: 15px;
+  cursor: pointer;
+  transition: transform 0.1s ease, box-shadow 0.1s ease, background-color 0.15s ease;
+}
+
+.priorities-btn svg {
+  width: 18px;
+  height: 18px;
+  fill: #ffc933;
+  stroke: #000000;
+  stroke-width: 1.8;
+}
+
+.priorities-btn:hover,
+.priorities-btn:focus-visible {
+  background: #fff6d6;
+  outline: none;
+}
+
+.priorities-btn:focus-visible {
+  box-shadow: 4px 4px 0 0 #000000, 0 0 0 3px #17458f;
+}
+
+.priorities-btn:active,
+.priorities-btn[aria-pressed="true"] {
+  transform: translate(2px, 2px);
+  box-shadow: 2px 2px 0 0 #000000;
+}
+
+.priorities-btn[aria-pressed="true"] {
+  background: #ffc933;
+  cursor: default;
+}
+
+.priorities-btn[aria-pressed="true"] svg {
+  fill: #ffffff;
+}
+
+/* Carousel controls under the priority cards (more than 6 priorities):
+   previous, one dot per page, next. */
+.priorities-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin: 6px 10px 6px 2px;
+  animation: tc-fade-in 220ms ease backwards;
+}
+
+.priorities-pager-btn {
+  width: 32px;
+  height: 32px;
+  padding: 0 0 2px;
+  border: 2.5px solid #000000;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 3px 3px 0 0 #000000;
+  color: #000000;
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+  font-weight: 800;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform 0.1s ease, box-shadow 0.1s ease, background-color 0.15s ease;
+}
+
+.priorities-pager-btn:hover:not(:disabled),
+.priorities-pager-btn:focus-visible {
+  background: #fff6d6;
+  outline: none;
+}
+
+.priorities-pager-btn:focus-visible {
+  box-shadow: 3px 3px 0 0 #000000, 0 0 0 3px #17458f;
+}
+
+.priorities-pager-btn:active:not(:disabled) {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 0 #000000;
+}
+
+.priorities-pager-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.priorities-pager-dots {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.priorities-pager-dot {
+  width: 12px;
+  height: 12px;
+  padding: 0;
+  border: 2px solid #000000;
+  border-radius: 50%;
+  background: #ffffff;
+  cursor: pointer;
+}
+
+.priorities-pager-dot.is-current {
+  background: #000000;
+  cursor: default;
+}
+
+.priorities-pager-dot:focus-visible {
+  outline: 3px solid #17458f;
+  outline-offset: 2px;
 }
 
 /* Element resources (GAS build: links from the Users spreadsheet's
@@ -231,8 +448,13 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .element-resources > * {
+  .element-resources > *,
+  .priorities-empty,
+  .priorities-pager {
     animation: none;
+  }
+  .priorities-btn {
+    transition: none;
   }
   .theme-card {
     transition: none;

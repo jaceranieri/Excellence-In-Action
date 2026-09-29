@@ -124,7 +124,7 @@
   justify-content: center;
   min-height: 84px;
   box-sizing: border-box;
-  padding: 18px 76px; /* room for the close button either side, so the title stays centred */
+  padding: 18px 112px; /* room for the priority star + close button either side, so the title stays centred */
   border-bottom: 2.5px solid #000000;
   background: #ffffff;
 }
@@ -163,6 +163,52 @@
 .theme-modal-close:hover,
 .theme-modal-close:focus-visible {
   background: #e3e5ee;
+}
+
+/* School-priority toggle, just left of the close button: an outlined
+   star, filled gold once the Theme is flagged as a priority. */
+.theme-modal-priority {
+  position: absolute;
+  top: 50%;
+  right: 64px;
+  margin-top: -16px;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 50%;
+  border: none;
+  background: #f1f2f6;
+  color: #3a3c47;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.theme-modal-priority:hover,
+.theme-modal-priority:focus-visible {
+  background: #e3e5ee;
+}
+
+.theme-modal-priority svg {
+  width: 20px;
+  height: 20px;
+  fill: transparent;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  transition: fill 0.15s ease, stroke 0.15s ease;
+}
+
+.theme-modal-priority.is-on svg {
+  fill: #ffc933;
+  stroke: #000000;
+  animation: priority-star-pop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes priority-star-pop {
+  from { transform: scale(0.6); }
+  to   { transform: scale(1); }
 }
 
 .theme-modal-body {
@@ -821,13 +867,16 @@
   }
   .theme-modal-header {
     min-height: 64px;
-    padding: 14px 56px;
+    padding: 14px 92px;
   }
   .theme-modal-title {
     font-size: 18px;
   }
   .theme-modal-close {
     right: 14px;
+  }
+  .theme-modal-priority {
+    right: 52px;
   }
   .theme-modal-body {
     flex-direction: column;
@@ -896,5 +945,8 @@
   .evidence-accordion-body,
   .evidence-accordion-chevron {
     transition: none;
+  }
+  .theme-modal-priority.is-on svg {
+    animation: none;
   }
 }
