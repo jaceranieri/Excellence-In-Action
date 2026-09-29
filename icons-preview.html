@@ -48,10 +48,11 @@
   ];
   var html = '';
   // Per-icon colours for the "full colour" card (parts are named in icons.js)
-  var ACCENT = { intervention: 'heart', differentiation: 'star', highlyEffectiveTeaching: 'bubble' };
+  var ACCENT = { intervention: 'heart', differentiation: 'star', highlyEffectiveTeaching: 'bubble', collaborativePlanning: 'pencil' };
   var FULL = { intervention: '--ei-icon-shield:#1C1F4F;--ei-icon-hand:#1C1F4F;--ei-icon-heart:#c6302c',
                differentiation: '--ei-icon-circle:#000;--ei-icon-diamond:#de2c48;--ei-icon-star:#de2c48',
-               highlyEffectiveTeaching: '--ei-icon-document:#24cdd6;--ei-icon-teacher:#24cdd6;--ei-icon-students:#24cdd6;--ei-icon-bubble:#a3e635' };
+               highlyEffectiveTeaching: '--ei-icon-document:#24cdd6;--ei-icon-teacher:#24cdd6;--ei-icon-students:#24cdd6;--ei-icon-bubble:#a3e635',
+               collaborativePlanning: '--ei-icon-back:#de2c48;--ei-icon-front:#de2c48;--ei-icon-pencil:#de2c48;--ei-icon-chart:#193965;--ei-icon-lines:#193965' };
   EIAIcons.names().forEach(function (name) {
   html += '<h2 style="grid-column:1/-1;margin:14px 0 0;font-size:15px">' + name + '</h2>';
   scenarios.forEach(function (s) {
