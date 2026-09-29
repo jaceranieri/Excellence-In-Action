@@ -252,6 +252,18 @@
     if (typeof window.onAppEntered === 'function') window.onAppEntered(access);
   }
 
+  // The SCS logo opens in the middle of the screen, then rises into its
+  // place above "Excellence in Action" (see Stylesheet_LoginGate.html).
+  // --scs-rise is how far its resting spot is above the screen's middle.
+  // offsetTop ignores transforms, so this is right even mid-animation.
+  function placeLoginLogo() {
+    var gate = document.getElementById('login-gate');
+    var logo = gate && gate.querySelector('.login-gate-scs');
+    if (!logo) return;
+    var rise = gate.clientHeight / 2 - (logo.offsetTop + logo.offsetHeight / 2);
+    logo.style.setProperty('--scs-rise', Math.max(0, rise) + 'px');
+  }
+
   (function initLoginGate() {
     var access = window.__ACCESS__ || { email: '', found: false, active: false };
     if (access.found && access.active) {
@@ -259,5 +271,7 @@
     } else {
       renderLoginGateInsufficient(access);
     }
+    placeLoginLogo();
+    window.addEventListener('resize', placeLoginLogo);
   })();
 </script>

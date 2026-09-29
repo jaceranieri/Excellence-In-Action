@@ -410,13 +410,20 @@ SCS logo. Its markup is its own file, `gas/Logo_SCS.html`, included by
 wrapped onto short lines on purpose: an earlier version inlined it as one
 ~74k-character line, which can get cut off when pasted into the Apps Script
 editor and swallow every script after it (the gate then sticks on "Logging you
-in"). Sequence (~4s): the logo blooms open alone in the middle of the screen,
-glides into its lockup, the wordmark wipes in, the logo rises to the top
-(`--scs-top`), then "Excellence in Action", the card and the footer fade up.
-All timings and sizes are in the "Sydney Catholic Schools logo" block of
-`gas/Stylesheet_LoginGate.html`; with reduced motion everything just appears,
-and on screens under 620px tall the logo sits in the column instead of
-rising. It's drawn in black (`.scs-logo { color }`).
+in"), though a later hang turned out not to be that. Sequence (~3.3s): the
+logo blooms open alone in the middle of the screen, glides into its lockup,
+the wordmark wipes in, the logo rises into its place in the column just above
+"Excellence in Action" (same 22px gap as title-to-card; `--scs-rise`, measured
+by `placeLoginLogo()` in `gas/Script_LoginGate.html`), then the title, card
+and footer fade up. All timings and sizes are in the "Sydney Catholic Schools
+logo" block of `gas/Stylesheet_LoginGate.html`; with reduced motion everything
+just appears.
+
+**Login safety net.** A small script at the top of `gas/Index.html`'s `<head>`
+records any script error; if the login card still shows its "Logging you in"
+spinner 6s after load, it replaces it with "Something went wrong" plus the
+error (file and line), so a hang can be diagnosed from what's on screen.
+It's drawn in black (`.scs-logo { color }`).
 
 
 - **Users sheet**: `https://docs.google.com/spreadsheets/d/1OQXaRVUJopdjr4OWQbOvNLjoq-_bwaiNS3Rfu1-C62I/`

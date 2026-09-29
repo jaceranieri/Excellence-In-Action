@@ -66,28 +66,28 @@
 }
 
 .login-gate-scs {
-  --scs-top: max(28px, 6vh);
-  position: absolute;
-  top: var(--scs-top);
-  left: 0;
-  right: 0;
+  --scs-rise: 0px; /* set by placeLoginLogo() in Script_LoginGate.html */
   display: flex;
   justify-content: center;
-  pointer-events: none;
 }
 
 /* Sydney Catholic Schools logo ------------------------------------------
-   The opening sequence, on page load (~4s):
-     1. bloom (0-1.1s): the logo starts alone in the middle of the screen.
+   The opening sequence, on page load (~3.3s):
+     1. bloom (0-0.9s): the logo starts alone in the middle of the screen.
         A circular reveal grows from the emblem's centre while the emblem
         unfurls, turning and opening out with a slight overshoot, like a
         flower opening. The outer ring settles in as the reveal reaches it.
-     2. shift (1.2-1.9s): the emblem, which starts centred on the lockup,
+     2. shift (1.0-1.55s): the emblem, which starts centred on the lockup,
         glides left into its place.
-     3. wordmark (1.55-2.4s): "Sydney Catholic Schools" wipes in beside it.
-     4. rise (2.5-3.25s): the finished logo moves up to the top of the page
-        (.login-gate-scs, --scs-top).
-     5. enter (from 3.15s): "Excellence in Action", then the login card,
+     3. wordmark (1.25-1.95s): "Sydney Catholic Schools" wipes in beside it.
+     4. rise (2.05-2.65s): the finished logo moves up into its place in the
+        column, above the title with the same 22px gap as between the
+        title and the card. It's in normal flow; --scs-rise (measured by
+        placeLoginLogo() in Script_LoginGate.html) is how far that spot is
+        above the screen's middle, i.e. where the logo starts. If that
+        script doesn't run, --scs-rise stays 0 and the logo simply blooms
+        in place.
+     5. enter (from 2.55s): "Excellence in Action", then the login card,
         then the footer fade up into place.
    Sizes: emblem 71.4px; the wordmark and gap keep the logo's own
    proportions (0.1656 px per logo unit). --scs-shift is half the lockup
@@ -112,8 +112,8 @@
   width: 71.4px;
   height: 71.4px;
   animation:
-    scs-reveal 1.1s cubic-bezier(0.25, 0.8, 0.25, 1) both,
-    scs-shift 0.7s cubic-bezier(0.65, 0, 0.35, 1) 1.2s both;
+    scs-reveal 0.9s cubic-bezier(0.25, 0.8, 0.25, 1) both,
+    scs-shift 0.55s cubic-bezier(0.65, 0, 0.35, 1) 1s both;
 }
 
 .scs-bloom,
@@ -123,26 +123,26 @@
 }
 
 .scs-bloom {
-  animation: scs-bloom 1.1s cubic-bezier(0.25, 0.8, 0.25, 1) both;
+  animation: scs-bloom 0.9s cubic-bezier(0.25, 0.8, 0.25, 1) both;
 }
 
 .scs-ring {
-  animation: scs-ring 0.75s cubic-bezier(0.25, 0.8, 0.25, 1) 0.4s both;
+  animation: scs-ring 0.6s cubic-bezier(0.25, 0.8, 0.25, 1) 0.32s both;
 }
 
 .scs-wordmark {
   width: 102.2px;
   height: 52.2px;
-  animation: scs-wordmark 0.85s cubic-bezier(0.25, 0.8, 0.25, 1) 1.55s both;
+  animation: scs-wordmark 0.7s cubic-bezier(0.25, 0.8, 0.25, 1) 1.25s both;
 }
 
 .login-gate-scs {
-  animation: scs-rise 0.75s cubic-bezier(0.65, 0, 0.35, 1) 2.5s both;
+  animation: scs-rise 0.6s cubic-bezier(0.65, 0, 0.35, 1) 2.05s both;
 }
 
-.login-gate-brand  { animation: scs-enter 0.6s cubic-bezier(0.25, 0.8, 0.25, 1) 3.15s both; }
-.login-gate-card   { animation: scs-enter 0.6s cubic-bezier(0.25, 0.8, 0.25, 1) 3.3s both; }
-.login-gate-footer { animation: scs-enter 0.6s cubic-bezier(0.25, 0.8, 0.25, 1) 3.45s both; }
+.login-gate-brand  { animation: scs-enter 0.5s cubic-bezier(0.25, 0.8, 0.25, 1) 2.55s both; }
+.login-gate-card   { animation: scs-enter 0.5s cubic-bezier(0.25, 0.8, 0.25, 1) 2.67s both; }
+.login-gate-footer { animation: scs-enter 0.5s cubic-bezier(0.25, 0.8, 0.25, 1) 2.79s both; }
 
 @keyframes scs-reveal {
   from { clip-path: circle(0% at 50% 50%); }
@@ -171,25 +171,15 @@
   to   { clip-path: inset(0 0 0 0); transform: translateX(0); opacity: 1; }
 }
 
-/* From the middle of the screen up to --scs-top (35.7px = half the logo). */
+/* From the middle of the screen up into its place in the column. */
 @keyframes scs-rise {
-  from { transform: translateY(calc(50vh - var(--scs-top) - 35.7px)); }
+  from { transform: translateY(var(--scs-rise)); }
   to   { transform: translateY(0); }
 }
 
 @keyframes scs-enter {
   from { opacity: 0; transform: translateY(16px); }
   to   { opacity: 1; transform: translateY(0); }
-}
-
-/* Short screens: no room for the logo to sit above the centred content, so
-   it joins the column at the top instead (it still blooms, but doesn't
-   rise). */
-@media (max-height: 620px) {
-  .login-gate-scs {
-    position: static;
-    animation: none;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {

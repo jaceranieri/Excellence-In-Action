@@ -3,6 +3,31 @@
 <head>
 <meta charset="UTF-8">
 <base target="_top">
+<script>
+  // Login gate safety net. If any script on the page fails, remember the
+  // error; if the login card is still showing its "Logging you in" spinner
+  // a few seconds after load, show what went wrong instead of hanging, so
+  // the problem can be seen and reported.
+  (function () {
+    var errors = [];
+    window.addEventListener('error', function (e) {
+      errors.push((e.message || 'Script error') +
+        (e.filename ? ' (' + String(e.filename).split('/').pop() + ':' + e.lineno + ')' : ''));
+    });
+    window.addEventListener('load', function () {
+      setTimeout(function () {
+        var card = document.getElementById('login-gate-card');
+        if (!card || !card.querySelector('.login-gate-spinner')) return;
+        var esc = function (t) { return String(t).replace(/[&<>]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]; }); };
+        card.innerHTML =
+          '<p class="login-gate-card-heading">Something went wrong</p>' +
+          '<p class="login-gate-card-sub">The page didn\u2019t finish loading. Please reload, and if it happens again send this to your administrator:</p>' +
+          '<p class="login-gate-card-sub" style="font-family:monospace;color:#b3261e">' +
+          esc(errors.length ? errors.join(' | ') : 'No error was reported. The login script may not have loaded; check that every file included by Index.html exists.') + '</p>';
+      }, 6000);
+    });
+  })();
+</script>
 <!-- Google Picker widget library, for the evidence "Attach Files" flow —
      see Script_App.html's Picker section and Code.gs's "Visitor Google
      Drive authorization" section for how per-visitor Drive access works
