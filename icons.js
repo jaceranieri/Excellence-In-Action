@@ -19,6 +19,7 @@
  *                                                       // for use inside another <svg>
  *   EIAIcons.names();                                   // ['intervention', ...]
  *   EIAIcons.parts('intervention');                     // ['shield', 'hand', 'heart']
+ *   EIAIcons.accent('intervention');                    // 'heart' — the part to highlight
  *   EIAIcons.svg('intervention', { colors: EIAIcons.brand('intervention') });  // brand colours
  *
  * Colour variables (set on the icon, or on any ancestor):
@@ -118,6 +119,21 @@
     knowEngageLearner: { board: NAVY, lines: NAVY, teacher: NAVY, students: RED }
   };
 
+  // The one part of each icon that takes the accent colour when the rest is
+  // a single colour (the wheel draws icons white with this part in the
+  // category accent).
+  var ACCENT = {
+    intervention: 'heart',
+    differentiation: 'star',
+    highlyEffectiveTeaching: 'bubble',
+    collaborativePlanning: 'chart',
+    dataAnalysis: 'slice',
+    instructionalCoaching: 'bubble',
+    assessmentFeedback: 'papers',
+    safeSupportive: 'child',
+    knowEngageLearner: 'students'
+  };
+
   // Part types (3rd element of a part): omitted = line (stroke only),
   // 'fill' = solid shape, 'both' = solid shape plus a same-colour outline
   // (a filled shape that still grows with --ei-icon-stroke).
@@ -188,6 +204,8 @@
       return ICONS[name].map(function (p) { return p[0]; })
         .filter(function (n, i, a) { return a.indexOf(n) === i; });
     },
+    // The single accent part (see ACCENT above), e.g. 'heart'.
+    accent: function (name) { return ACCENT[name]; },
     // A copy of the icon's brand colours, keyed by part name.
     brand: function (name) {
       var out = {}, src = BRAND[name] || {};

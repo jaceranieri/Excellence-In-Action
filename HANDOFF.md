@@ -300,7 +300,7 @@ real GAS deployment.
 | Root file | GAS partial |
 |---|---|
 | `excellence-wheel.js` | `gas/Script_ExcellenceWheel.html` |
-| `icons.js` (line icon set — see "Icons" below) | `gas/Script_Icons.html` |
+| `icons.js` (icon set — see "Icons" below) | `gas/Script_Icons.html` |
 | `theme-cards.css` | `gas/Stylesheet_ThemeCards.html` |
 | `theme-modal.css` | `gas/Stylesheet_ThemeModal.html` |
 | `theme-dots.css` | `gas/Stylesheet_ThemeDots.html` |
@@ -851,10 +851,10 @@ computed margins directly.
   verified from this sandboxed dev environment anyway (no network
   egress to font CDNs here). Still worth a visual confirm on a real
   deployment, but there's no longer a CDN dependency to fail.
-- Icons throughout are still the generic placeholder glyph
-  (`placeholderIcon()` in `excellence-wheel.js`) — the original
-  hand-built per-segment `ICONS` set is still in the file, unused,
-  ready to swap back in per that file's own comments.
+- The wheel's wedge icons now come from `icons.js` (see "Icons" below).
+  The old hand-built per-segment `ICONS` set has been removed from
+  `excellence-wheel.js`; `placeholderIcon()` remains only as a fallback if
+  `EIAIcons` isn't loaded.
 - The rubric grid's 4-col/1-col breakpoint is viewport-based (`@media`),
   not container-based — documented as a known simplification in the
   original README section of this project's history, still true.
@@ -893,11 +893,19 @@ into another SVG (the wheel). Icons must be inlined, not `<img>`.
 red `#de2c48`; the icons themselves carry no colour) and `EIAIcons.parts(name)`
 lists the part names. `icons-preview.html` shows the colour scenarios.
 
-All nine wheel icons are converted. They are **not yet wired into the
-wheel**, which still uses `placeholderIcon()` in `excellence-wheel.js`; the
-next step is to swap it for `EIAIcons.group(seg.icon, 44, {colors})` in
-`buildSVG()` and decide how each part maps to the category colours. To add
-another icon, follow the existing entries in `ICONS` in `icons.js`.
+All nine wheel icons are converted and **wired into the wheel**.
+`iconMarkup()` in `excellence-wheel.js` (mirrored in
+`gas/Script_ExcellenceWheel.html`) draws each icon white, with a single accent
+part — `EIAIcons.accent(name)` — in the wedge's category accent colour
+(`CATEGORY_STYLE.accent`: light blue / orange / lime). Icon size and position
+are `ICON_SIZE` (76) and `ICON_UP` (38); resting/hover opacity is `.ew-icon-art`
+in the wheel stylesheet. `icons.js` must load before the wheel (`example.html`
+and `gas/Index.html` both do). If an icon's accent part or size needs tweaking,
+change `ACCENT` in `icons.js` or the two constants above. To add another icon,
+follow the existing entries in `ICONS` in `icons.js`.
+
+`excellence-wheel-preview.html` is the stale single-file preview (see above)
+and does not include the icons.
 
 ## Deploying a change
 
