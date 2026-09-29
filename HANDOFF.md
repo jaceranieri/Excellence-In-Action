@@ -872,6 +872,7 @@ grid, each split into named parts that can be coloured independently:
 | `collaborativePlanning` | `back`, `front`, `chart`, `lines`, `pencil` | solid |
 | `dataAnalysis` | `ring`, `person`, `pie`, `slice` | solid |
 | `instructionalCoaching` | `left`, `right`, `bubble` | solid |
+| `assessmentFeedback` | `cap`, `student`, `chair`, `desk`, `papers`, `teacher` | solid |
 
 Solid icons have parts marked `'fill'`; the white shapes in the source art
 were masks, so they are cut out as real transparent gaps and the icon works
@@ -885,9 +886,9 @@ string, or `EIAIcons.group(name, size)` for a `<g>` centred on 0,0 to drop
 into another SVG (the wheel). Icons must be inlined, not `<img>`.
 `icons-preview.html` shows the colour scenarios.
 
-Six of the nine are converted. Still to do: `knowEngageLearner`,
-`safeSupportive`, `assessmentFeedback`. The icons are **not yet wired into
-the wheel**, which still uses `placeholderIcon()`; add the remaining three to
+Seven of the nine are converted. Still to do: `knowEngageLearner` and
+`safeSupportive`. The icons are **not yet wired into
+the wheel**, which still uses `placeholderIcon()`; add the remaining two to
 `ICONS` in `icons.js` with the same part-naming approach.
 
 ## Deploying a change
