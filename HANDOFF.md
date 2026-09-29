@@ -379,6 +379,7 @@ real GAS deployment.
 | Root file | GAS partial |
 |---|---|
 | `excellence-wheel.js` | `gas/Script_ExcellenceWheel.html` |
+| `icons.js` (icon set — see "Icons" below) | `gas/Script_Icons.html` |
 | `theme-cards.css` | `gas/Stylesheet_ThemeCards.html` |
 | `theme-modal.css` | `gas/Stylesheet_ThemeModal.html` |
 | `theme-dots.css` | `gas/Stylesheet_ThemeDots.html` |
@@ -402,6 +403,28 @@ trust it as current, it hasn't been regenerated since. `EIA.json` +
 in `import-eia.py` itself; not run by the app.
 
 ## Login gate + access control (`gas/` only)
+
+**Sydney Catholic Schools logo.** The login gate opens with an animated
+SCS logo. Its markup is its own file, `gas/Logo_SCS.html`, included by
+`gas/Index.html` inside `.login-gate-scs`. It's kept out of `Index.html` and
+wrapped onto short lines on purpose: an earlier version inlined it as one
+~74k-character line, which can get cut off when pasted into the Apps Script
+editor and swallow every script after it (the gate then sticks on "Logging you
+in"), though a later hang turned out not to be that. Sequence (~3.3s): the
+logo blooms open alone in the middle of the screen, glides into its lockup,
+the wordmark wipes in, the logo rises into its place in the column just above
+"Excellence in Action" (same 22px gap as title-to-card; `--scs-rise`, measured
+by `placeLoginLogo()` in `gas/Script_LoginGate.html`), then the title, card
+and footer fade up. All timings and sizes are in the "Sydney Catholic Schools
+logo" block of `gas/Stylesheet_LoginGate.html`; with reduced motion everything
+just appears.
+
+**Login safety net.** A small script at the top of `gas/Index.html`'s `<head>`
+records any script error; if the login card still shows its "Logging you in"
+spinner 6s after load, it replaces it with "Something went wrong" plus the
+error (file and line), so a hang can be diagnosed from what's on screen.
+It's drawn in black (`.scs-logo { color }`).
+
 
 - **Users sheet**: `https://docs.google.com/spreadsheets/d/1OQXaRVUJopdjr4OWQbOvNLjoq-_bwaiNS3Rfu1-C62I/`
   — columns `Email, Name, SchoolName, CrestURL, Active`. The sheet ID is
@@ -945,13 +968,68 @@ computed margins directly.
   verified from this sandboxed dev environment anyway (no network
   egress to font CDNs here). Still worth a visual confirm on a real
   deployment, but there's no longer a CDN dependency to fail.
-- Icons throughout are still the generic placeholder glyph
-  (`placeholderIcon()` in `excellence-wheel.js`) — the original
-  hand-built per-segment `ICONS` set is still in the file, unused,
-  ready to swap back in per that file's own comments.
+- The wheel's wedge icons now come from `icons.js` (see "Icons" below).
+  The old hand-built per-segment `ICONS` set has been removed from
+  `excellence-wheel.js`; `placeholderIcon()` remains only as a fallback if
+  `EIAIcons` isn't loaded.
 - The rubric grid's 4-col/1-col breakpoint is viewport-based (`@media`),
   not container-based — documented as a known simplification in the
   original README section of this project's history, still true.
+
+## Icons
+
+`icons.js` / `gas/Script_Icons.html` expose `EIAIcons`: icons on a 100x100
+grid, each split into named parts that can be coloured independently:
+
+| Icon | Parts | Style |
+|---|---|---|
+| `intervention` | `shield`, `hand`, `heart` | line (heart is solid) |
+| `differentiation` | `circle`, `diamond`, `star` | line (inner shapes are solid) |
+| `highlyEffectiveTeaching` | `document`, `bubble`, `teacher`, `students` | solid |
+| `collaborativePlanning` | `back`, `front`, `chart`, `lines`, `pencil` | solid |
+| `dataAnalysis` | `ring`, `person`, `pie`, `slice` | solid |
+| `instructionalCoaching` | `left`, `right`, `bubble` | solid |
+| `assessmentFeedback` | `cap`, `student`, `chair`, `desk`, `papers`, `teacher` | solid |
+| `safeSupportive` | `book`, `person`, `hands`, `child` | solid |
+| `knowEngageLearner` | `board`, `lines`, `teacher`, `students` | solid |
+
+Part types: line (stroke only), `'fill'` (solid) and `'both'` (solid plus a
+same-colour outline, so it still grows with `--ei-icon-stroke`); a part name
+can appear more than once so, for example, `circle` is an outline plus a
+solid inner disc. Solid icons have parts marked `'fill'`; the white shapes in the source art
+were masks, so they are cut out as real transparent gaps and the icon works
+on any background.
+
+Every part's colour comes from a CSS custom property — `--ei-icon-<part>`,
+falling back to `--ei-icon-color`, then `currentColor`. Line parts take
+their width from `--ei-icon-stroke` (default 4; ignored by `'fill'` parts).
+Use `EIAIcons.svg(name, {size, colors, stroke})` for a standalone `<svg>`
+string, or `EIAIcons.group(name, size)` for a `<g>` centred on 0,0 to drop
+into another SVG (the wheel). Icons must be inlined, not `<img>`.
+`EIAIcons.brand(name)` returns each icon's brand colours (navy `#193965`,
+red `#de2c48`; the icons themselves carry no colour) and `EIAIcons.parts(name)`
+lists the part names. `icons-preview.html` shows the colour scenarios.
+
+All nine wheel icons are converted and **wired into the wheel**.
+`iconMarkup()` in `excellence-wheel.js` (mirrored in
+`gas/Script_ExcellenceWheel.html`) draws each icon all white at rest; on
+hover, selection, tour highlight or keyboard focus its accent part(s) —
+`EIAIcons.accent(name)`, e.g. differentiation's diamond and star — turn to the
+category accent (`CATEGORY_STYLE.accent`: light blue / orange / lime) via the
+`--ew-icon-accent` variable on `.ew-icon-art` in the wheel stylesheet.
+Placement: every icon's visible bottom edge sits `ICON_LABEL_GAP` (11.7 units)
+above its label's cap height, using `EIAIcons.bounds(name)`; per-segment
+`iconScale` and `iconNudge` in `SEGMENTS` tweak individual icons, `nudge`
+moves icon and label together (1 on-screen px at the app's ~520px wheel is
+about 2.1 units). `ICON_SIZE` (76) is the base icon box. The Element header
+beside the wheel (`elementIconPlaceholder(segment)` in `example.html` /
+`gas/Script_App.html`) shows the same icon without a circle, black with the accent part(s) coloured, at 64px (`.element-icon`). `icons.js` must load before the wheel (`example.html`
+and `gas/Index.html` both do). If an icon's accent part or size needs tweaking,
+change `ACCENT` in `icons.js` or the segment's fields above. To add another icon,
+follow the existing entries in `ICONS` in `icons.js`.
+
+`excellence-wheel-preview.html` is the stale single-file preview (see above)
+and does not include the icons.
 
 ## Deploying a change
 

@@ -123,16 +123,18 @@
   transition: transform 0.15s ease;
 }
 
-.ew-icon-placeholder {
-  opacity: 0.5;
+.ew-icon-art {
+  --ew-icon-accent: #ffffff; /* accent part(s) stay white until hover/selection */
+  opacity: 0.85;
   transition: opacity 0.18s ease;
 }
 
-.ew-wedge:hover .ew-icon-placeholder,
-.ew-wedge.is-selected .ew-icon-placeholder,
-.ew-wedge.is-highlighted .ew-icon-placeholder,
-.ew-wedge:focus-visible .ew-icon-placeholder {
-  opacity: 0.95;
+.ew-wedge:hover .ew-icon-art,
+.ew-wedge.is-selected .ew-icon-art,
+.ew-wedge.is-highlighted .ew-icon-art,
+.ew-wedge:focus-visible .ew-icon-art {
+  --ew-icon-accent: var(--ew-accent);
+  opacity: 1;
 }
 
 /* Type ----------------------------------------------------------------*/
@@ -201,7 +203,7 @@
 /* Motion preference ------------------------------------------------------ */
 
 @media (prefers-reduced-motion: reduce) {
-  .ew-wedge, .ew-center, .ew-wedge-fill, .ew-icon, .ew-icon-placeholder, .ew-ring {
+  .ew-wedge, .ew-center, .ew-wedge-fill, .ew-icon, .ew-icon-art, .ew-ring {
     transition: none;
   }
   .ew-wedge, .ew-center, .ew-outer-ring, .ew-brand-text, .ew-ring, .ew-ring-label {
