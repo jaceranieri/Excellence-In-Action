@@ -1886,13 +1886,13 @@
     var currentThemes = null; // the array behind whichever Element is currently shown
 
     function elementIconPlaceholder(segment) {
-      // The Element's own icon (icons.js), white with its accent part(s) in
-      // the category accent — the same colouring as the selected wedge.
+      // The Element's own icon (icons.js), no circle: black with its accent
+      // part(s) in the category accent.
       if (segment && typeof EIAIcons !== 'undefined' && EIAIcons.names().indexOf(segment.icon) !== -1) {
-        var colors = { all: '#ffffff' };
+        var colors = { all: '#000000' };
         var accent = ExcellenceWheel.CATEGORY_STYLE[segment.category].accent;
         EIAIcons.accent(segment.icon).forEach(function (part) { colors[part] = accent; });
-        return '<div class="element-icon-placeholder" aria-hidden="true">' +
+        return '<div class="element-icon" aria-hidden="true">' +
           EIAIcons.svg(segment.icon, { colors: colors }) + '</div>';
       }
       // Fallback: the generic "image placeholder" glyph.

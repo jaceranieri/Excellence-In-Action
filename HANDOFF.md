@@ -1001,7 +1001,7 @@ above its label's cap height, using `EIAIcons.bounds(name)`; per-segment
 moves icon and label together (1 on-screen px at the app's ~520px wheel is
 about 2.1 units). `ICON_SIZE` (76) is the base icon box. The Element header
 beside the wheel (`elementIconPlaceholder(segment)` in `example.html` /
-`gas/Script_App.html`) shows the same icon, white with accent, in its circle. `icons.js` must load before the wheel (`example.html`
+`gas/Script_App.html`) shows the same icon without a circle, black with the accent part(s) coloured, at 64px (`.element-icon`). `icons.js` must load before the wheel (`example.html`
 and `gas/Index.html` both do). If an icon's accent part or size needs tweaking,
 change `ACCENT` in `icons.js` or the segment's fields above. To add another icon,
 follow the existing entries in `ICONS` in `icons.js`.
