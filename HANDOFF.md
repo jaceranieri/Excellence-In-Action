@@ -866,8 +866,9 @@ icons on a 100x100 grid, each split into named parts (`intervention` =
 `shield`, `hand`, `heart`; `differentiation` = `circle`, `diamond`, `star`;
 `highlyEffectiveTeaching` = `document`, `bubble`, `teacher`, `students`;
 `collaborativePlanning` = `back`, `front`, `chart`, `lines`, `pencil`;
-`dataAnalysis` = `ring`, `person`, `pie`, `slice`).
-The last three are *solid-shape* icons, not line icons: their parts are marked
+`dataAnalysis` = `ring`, `person`, `pie`, `slice`;
+`instructionalCoaching` = `left`, `right`, `bubble`).
+The last four are *solid-shape* icons, not line icons: their parts are marked
 `'fill'` and their overlaps (the white masks in the source art) are cut out as real
 transparent gaps, so it works on any background). Every part's colour comes from a CSS custom
 property — `--ei-icon-<part>`, falling back to `--ei-icon-color`, then
@@ -875,9 +876,9 @@ property — `--ei-icon-<part>`, falling back to `--ei-icon-color`, then
 Use `EIAIcons.svg(name, {size, colors, stroke})` for a standalone `<svg>`
 string or `EIAIcons.group(name, size)` for a `<g>` centred on 0,0 to drop
 into another SVG (the wheel). Icons must be inlined, not `<img>`.
-`icons-preview.html` shows the colour scenarios. Only `intervention`, `differentiation`, `highlyEffectiveTeaching`,
-`collaborativePlanning` and `dataAnalysis` are converted so far and it is **not yet wired into the wheel** (which still
-uses `placeholderIcon()`); add the other three to `ICONS` in `icons.js`
+`icons-preview.html` shows the colour scenarios. Six of the nine are converted so far (all but `knowEngageLearner`,
+`safeSupportive` and `assessmentFeedback`) and it is **not yet wired into the wheel** (which still
+uses `placeholderIcon()`); add the remaining three to `ICONS` in `icons.js`
 using the same part-naming approach.
 
 ## Deploying a change
