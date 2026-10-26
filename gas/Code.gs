@@ -123,12 +123,22 @@ function shortHash_(value) {
     .join('');
 }
 
+/** A checkbox cell, or one holding the text TRUE. */
+function isTrue_(value) {
+  return value === true || String(value).trim().toUpperCase() === 'TRUE';
+}
+
 /**
  * Looks up the signed-in visitor on the Users tab (columns, in order:
- * Email, Name, SchoolName, CrestURL, Active). Someone at several schools
- * has one row per school; each row's Active applies to that school only.
+ * Email, Name, SchoolName, CrestURL, Active, Admin). Someone at several
+ * schools has one row per school; each row's Active applies to that
+ * school only.
+ * An active row with Admin = TRUE (SchoolName can be left blank) gives
+ * them every school on the Schools tab, in A–Z order, as well as any
+ * school their other rows add. Their crests come from the Schools tab's
+ * CrestURL column, or failing that from any Users row for that school.
  * Never throws on an unknown email — just comes back with found: false:
- *   { email, found, active, name, schoolName, crestUrl, schools, lastSchool, tourSeen }
+ *   { email, found, active, admin, name, schoolName, crestUrl, schools, lastSchool, tourSeen }
  * `schools` is every school they're active at, [{schoolName, crestUrl}],
  * with the one they last opened first (see rememberSchool_()).
  * schoolName/crestUrl are that first school's, so single-school code
@@ -137,30 +147,50 @@ function shortHash_(value) {
  */
 function getCurrentUserAccess() {
   var email = activeEmail_();
-  var result = { email: email, found: false, active: false, name: '', schoolName: '', crestUrl: '', schools: [] };
+  var result = { email: email, found: false, active: false, admin: false, name: '', schoolName: '', crestUrl: '', schools: [] };
   if (!email) return result;
 
   var ss = SpreadsheetApp.openById(requireProp_('USERS_SHEET_ID'));
   var sheet = ss.getSheetByName(TABS.USERS) || ss.getSheets()[0];
   var rows = sheet.getDataRange().getValues();
   var seen = {};
+  var usersCrests = {}; // school (lower case) -> a crest from any Users row, for admins
   for (var i = 1; i < rows.length; i++) {
     var row = rows[i];
-    var rowEmail = String(row[0] || '').toLowerCase().trim();
-    if (!rowEmail || rowEmail !== email) continue;
     var schoolName = String(row[2] || '').trim();
     var crestUrl = String(row[3] || '').trim();
+    var key = schoolName.toLowerCase();
+    if (crestUrl && key && !usersCrests[key]) usersCrests[key] = crestUrl;
+    var rowEmail = String(row[0] || '').toLowerCase().trim();
+    if (!rowEmail || rowEmail !== email) continue;
     if (!result.found) {
       result.found = true;
       result.schoolName = schoolName;
       result.crestUrl = crestUrl;
     }
     if (!result.name) result.name = String(row[1] || '').trim();
-    var active = row[4] === true || String(row[4]).trim().toUpperCase() === 'TRUE';
-    var key = schoolName.toLowerCase();
+    var active = isTrue_(row[4]);
+    if (active && isTrue_(row[5])) result.admin = true;
     if (!active || !schoolName || seen[key]) continue;
     seen[key] = true;
     result.schools.push({ schoolName: schoolName, crestUrl: crestUrl });
+  }
+  if (result.admin) {
+    var schoolsTab = [];
+    try {
+      schoolsTab = readSchoolsTab_();
+    } catch (e) {
+      console.warn('Admin ' + email + ' gets only their own Users rows: ' + e.message);
+    }
+    schoolsTab.forEach(function (s) {
+      var k = s.schoolName.toLowerCase();
+      if (seen[k]) return;
+      seen[k] = true;
+      result.schools.push({ schoolName: s.schoolName, crestUrl: s.crestUrl || usersCrests[k] || '' });
+    });
+    result.schools.sort(function (a, b) {
+      return a.schoolName.localeCompare(b.schoolName, undefined, { sensitivity: 'base' });
+    });
   }
   if (result.schools.length) {
     result.active = true;
@@ -220,7 +250,11 @@ function requireActiveUser_(school) {
   if (!access.found || !access.active || !access.schools || !access.schools.length) {
     throw new Error('Your account does not have access to Excellence in Action.');
   }
-  if (!cached) cache.put(key, JSON.stringify(access), 300);
+  if (!cached) {
+    // An admin's list of every school could in theory pass the cache's
+    // 100 KB limit; they'd then just skip the cache.
+    try { cache.put(key, JSON.stringify(access), 300); } catch (e) { console.warn('Access not cached for ' + email + ': ' + e); }
+  }
   var wanted = String(school || '').trim().toLowerCase();
   var match = wanted
     ? access.schools.filter(function (sc) { return sc.schoolName.toLowerCase() === wanted; })[0]
@@ -245,11 +279,16 @@ function readSchoolsTab_() {
   var header = rows[0].map(function (h) { return String(h).trim().toLowerCase(); });
   var nameCol = header.indexOf('schoolname');
   var folderCol = header.indexOf('evidencefolder');
+  var crestCol = header.indexOf('cresturl'); // optional: used for admins' school list
   if (nameCol < 0 || folderCol < 0) {
     throw new Error('The "' + TABS.SCHOOLS + '" tab needs "SchoolName" and "EvidenceFolder" header columns.');
   }
   return rows.slice(1).map(function (row) {
-    return { schoolName: String(row[nameCol] || '').trim(), folderValue: String(row[folderCol] || '').trim() };
+    return {
+      schoolName: String(row[nameCol] || '').trim(),
+      folderValue: String(row[folderCol] || '').trim(),
+      crestUrl: crestCol < 0 ? '' : String(row[crestCol] || '').trim()
+    };
   }).filter(function (r) { return r.schoolName; });
 }
 

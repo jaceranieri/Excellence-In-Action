@@ -458,6 +458,47 @@
   color: #14151d;
 }
 
+.school-menu-item[hidden] {
+  display: none;
+}
+
+/* Search box for long menus: stays at the top while the list scrolls
+   (top: -6px cancels the menu's padding). */
+.school-menu-search-box {
+  position: sticky;
+  top: -6px;
+  z-index: 1;
+  margin: -6px -6px 0;
+  padding: 6px 6px 4px;
+  background: #ffffff;
+}
+
+.school-menu-search {
+  display: block;
+  width: 100%;
+  min-width: 240px;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 2px solid #14151d;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 14px;
+  color: #14151d;
+  background: #ffffff;
+}
+
+.school-menu-search:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px #17458f;
+}
+
+.school-menu-empty {
+  margin: 0;
+  padding: 10px;
+  font-size: 14px;
+  color: #5b5e6b;
+}
+
 .school-menu-item:hover,
 .school-menu-item:focus-visible {
   background: #f0f1f4;

@@ -22,13 +22,23 @@
   var CHEVRON_SVG = '<svg class="school-menu-chevron" viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
     '<path d="M6 9.5l6 6 6-6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
+  // Lazy: an admin's menu has a crest for every school.
   function schoolCrestHtml(school, cls) {
     return school.crestUrl
-      ? '<img class="' + cls + '" src="' + escapeHtml(school.crestUrl) + '" alt="">'
+      ? '<img class="' + cls + '" src="' + escapeHtml(school.crestUrl) + '" alt="" loading="lazy">'
       : '';
   }
 
   var schoolMenuCount = 0;
+
+  // Menus this long (an admin sees every school) get a search box on top.
+  var SCHOOL_SEARCH_MIN = 9;
+
+  // "St Mary's  College" -> "st marys college", so punctuation and case
+  // don't stop a match.
+  function schoolSearchText(s) {
+    return String(s || '').toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
+  }
 
   function createSchoolMenu(trigger, schools, opts) {
     var wrap = trigger.parentNode;
@@ -37,7 +47,13 @@
     menu.id = 'school-menu-' + (++schoolMenuCount);
     menu.setAttribute('role', 'menu');
     menu.hidden = true;
-    menu.innerHTML = schools.map(function (school, i) {
+    var searchable = schools.length >= SCHOOL_SEARCH_MIN;
+    menu.innerHTML = (searchable
+      ? '<div class="school-menu-search-box">' +
+          '<input type="search" class="school-menu-search" placeholder="Search ' + schools.length + ' schools…" ' +
+            'aria-label="Search schools" autocomplete="off" spellcheck="false">' +
+        '</div>'
+      : '') + schools.map(function (school, i) {
       var isCurrent = opts.current && school.schoolName === opts.current;
       var isLast = !opts.current && opts.lastUsed && school.schoolName === opts.lastUsed;
       return '<button type="button" class="school-menu-item' + (isCurrent ? ' is-current' : '') + '" role="menuitem" data-idx="' + i + '"' +
@@ -47,7 +63,7 @@
           (isCurrent ? '<span class="school-menu-tag">Current</span>' : '') +
           (isLast ? '<span class="school-menu-tag">Last used</span>' : '') +
         '</button>';
-    }).join('');
+    }).join('') + (searchable ? '<p class="school-menu-empty" hidden>No schools match.</p>' : '');
     wrap.appendChild(menu);
     // A crest that fails to load leaves just the name.
     Array.prototype.forEach.call(menu.querySelectorAll('img'), function (img) {
@@ -57,10 +73,35 @@
     trigger.setAttribute('aria-expanded', 'false');
     trigger.setAttribute('aria-controls', menu.id);
 
-    function items() { return Array.prototype.slice.call(menu.querySelectorAll('.school-menu-item')); }
+    var search = menu.querySelector('.school-menu-search');
+    var empty = menu.querySelector('.school-menu-empty');
+    var allItems = Array.prototype.slice.call(menu.querySelectorAll('.school-menu-item'));
+    var itemText = schools.map(function (school) { return schoolSearchText(school.schoolName); });
+
+    // Every word typed must appear in the school's name.
+    function filter() {
+      var words = schoolSearchText(search.value).split(' ').filter(Boolean);
+      var any = false;
+      allItems.forEach(function (el, i) {
+        el.hidden = !words.every(function (w) { return itemText[i].indexOf(w) >= 0; });
+        if (!el.hidden) any = true;
+      });
+      empty.hidden = any;
+    }
+    if (search) search.addEventListener('input', filter);
+
+    function items() { return allItems.filter(function (el) { return !el.hidden; }); }
     function open() {
       menu.hidden = false;
       trigger.setAttribute('aria-expanded', 'true');
+      if (search) {
+        search.value = '';
+        filter();
+        var current = menu.querySelector('.school-menu-item.is-current');
+        if (current) current.scrollIntoView({ block: 'nearest' });
+        search.focus();
+        return;
+      }
       var first = menu.querySelector('.school-menu-item.is-current') || items()[0];
       if (first) first.focus();
     }
@@ -79,13 +120,26 @@
       close(false);
       opts.onPick(schools[parseInt(item.getAttribute('data-idx'), 10)]);
     });
+    // With a search box: Up from the first school goes back to it, Enter
+    // in it opens the first match, and typing on a school types into it.
     menu.addEventListener('keydown', function (e) {
       var list = items();
       var i = list.indexOf(document.activeElement);
-      if (e.key === 'ArrowDown') { e.preventDefault(); list[(i + 1) % list.length].focus(); }
-      else if (e.key === 'ArrowUp') { e.preventDefault(); list[(i - 1 + list.length) % list.length].focus(); }
+      if (e.key === 'ArrowDown') { e.preventDefault(); if (list.length) list[(i + 1) % list.length].focus(); }
+      else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (search && i === 0) search.focus();
+        else if (list.length) list[(i <= 0 ? list.length : i) - 1].focus();
+      }
+      else if (e.key === 'Enter' && search && document.activeElement === search) {
+        e.preventDefault();
+        if (list.length) list[0].click();
+      }
       else if (e.key === 'Escape') { e.preventDefault(); close(true); }
       else if (e.key === 'Tab') close(false);
+      else if (search && document.activeElement !== search && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        search.focus(); // the key then lands in the search box
+      }
     });
     document.addEventListener('click', function (e) {
       if (!wrap.contains(e.target)) close(false);
