@@ -427,12 +427,12 @@ It's drawn in black (`.scs-logo { color }`).
 
 
 - **Users sheet**: `https://docs.google.com/spreadsheets/d/1OQXaRVUJopdjr4OWQbOvNLjoq-_bwaiNS3Rfu1-C62I/`
-  — columns `Email, Name, SchoolName, CrestURL, Active`. The sheet ID is
+  — columns `Email, Name, SchoolName, CrestURL, Active, Admin`. The sheet ID is
   the `USERS_SHEET_ID` Script Property (Project Settings → Script
   Properties in the Apps Script editor — not hardcoded in `Code.gs`).
 - `Code.gs`'s `getCurrentUserAccess()` reads `Session.getActiveUser().getEmail()`
   and looks it up (case-insensitive) against the **Users** tab (falling
-  back to the first tab). Returns `{email, found, active, name, schoolName, crestUrl, schools, lastSchool}`.
+  back to the first tab). Returns `{email, found, active, admin, name, schoolName, crestUrl, schools, lastSchool}`.
 - **Several schools:** someone at more than one school has **one row per
   school** (same email). Each row's `Active` applies to that school only;
   `schools` lists the active ones, the last one they opened first
@@ -448,7 +448,22 @@ It's drawn in black (`.scs-logo { color }`).
     visitor isn't active at. Without it (a page from before this), the
     first school is used. Messages, resources and Drive auth aren't
     per school.
-  The same spreadsheet's **Schools** tab maps each school to its evidence
+- **Admins (every school):** instead of a row per school, give someone
+  one row with `Admin` = TRUE (column F, a checkbox or the text TRUE)
+  and `Active` = TRUE; `SchoolName`/`CrestURL` can be blank. They get
+  every school on the **Schools** tab, A–Z (last used still first),
+  plus any school their other rows add. `Active` = FALSE on that row
+  switches it off. Older 5-column rows still work (no Admin = not an
+  admin). An admin's crests come from the Schools tab's optional
+  `CrestURL` column, else from any Users row for that school, else
+  just the name. Opening a school gives them Viewer on its evidence
+  folder, as for anyone else.
+  - Any school menu with 9 or more schools gets a **search box** on top
+    (both the welcome screen and the banner switcher). It matches every
+    word typed, ignoring case and punctuation. Enter opens the first
+    match, and typing while on a school goes into the box. Crests load
+    lazily.
+- The same spreadsheet's **Schools** tab maps each school to its evidence
   folder — see "Attachments" below. Its **Resources** and **Messages**
   tabs hold the Element links and team messages (see "Element resources
   and team messages").
@@ -578,8 +593,8 @@ in red. Cancelling a draft never touches Drive.
 - **Where the folder comes from:** the Users spreadsheet's **Schools**
   tab. Columns are found by header name: `SchoolName` (must match the
   Users tab's SchoolName) and `EvidenceFolder` (a folder URL or bare
-  ID). The Users tab is read by name (`Users`), falling back to the first
-  tab.
+  ID), plus an optional `CrestURL` (used for admins' school list). The
+  Users tab is read by name (`Users`), falling back to the first tab.
 - **Who owns the copies:** the script owner (the account the web app
   "Executes as"). The owner needs **Editor** on every school's folder,
   and the folder owner must allow editors to share (the Drive default).
