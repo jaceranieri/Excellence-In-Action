@@ -10,6 +10,7 @@
   // the problem can be seen and reported.
   (function () {
     var errors = [];
+    window.__PAGE_ERRORS__ = errors; // also read by the Export button's safety net below
     window.addEventListener('error', function (e) {
       errors.push((e.message || 'Script error') +
         (e.filename ? ' (' + String(e.filename).split('/').pop() + ':' + e.lineno + ')' : ''));
@@ -362,6 +363,25 @@
   <?!= include('Script_Messages'); ?>
   <?!= include('Script_Tour'); ?>
   <?!= include('Script_Report'); ?>
+  <script>
+    // Export button safety net. If Script_Report didn't load (most often
+    // because the new file in the Apps Script editor still holds its
+    // starter HTML, or the paste was cut short), the button says so
+    // instead of doing nothing.
+    (function () {
+      if (typeof window.openReport === 'function') return;
+      var btn = document.getElementById('report-open-btn');
+      if (!btn) return;
+      btn.addEventListener('click', function () {
+        var errors = window.__PAGE_ERRORS__ || [];
+        var detail = errors.length
+          ? 'A script on the page failed: ' + errors.join(' | ')
+          : 'The Script_Report file has no Export code. Paste gas/Script_Report.html into it, save, and publish a new version.';
+        if (typeof createToast === 'function') createToast().update('error', 'Export report didn\u2019t load', detail);
+        else window.alert('Export report didn\u2019t load. ' + detail);
+      });
+    })();
+  </script>
 
 </body>
 </html>

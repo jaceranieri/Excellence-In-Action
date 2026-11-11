@@ -379,6 +379,10 @@ resources and messages):**
   2. Replace `Code.gs` (version 1.2.0), `Index.html`, `Script_App.html`,
      `Script_Tour.html` and `Stylesheet_AppBanner.html`.
   3. Deploy → Manage deployments → Edit → New version.
+  New HTML files open with the editor's starter page: replace all of it.
+  If `Script_Report` is left as the starter, the Export button shows a
+  red "Export report didn't load" toast (a safety net in `Index.html`),
+  and `checkSetup` reports a FIX line for either file.
 - **Check live:** that Save as PDF opens the print dialog from inside the
   Apps Script page (the app runs in Google's sandboxed frame), that only
   the report prints, that the grade colours come through, and that the

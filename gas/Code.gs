@@ -2138,6 +2138,17 @@ function checkSetup() {
       log(false, s.schoolName + ': cannot open EvidenceFolder (' + (e.status || '') + ') — is it shared with you as Editor?');
     }
   });
+  // New HTML files start with the editor's starter page; check they were
+  // replaced with the repo's code (a missing paste leaves a dead button).
+  [['Script_Report', '<script>', 'window.openReport'], ['Stylesheet_Report', '<style>', '.report-overlay']].forEach(function (f) {
+    try {
+      var content = HtmlService.createHtmlOutputFromFile(f[0]).getContent().trim();
+      log(content.indexOf(f[1]) === 0 && content.indexOf(f[2]) >= 0,
+        'HTML file ' + f[0] + ' holds the repo\'s gas/' + f[0] + '.html (starts with ' + f[1] + ')');
+    } catch (e) {
+      log(false, 'HTML file ' + f[0] + ' is missing: ' + e.message);
+    }
+  });
   if (prop_('WEB_APP_URL')) logDriveRedirectUri();
   Logger.log(ok ? 'All checks passed.' : 'Some checks need fixing (see FIX lines above).');
 }

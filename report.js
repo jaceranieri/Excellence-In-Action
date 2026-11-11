@@ -469,14 +469,26 @@
   });
   window.addEventListener('afterprint', restoreTitle);
 
-  openBtn.addEventListener('click', function () { if (isOpen()) close(); else open(); });
+  // Any error while building the report shows as a toast, not a dead button.
+  function safely(fn) {
+    return function () {
+      try {
+        fn.apply(this, arguments);
+      } catch (e) {
+        console.error('Export report failed:', e);
+        toast('error', 'Couldn’t build the report', String(e && e.message || e));
+      }
+    };
+  }
+
+  openBtn.addEventListener('click', safely(function () { if (isOpen()) close(); else open(); }));
   overlay.querySelector('.report-close').addEventListener('click', close);
-  scopeEl.addEventListener('change', render);
-  ungradedEl.addEventListener('change', render);
-  overlay.querySelector('.report-print-btn').addEventListener('click', function () {
+  scopeEl.addEventListener('change', safely(render));
+  ungradedEl.addEventListener('change', safely(render));
+  overlay.querySelector('.report-print-btn').addEventListener('click', safely(function () {
     render(); // picks up anything that changed while the dialog was open
     window.print();
-  });
+  }));
 
   document.addEventListener('keydown', function (e) {
     if (!isOpen()) return;
@@ -490,7 +502,7 @@
     }
   }, true);
 
-  window.openReport = open;
+  window.openReport = safely(open);
   window.closeReport = close;
   window.isReportOpen = isOpen;
 })();
