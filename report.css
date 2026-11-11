@@ -45,7 +45,7 @@ html.report-open {
 
 .report-toolbar-inner {
   box-sizing: border-box;
-  max-width: 900px;
+  max-width: 1100px; /* room for both dropdowns, the tickbox and Save as PDF on one line */
   margin: 0 auto;
   padding: 14px 24px 12px;
 }
@@ -104,8 +104,12 @@ html.report-open {
   font-weight: 700;
 }
 
+/* Capped so a long Element name in Include doesn't push Save as PDF onto
+   its own line; the select shows the chosen option cut off with an ellipsis. */
 .report-field select {
-  max-width: 100%;
+  width: auto;
+  max-width: 260px;
+  text-overflow: ellipsis;
   min-height: 40px;
   padding: 6px 10px;
   border: 2px solid #000000;
@@ -996,7 +1000,7 @@ html.report-open {
   .report-dialog-title { font-size: 19px; }
   .report-options { gap: 10px 14px; }
   .report-field { flex: 1 1 100%; min-width: 0; }
-  .report-field select { flex: 1 1 auto; width: 100%; min-width: 0; }
+  .report-field select { flex: 1 1 auto; width: 100%; max-width: none; min-width: 0; }
   .report-print-btn { margin-left: 0; flex: 1 1 100%; justify-content: center; }
   .report-hint { display: none; }
   .report-preview { padding: 16px 16px 32px; }
