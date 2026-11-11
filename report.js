@@ -18,8 +18,15 @@
  * two identical. GAS-only globals (SCHOOL_NAME, USER_NAME, LAST_UPDATED,
  * SCHOOL_STATE_LOADED, isPractice, createToast) are all optional here.
  *
- * Agreed content: every rubric row shows only its selected level and that
- * level's wording ("Not rated" otherwise); evidence shows titles only.
+ * Two reports, picked in the dialog:
+ * - Full report (A4 portrait, several pages): every rubric row shows only
+ *   its selected level and that level's wording ("Not rated" otherwise);
+ *   evidence shows titles only.
+ * - Wheel summary (A3 landscape, one page): the wheel in the middle with
+ *   each domain's Element cards beside its part of the wheel (Leading
+ *   across the top, Learning down the left, Teaching down the right),
+ *   every Theme with its grade, priority star and evidence count. The
+ *   priorities version fades everything but the priority Themes.
  */
 (function () {
   var openBtn = document.getElementById('report-open-btn');
@@ -144,7 +151,11 @@
   // hovered or highlighted, no entrance animation). Its ids are renamed so
   // the copy's clip paths and text paths don't point at the live wheel's,
   // which is hidden while printing.
-  function wheelPicture() {
+  //
+  // With `priorities`, it looks like the app's Our Priorities view, without
+  // the lift: Elements and domains with no priority Theme are muted, and
+  // only priority Themes' slices keep their full colour.
+  function wheelPicture(priorities) {
     var live = typeof wheel !== 'undefined' && wheel && wheel.getSvgRoot && wheel.getSvgRoot();
     if (!live) return '';
     var svg = live.cloneNode(true);
@@ -152,6 +163,25 @@
     ['is-dimmed', 'is-selected', 'is-highlighted', 'is-entering', 'is-priority'].forEach(function (cls) {
       svg.querySelectorAll('.' + cls).forEach(function (el) { el.classList.remove(cls); });
     });
+    if (priorities) {
+      var withPriority = {}, categories = {};
+      svg.querySelectorAll('.ew-theme-indicator').forEach(function (path) {
+        var data = ELEMENT_THEMES[path.getAttribute('data-seg-id')];
+        var theme = data && data.themes && data.themes[parseInt(path.getAttribute('data-theme-idx'), 10)];
+        if (theme && theme.priority) {
+          path.classList.add('is-priority');
+          withPriority[path.getAttribute('data-seg-id')] = true;
+        }
+      });
+      svg.classList.add('ew-has-highlight');
+      svg.querySelectorAll('.ew-wedge').forEach(function (el) {
+        if (withPriority[el.getAttribute('data-id')]) categories[el.getAttribute('data-category')] = true;
+        else el.classList.add('is-dimmed');
+      });
+      svg.querySelectorAll('.ew-ring').forEach(function (el) {
+        if (!categories[el.getAttribute('data-category')]) el.classList.add('is-dimmed');
+      });
+    }
     svg.querySelectorAll('[tabindex], [role], [aria-pressed], [aria-label]').forEach(function (el) {
       ['tabindex', 'role', 'aria-pressed', 'aria-label'].forEach(function (a) { el.removeAttribute(a); });
     });
@@ -351,6 +381,110 @@
   }
 
   // ------------------------------------------------------------------
+  // Wheel summary (A3 landscape, one page)
+  // ------------------------------------------------------------------
+
+  // The same paperclip as the evidence badge on the app's Theme cards.
+  var PAPERCLIP_SVG = '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8 12.5l6.5-6.5a3 3 0 1 1 4.24 4.24L11 18a5 5 0 1 1-7.07-7.07L12 3" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+  function a3Card(seg, priorities) {
+    var themes = (ELEMENT_THEMES[seg.id] && ELEMENT_THEMES[seg.id].themes) || [];
+    var hasPriority = themes.some(function (t) { return t.priority; });
+    var rows = themes.map(function (t) {
+      var faded = priorities && !t.priority;
+      return '<li' + (faded ? ' class="is-faded"' : '') + '>' +
+        '<span class="report-a3-theme">' + esc(t.title) +
+          (t.priority ? '<span class="report-star-inline" title="Priority">' + STAR_SVG + '</span>' : '') + '</span>' +
+        gradeChip(t.grade, true) +
+        '<span class="report-a3-evidence" title="Evidence entries">' + PAPERCLIP_SVG + '<span>' + savedEvidence(t).length + '</span></span>' +
+      '</li>';
+    }).join('');
+    return '<section class="report-a3-card' + (priorities && !hasPriority ? ' is-faded' : '') + '" style="--element-color:' +
+        ExcellenceWheel.CATEGORY_STYLE[seg.category].wedge + '">' +
+      '<h3>' + elementIcon(seg) + '<span>' + esc(elementTitle(seg)) + '</span></h3>' +
+      '<ul>' + rows + '</ul>' +
+    '</section>';
+  }
+
+  // One domain's Elements, in the order they sit around the wheel from
+  // the top (Learning runs up the wheel's left side, so it's reversed).
+  function a3Group(category, cls, priorities) {
+    var segs = ExcellenceWheel.SEGMENTS.filter(function (s) { return s.category === category; });
+    if (category === 'learning') segs.reverse();
+    var style = ExcellenceWheel.CATEGORY_STYLE[category];
+    return '<div class="report-a3-group is-' + cls + '" style="--category-color:' + style.wedge + '">' +
+      '<h2 class="report-a3-domain">' + esc(style.label) + '</h2>' +
+      '<div class="report-a3-cards">' + segs.map(function (s) { return a3Card(s, priorities); }).join('') + '</div>' +
+    '</div>';
+  }
+
+  function a3Legend(themes, priorities) {
+    var counts = {};
+    GRADE_ORDER.forEach(function (k) { counts[k] = 0; });
+    themes.forEach(function (t) { counts[GRADE_ORDER.indexOf(t.grade) >= 0 ? t.grade : 'ungraded']++; });
+    return '<div class="report-a3-legend">' +
+      (priorities ? '<span class="report-a3-legend-title">Priority Themes</span>' : '') +
+      GRADE_ORDER.map(function (k) {
+        var g = gradeInfo(k);
+        return '<span><span class="report-swatch" style="--grade-fill:' + g.fill + '"></span>' + esc(g.label) +
+          ' <strong>' + counts[k] + '</strong></span>';
+      }).join('') +
+    '</div>';
+  }
+
+  function wheelSummary(opts) {
+    var priorities = opts.scope === 'priorities';
+    var all = [];
+    ExcellenceWheel.SEGMENTS.forEach(function (s) {
+      all = all.concat((ELEMENT_THEMES[s.id] && ELEMENT_THEMES[s.id].themes) || []);
+    });
+    var shown = priorities ? all.filter(function (t) { return t.priority; }) : all;
+    var name = schoolName();
+    var crest = document.querySelector('.app-banner-school img');
+    var crestHtml = crest && crest.complete && crest.naturalWidth
+      ? '<img class="report-crest" src="' + esc(crest.getAttribute('src')) + '" alt="' + esc(name) + '">'
+      : '';
+    var meta = ['Made ' + formatLongDate(new Date()) + (optionalGlobal('USER_NAME') ? ' by ' + esc(optionalGlobal('USER_NAME')) : '')];
+    var last = optionalGlobal('LAST_UPDATED');
+    if (last && last.at) meta.push('Last updated ' + formatLongDate(new Date(last.at)) + (last.name ? ' by ' + esc(last.name) : ''));
+    var note = '';
+    if (priorities) {
+      note = '<p class="report-a3-note">' + (shown.length
+        ? STAR_SVG + 'Starred Themes are the school’s priorities. Everything else is faded.'
+        : 'No Themes have been flagged as a school priority yet. Star a Theme in its window to add it.') + '</p>';
+    }
+    return '<div class="report-a3-frame"><div class="report-a3">' +
+      '<header class="report-masthead report-a3-masthead">' +
+        '<div class="report-brand" aria-label="Excellence in Action">' +
+          '<span class="report-brand-top">Excellence in</span><span class="report-brand-script">Action</span>' +
+        '</div>' +
+        '<div class="report-a3-title">' +
+          '<p class="report-kicker">Wheel summary' + (priorities ? ' · Our school priorities' : '') + '</p>' +
+          '<h1 class="report-title">' + esc(name || 'Excellence in Action') + '</h1>' +
+          '<p class="report-meta">' + meta.join('<span aria-hidden="true"> · </span>') + '</p>' +
+        '</div>' +
+        crestHtml +
+      '</header>' +
+      '<div class="report-a3-body">' +
+        a3Group('leading', 'top', priorities) +
+        a3Group('learning', 'left', priorities) +
+        '<div class="report-a3-centre">' + wheelPicture(priorities) + a3Legend(shown, priorities) + note + '</div>' +
+        a3Group('teaching', 'right', priorities) +
+      '</div>' +
+    '</div></div>';
+  }
+
+  // The A3 sheet is drawn at full size and scaled down to fit the preview.
+  function fitA3Preview() {
+    var frame = docEl.querySelector('.report-a3-frame');
+    var sheet = frame && frame.querySelector('.report-a3');
+    if (!frame || !sheet) return;
+    var scale = Math.min(1, frame.clientWidth / sheet.offsetWidth);
+    sheet.style.transform = 'scale(' + scale + ')';
+    frame.style.height = Math.ceil(sheet.offsetHeight * scale) + 'px';
+  }
+
+  // ------------------------------------------------------------------
   // Dialog
   // ------------------------------------------------------------------
 
@@ -372,6 +506,12 @@
           '<button type="button" class="report-close" aria-label="Close">&times;</button>' +
         '</div>' +
         '<div class="report-options">' +
+          '<label class="report-field"><span>Report</span>' +
+            '<select class="report-format">' +
+              '<option value="full">Full report (A4)</option>' +
+              '<option value="wheel">Wheel summary (A3, one page)</option>' +
+            '</select>' +
+          '</label>' +
           '<label class="report-field"><span>Include</span>' +
             '<select class="report-scope">' +
               '<option value="all">Whole school</option>' +
@@ -393,7 +533,9 @@
   document.body.appendChild(overlay);
 
   var docEl = overlay.querySelector('.report-doc');
+  var formatEl = overlay.querySelector('.report-format');
   var scopeEl = overlay.querySelector('.report-scope');
+  var elementGroupEl = scopeEl.querySelector('optgroup');
   var ungradedEl = overlay.querySelector('.report-include-ungraded');
   var titleEl = overlay.querySelector('.report-dialog-title');
 
@@ -407,14 +549,33 @@
   }
 
   function currentOptions() {
-    return { scope: scopeEl.value, includeUngraded: ungradedEl.checked };
+    return { format: formatEl.value, scope: scopeEl.value, includeUngraded: ungradedEl.checked };
+  }
+
+  // The wheel summary always shows every Element (whole school or
+  // priorities), so the one-Element choices and the ungraded tickbox
+  // only apply to the full report.
+  function syncOptionControls() {
+    var wheelSummary = formatEl.value === 'wheel';
+    if (wheelSummary && scopeEl.value !== 'all' && scopeEl.value !== 'priorities') scopeEl.value = 'all';
+    elementGroupEl.disabled = wheelSummary;
+    elementGroupEl.hidden = wheelSummary;
+    ungradedEl.closest('.report-check').hidden = wheelSummary;
   }
 
   function render() {
     var opts = currentOptions();
-    docEl.innerHTML = buildReport(opts);
-    var footer = [schoolName(), 'Excellence in Action', scopeLabel(opts)].filter(Boolean).join(' · ');
-    pageStyle.textContent = '@media print { @page { @bottom-left { content: ' + cssString(footer) + '; } } }';
+    var a3 = opts.format === 'wheel';
+    docEl.classList.toggle('is-a3', a3);
+    docEl.innerHTML = a3 ? wheelSummary(opts) : buildReport(opts);
+    if (a3) {
+      pageStyle.textContent = '@media print { @page { size: A3 landscape; margin: 10mm; ' +
+        '@bottom-left { content: none; } @bottom-right { content: none; } } }';
+      fitA3Preview();
+    } else {
+      var footer = [schoolName(), 'Excellence in Action', scopeLabel(opts)].filter(Boolean).join(' · ');
+      pageStyle.textContent = '@media print { @page { @bottom-left { content: ' + cssString(footer) + '; } } }';
+    }
   }
 
   var returnFocus = null;
@@ -436,6 +597,7 @@
     returnFocus = document.activeElement;
     render();
     overlay.hidden = false;
+    fitA3Preview(); // needs the dialog showing to measure
     overlay.querySelector('.report-preview').scrollTop = 0;
     document.documentElement.classList.add('report-open');
     openBtn.setAttribute('aria-expanded', 'true');
@@ -455,7 +617,9 @@
   function pdfTitle() {
     var d = new Date();
     var date = d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
-    return [schoolName(), 'Excellence in Action', scopeLabel(currentOptions()), date].filter(Boolean).join(' - ');
+    var opts = currentOptions();
+    var kind = opts.format === 'wheel' ? 'Wheel summary' + (opts.scope === 'priorities' ? ' - Priorities' : '') : scopeLabel(opts);
+    return [schoolName(), 'Excellence in Action', kind, date].filter(Boolean).join(' - ');
   }
 
   function restoreTitle() {
@@ -483,7 +647,9 @@
 
   openBtn.addEventListener('click', safely(function () { if (isOpen()) close(); else open(); }));
   overlay.querySelector('.report-close').addEventListener('click', close);
+  formatEl.addEventListener('change', safely(function () { syncOptionControls(); render(); }));
   scopeEl.addEventListener('change', safely(render));
+  window.addEventListener('resize', function () { if (isOpen()) fitA3Preview(); });
   ungradedEl.addEventListener('change', safely(render));
   overlay.querySelector('.report-print-btn').addEventListener('click', safely(function () {
     render(); // picks up anything that changed while the dialog was open

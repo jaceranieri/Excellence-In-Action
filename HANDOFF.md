@@ -204,7 +204,7 @@ live:**
 - **Theme modal backdrop:** the page behind is blurred (6px), not
   darkened.
 - **Version number** in the container's bottom-right corner, from
-  `APP_VERSION` in `Code.gs` (currently 1.2.0). Bump it with each
+  `APP_VERSION` in `Code.gs` (currently 1.3.0). Bump it with each
   release, and the static copy in `example.html`.
 - **Team messages** from the Users spreadsheet's new **Messages** tab:
   - The newest active message shows in a box at the top of the main
@@ -388,6 +388,38 @@ resources and messages):**
   the report prints, that the grade colours come through, and that the
   crest appears on the cover. If printing from the frame misbehaves, the
   fallback is to open the report in a new tab and print from there.
+- **Wheel summary (v1.3.0), not yet confirmed live:** a second report,
+  picked from the dialog's new **Report** dropdown: "Full report (A4)" or
+  "Wheel summary (A3, one page)". Layout agreed with the project owner:
+  - The wheel in the middle, with each domain's Element cards beside its
+    part of the wheel: **Leading** across the top, **Learning** down the
+    left (Assessment and Feedback, Safe and Supportive Environment, Know
+    and Engage the Learner, top to bottom, as on the wheel), **Teaching**
+    down the right (Highly Effective Teaching, Differentiation,
+    Intervention). Each group has a heading in its domain colour, and the
+    side cards sit close together, centred beside the wheel.
+  - Every Theme row shows its grade, priority star and evidence count
+    (a black paperclip pill, like the app's Theme cards).
+  - Same masthead as the full report; a grade key with counts under the
+    wheel.
+  - **Include:** Whole school, or Our priorities. The priorities version
+    fades every Theme that isn't a priority (and any Element card with
+    none), and the wheel looks like the app's Our Priorities view: Elements
+    and domains with no priority are muted, and only priority Themes'
+    slices keep their colour. The one-Element choices and the "Include
+    ungraded Themes" tickbox are hidden for this report.
+  - Prints on one A3 landscape page (`@page size: A3 landscape`, 10mm
+    margins, no footer), set by report.js's injected page style. The sheet
+    (`.report-a3`) is drawn at full size; on screen `fitA3Preview()` scales
+    it down to fit the preview.
+  - PDF file name: `<School> - Excellence in Action - Wheel summary
+    [- Priorities] - <yyyy-mm-dd>`.
+  - **To deploy:** paste the new `Script_Report.html` and
+    `Stylesheet_Report.html`, and `Code.gs` (version 1.3.0), then publish
+    a new version.
+  - **Check live:** that Chrome's print window picks A3 landscape by
+    itself. If someone's printer settings force another size, they can
+    set Paper size to A3 in the print window's "More settings".
 - **Possible next step:** "Save to Google Docs", an editable copy saved
   in the school's EvidenceFolder (planned with the project owner as
   step 2; not started).
