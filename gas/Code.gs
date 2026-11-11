@@ -47,7 +47,7 @@ function requireProp_(key) {
 
 // Shown small in the bottom-right corner of the app. Bump it with each
 // release you deploy (and in example.html's static copy).
-var APP_VERSION = '1.1.0';
+var APP_VERSION = '1.2.0';
 
 // Sheet tab names are just structure, not secrets — fine to hardcode.
 var TABS = {
