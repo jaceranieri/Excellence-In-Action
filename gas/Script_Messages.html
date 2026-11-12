@@ -149,6 +149,7 @@
     function openMessages() {
       messagesLastFocus = document.activeElement;
       if (typeof closeHistory === 'function') closeHistory(true, true);
+      if (typeof closeInvites === 'function') closeInvites(true, true);
       layoutSidePanel(messagesPanelEl);
       renderMessagesPanel();
       messagesOverlay.classList.add('is-open');

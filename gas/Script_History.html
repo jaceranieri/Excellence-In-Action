@@ -414,7 +414,8 @@
 
     // -- Open / close ------------------------------------------------------------
 
-    // Side panels (this History panel, and Messages in Script_Messages.html)
+    // Side panels (this History panel, Messages in Script_Messages.html and
+    // Share access in Script_Invites.html)
     // sit beside the main container when the window has room for both (the
     // container slides left: body.side-panel-alongside in
     // Stylesheet_History.html), otherwise over the container's right side.
@@ -443,10 +444,11 @@
         : '';
     }
 
-    // True for a click on a side panel's banner button (History, Messages):
-    // those open and close panels themselves.
+    // True for a click on a side panel's banner button (History, Messages)
+    // or the account menu (Share access, Script_Invites.html): those open
+    // and close panels themselves.
     function isSidePanelButton(target) {
-      return !!(target.closest && target.closest('.app-banner-panel-btn'));
+      return !!(target.closest && target.closest('.app-banner-panel-btn, .app-banner-account'));
     }
 
     function openHistory() {
@@ -458,6 +460,7 @@
       historyUi.expanded = {};
       historyToolbarEl.removeAttribute('data-mode');
       if (typeof closeMessages === 'function') closeMessages(true, true);
+      if (typeof closeInvites === 'function') closeInvites(true, true);
       layoutSidePanel(historyPanelEl);
       historyOverlay.classList.add('is-open');
       historyOpenBtn.setAttribute('aria-expanded', 'true');

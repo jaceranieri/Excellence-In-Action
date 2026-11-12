@@ -291,10 +291,9 @@
     }
     if (avatarEl && initials) {
       avatarEl.textContent = initials;
+      // It's the account menu's button (Script_Invites.html).
       avatarEl.setAttribute('title', access.name);
-      avatarEl.removeAttribute('aria-hidden');
-      avatarEl.setAttribute('role', 'img');
-      avatarEl.setAttribute('aria-label', access.name);
+      avatarEl.setAttribute('aria-label', access.name + ': your account');
     }
 
     document.getElementById('login-gate').hidden = true;

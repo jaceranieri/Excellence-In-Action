@@ -245,6 +245,33 @@
   height: 20px;
 }
 
+/* The avatar is the account menu's button (Script_Invites.html); the
+   menu itself is styled in Stylesheet_Invites.html. */
+.app-banner-account {
+  position: relative;
+  flex: none;
+}
+
+button.app-banner-avatar {
+  padding: 0;
+  cursor: pointer;
+  transition: transform 0.1s ease, box-shadow 0.15s ease;
+}
+
+button.app-banner-avatar:hover,
+button.app-banner-avatar[aria-expanded="true"] {
+  box-shadow: 0 0 0 3px #e4e6ee;
+}
+
+button.app-banner-avatar:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px #17458f;
+}
+
+button.app-banner-avatar:active {
+  transform: translateY(1px);
+}
+
 /* Small screens: branding and the round buttons on the first row; the
    crest and Last Updated on the second. The tools group dissolves
    (display: contents) so its items can be placed on the grid directly. */
@@ -261,7 +288,7 @@
   .app-banner-tools { display: contents; }
   .app-banner-history-btn { grid-area: history; }
   .app-banner-bell-btn { grid-area: bell; }
-  .app-banner-avatar { grid-area: avatar; }
+  .app-banner-account { grid-area: avatar; }
   .app-banner-updated { grid-area: updated; justify-self: end; margin-right: 0; }
   .app-banner-school { justify-content: flex-start; }
   .app-banner-school .school-menu { left: 0; transform: none; }

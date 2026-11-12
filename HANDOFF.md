@@ -6,6 +6,45 @@ git log (`git log --oneline`) for the full blow-by-blow, since almost
 every commit message documents a real bug that was found and fixed, not
 just a style tweak.
 
+## Principal invites — Share access (v1.2.0, 12 Nov 2026), not yet confirmed live
+
+- A principal can give up to **3 colleagues per school** access to that
+  school's wheel. Invitees can do everything the principal can (ratings
+  and evidence). Full details: "Principal invites" under "Login gate +
+  access control" below.
+- **Who's a principal:** a new **`Principal`** column (G) on the Users
+  tab. Tick it on that person's row for each school they lead.
+- **Where:** the avatar in the banner is now a button that opens an
+  account menu (name, email, school). For a principal it also has
+  **Share access**, which opens a side panel to invite people by email
+  (name optional), see who they've invited, and remove someone (which
+  frees the slot).
+- **Invites tab:** each invite is a row on a new **Invites** tab of the
+  Users spreadsheet (created automatically): `Email, Name, SchoolName,
+  InvitedBy, InvitedByName, InvitedAt, Active, RemovedBy, RemovedAt`.
+  Expiry/renewal is deliberately not built yet; add an `ExpiresAt`
+  column at the end when it is.
+- **Email:** each invite emails the person a link to the app, from the
+  script owner's account (the app runs as the owner), with the principal
+  as reply-to. Visitors get no permission prompt.
+
+**To deploy:**
+1. In the Users sheet, type `Principal` in **G1** and tick it (checkbox
+   or TRUE) for each principal's row. Untick = can't invite.
+2. In the Apps Script editor, create two new HTML files named exactly
+   `Script_Invites` and `Stylesheet_Invites`, and paste in the matching
+   `gas/*.html` files.
+3. Replace `Code.gs`, `Index.html`, `Script_App.html`,
+   `Script_History.html`, `Script_LoginGate.html`, `Script_Messages.html`
+   and `Stylesheet_AppBanner.html` with the repo versions.
+4. **Run `checkSetup` once in the editor** and click Allow when Google
+   asks to "Send email as you" (sending email is a new permission for
+   the script). Its log now also checks the Principal header, counts
+   principals and active invites, and shows the remaining daily email
+   quota. Without this step, invites still work but the emails fail
+   (the principal is told to send the link themselves).
+5. Deploy → Manage deployments → Edit → New version.
+
 ## Current status (as of 23 Sep 2026)
 
 **Branch:** the repo's default branch is `claude/code-project-setup-1qbwa6`
@@ -204,7 +243,7 @@ live:**
 - **Theme modal backdrop:** the page behind is blurred (6px), not
   darkened.
 - **Version number** in the container's bottom-right corner, from
-  `APP_VERSION` in `Code.gs` (currently 1.0.0). Bump it with each
+  `APP_VERSION` in `Code.gs` (currently 1.2.0). Bump it with each
   release, and the static copy in `example.html`.
 - **Team messages** from the Users spreadsheet's new **Messages** tab:
   - The newest active message shows in a box at the top of the main
@@ -427,7 +466,7 @@ It's drawn in black (`.scs-logo { color }`).
 
 
 - **Users sheet**: `https://docs.google.com/spreadsheets/d/1OQXaRVUJopdjr4OWQbOvNLjoq-_bwaiNS3Rfu1-C62I/`
-  — columns `Email, Name, SchoolName, CrestURL, Active, Admin`. The sheet ID is
+  — columns `Email, Name, SchoolName, CrestURL, Active, Admin, Principal`. The sheet ID is
   the `USERS_SHEET_ID` Script Property (Project Settings → Script
   Properties in the Apps Script editor — not hardcoded in `Code.gs`).
 - `Code.gs`'s `getCurrentUserAccess()` reads `Session.getActiveUser().getEmail()`
@@ -463,6 +502,50 @@ It's drawn in black (`.scs-logo { color }`).
     word typed, ignoring case and punctuation. Enter opens the first
     match, and typing while on a school goes into the box. Crests load
     lazily.
+- **Principal invites:** an active row with `Principal` = TRUE (column G)
+  lets that person invite up to `MAX_INVITES_PER_SCHOOL` (3) people to
+  that school, from the avatar's account menu → **Share access**
+  (`Script_Invites.html` / `Stylesheet_Invites.html`; server functions
+  `getSchoolInvites()`, `inviteToSchool()`, `removeSchoolInvite()` in
+  `Code.gs`'s "Principal invites" section).
+  - Invites are rows on the Users spreadsheet's **Invites** tab, created
+    on first use: `Email, Name, SchoolName, InvitedBy, InvitedByName,
+    InvitedAt, Active, RemovedBy, RemovedAt` (found by header name).
+    Removing someone sets `Active` = FALSE and fills `RemovedBy/At`;
+    unticking `Active` by hand does the same. Active invites count
+    towards the limit, so removing one frees the slot.
+  - The limit is **per principal per school**: a school with two
+    principals can have up to 6 invitees, and a principal at two schools
+    gets 3 at each. Each principal sees and removes only their own.
+  - `getCurrentUserAccess()` adds an invited school to the visitor's
+    `schools` (with `invitedBy`, shown in their account menu) only while
+    **the principal who invited them is still an active principal
+    there**. Unticking a principal (or their Active) switches off their
+    invitees too, until it's ticked again. An invitee's own Users row for
+    that school with `Active` = FALSE always wins over an invite.
+    Invitees with no name get one from their email
+    (`jane.smith@` → "Jane Smith").
+  - Checks when inviting (all server-side, read fresh, not from the
+    5-minute access cache): the visitor is a principal at that school; a
+    valid email in an allowed domain; not themselves; not already on the
+    Users tab for that school (or an admin); not switched off there; not
+    already invited there by an active principal; under the limit (under
+    a script lock, so two quick clicks can't pass 3).
+  - **Allowed domains:** the `INVITE_DOMAINS` Script Property
+    (optional, comma-separated, e.g. `syd.catholic.edu.au`) if set,
+    otherwise the script owner's domain plus the principal's. The web
+    app only opens for accounts in the owner's Workspace anyway
+    (`access: DOMAIN`).
+  - Adding or removing an invite clears that person's cached access, so
+    it takes effect on their next action, not within 5 minutes.
+  - **Email:** `sendInviteEmail_()` sends the app link with `MailApp`
+    from the script owner's account (the app runs as the owner), with
+    the principal as reply-to. It needs the owner to authorise "send
+    email as you" once (run `checkSetup`). If it fails, the invite still
+    stands and the principal gets a toast to send the link themselves.
+  - Not built yet, on purpose: expiry/renewal of invites (add an
+    `ExpiresAt` column at the end of the Invites tab and check it in
+    `getCurrentUserAccess()`), and a view-only invitee role.
 - The same spreadsheet's **Schools** tab maps each school to its evidence
   folder — see "Attachments" below. Its **Resources** and **Messages**
   tabs hold the Element links and team messages (see "Element resources
@@ -1063,7 +1146,7 @@ and does not include the icons.
 
 | File | What it is |
 |---|---|
-| `gas/Code.gs` | All server code:<br>• `doGet()`, which also handles the Drive OAuth redirect<br>• Users/Schools lookup and `requireActiveUser_()`<br>• Ratings and evidence persistence<br>• evidence-folder copy/archive (`copyPickedFiles_()`, `archiveEvidenceFiles_()`)<br>• visitor Drive auth (`getPickerAuth()`)<br>• editor utilities (`checkSetup()`, `resetLegacyDriveTokens()`, `logDriveRedirectUri()`) |
+| `gas/Code.gs` | All server code:<br>• `doGet()`, which also handles the Drive OAuth redirect<br>• Users/Schools lookup and `requireActiveUser_()`<br>• principal invites (`inviteToSchool()`, Invites tab)<br>• Ratings and evidence persistence<br>• evidence-folder copy/archive (`copyPickedFiles_()`, `archiveEvidenceFiles_()`)<br>• visitor Drive auth (`getPickerAuth()`)<br>• editor utilities (`checkSetup()`, `resetLegacyDriveTokens()`, `logDriveRedirectUri()`) |
 | `gas/appsscript.json` | Manifest — `executeAs: USER_DEPLOYING`, `access: DOMAIN` |
 | `gas/Index.html` | Page shell: login gate markup, `#app-root`, `.stage-area`/`.main-layout`, all the page-level `<style>` |
 | `gas/Script_LoginGate.html` | 3-state login gate logic, `enterApp()` |
@@ -1071,6 +1154,7 @@ and does not include the icons.
 | `gas/Script_ExcellenceWheel.html` | Wheel component (mirrors `excellence-wheel.js`) |
 | `gas/Script_History.html` / `gas/Stylesheet_History.html` | School history panel, plus the shared side-panel layout (GAS only) |
 | `gas/Script_Messages.html` / `gas/Stylesheet_Messages.html` | Team message box, bell badge and Messages panel (GAS only) |
+| `gas/Script_Invites.html` / `gas/Stylesheet_Invites.html` | Avatar account menu and the principals' Share access panel (GAS only) |
 | `gas/Stylesheet_*.html` | Wrapped copies of the root `.css` files, plus `Stylesheet_LoginGate.html` (GAS-only) |
 | `EIA.json` | Source rubric data |
 | `import-eia.py` | One-time transform: `EIA.json` → `ELEMENT_THEMES` JS literal |

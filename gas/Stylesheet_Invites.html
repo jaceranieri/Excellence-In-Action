@@ -1,0 +1,300 @@
+<style>
+/*!
+ * Account menu (from the banner's avatar) and the Share access panel
+ * (GAS build only). The panel reuses the History panel's card, buttons
+ * and inputs (.history-* in Stylesheet_History.html); the avatar button
+ * itself is styled in Stylesheet_AppBanner.html. Logic is in
+ * Script_Invites.html; invites are kept on the Users spreadsheet's
+ * Invites tab (Code.gs's "Principal invites").
+ */
+
+/* Account menu ---------------------------------------------------------------*/
+
+.account-menu {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 60;
+  width: max-content;
+  min-width: 240px;
+  max-width: min(320px, calc(100vw - 32px));
+  box-sizing: border-box;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: #ffffff;
+  border: 2px solid #14151d;
+  border-radius: 12px;
+  box-shadow: 0 6px 0 0 #10132e;
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+  text-align: left;
+  color: #14151d;
+}
+
+.account-menu[hidden] {
+  display: none;
+}
+
+.account-menu-who {
+  padding: 8px 10px 10px;
+}
+
+.account-menu-who + .account-menu-item {
+  border-top: 1px solid #eef0f5;
+  border-radius: 0 0 8px 8px;
+}
+
+.account-menu-name {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.account-menu-email {
+  margin: 2px 0 0;
+  font-size: 12.5px;
+  color: #5b5e6b;
+  overflow-wrap: anywhere;
+}
+
+.account-menu-school {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+.account-menu-role {
+  display: block;
+  margin-top: 1px;
+  font-weight: 600;
+  color: #8a8d99;
+}
+
+.account-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  color: #14151d;
+}
+
+.account-menu-item:hover,
+.account-menu-item:focus-visible {
+  background: #f0f1f4;
+  outline: none;
+}
+
+.account-menu-item:focus-visible {
+  box-shadow: inset 0 0 0 2px #17458f;
+}
+
+.account-menu-item-icon {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  box-sizing: border-box;
+  border: 2px solid #000000;
+  border-radius: 50%;
+  background: #FFDE59;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.account-menu-item-icon svg {
+  width: 19px;
+  height: 19px;
+}
+
+.account-menu-item-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.account-menu-item-label {
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.account-menu-item-sub {
+  font-size: 12px;
+  color: #5b5e6b;
+}
+
+/* Share access panel ---------------------------------------------------------*/
+
+.invites-body {
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+}
+
+.invites-intro {
+  margin: 4px 0 16px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #2a2c38;
+}
+
+.invites-count {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  font-weight: 800;
+  color: #000000;
+}
+
+.invites-dots {
+  display: inline-flex;
+  gap: 5px;
+}
+
+.invites-dot {
+  width: 14px;
+  height: 14px;
+  box-sizing: border-box;
+  border: 2px solid #000000;
+  border-radius: 50%;
+  background: #38B6FF; /* a free invite */
+}
+
+.invites-dot.is-used {
+  background: #ffffff;
+}
+
+.invites-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 5px 5px 0; /* room for the button's shadow */
+}
+
+.invites-form .history-checkpoint-input + .history-checkpoint-label {
+  margin-top: 4px;
+}
+
+.invites-form .history-checkpoint-input:disabled {
+  background: #f4f5f8;
+  color: #8a8d99;
+}
+
+.invites-form .history-checkpoint-input[aria-invalid="true"] {
+  border-color: #c94f4f;
+}
+
+.invites-optional {
+  font-weight: 600;
+  color: #8a8d99;
+}
+
+.invites-form-error {
+  margin: 0;
+}
+
+.invites-send {
+  margin-top: 6px;
+}
+
+.invites-send svg {
+  width: 20px;
+  height: 20px;
+}
+
+.invites-full {
+  margin: 0;
+  padding: 12px 14px;
+  border: 2px dashed #b3b3b3;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #2a2c38;
+}
+
+.invites-list-title {
+  margin: 26px 0 4px;
+  padding-top: 18px;
+  border-top: 1px solid #eef0f5;
+  font-size: 14px;
+  font-weight: 800;
+  color: #000000;
+}
+
+.invites-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.invites-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid #eef0f5;
+}
+
+.invites-item:last-child {
+  border-bottom: none;
+}
+
+.invites-item-who {
+  min-width: 0;
+  flex: 1 1 180px;
+}
+
+.invites-item-name {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 800;
+  color: #000000;
+}
+
+.invites-item-email {
+  margin: 1px 0 0;
+  font-size: 12.5px;
+  color: #2a2c38;
+  overflow-wrap: anywhere;
+}
+
+.invites-item-date {
+  margin: 2px 0 0;
+  font-size: 11.5px;
+  color: #8a8d99;
+}
+
+.invites-item-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  padding: 0 4px 4px 0; /* room for the buttons' shadows */
+}
+
+.invites-item-actions .history-btn {
+  min-height: 32px;
+  padding: 0 12px;
+  font-size: 12.5px;
+}
+
+.invites-item-note {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #5b5e6b;
+}
+
+.invites-item-actions .history-link-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+</style>

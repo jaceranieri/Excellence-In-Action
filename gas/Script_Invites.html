@@ -1,0 +1,373 @@
+<script>
+    // =======================================================================
+    // Account menu and Share access panel (GAS build only)
+    // =======================================================================
+    // The avatar in the banner opens the account menu: the visitor's name,
+    // email and school. For a principal at the open school (a Users row
+    // with Principal ticked) it also has "Share access", which opens the
+    // Share access panel:
+    //   - invite someone by email (and an optional name), up to the limit
+    //     Code.gs sets (MAX_INVITES_PER_SCHOOL, 3) per principal per school.
+    //     They get the school straight away, and an email with the link
+    //     (inviteToSchool());
+    //   - see the people they've invited, and remove one, which frees the
+    //     slot (getSchoolInvites(), removeSchoolInvite()).
+    // The panel reuses the History panel's card, placement and behaviour
+    // (layoutSidePanel() and isSidePanelButton() in Script_History.html);
+    // only one side panel is open at a time. Styles: Stylesheet_Invites.html.
+    //
+    // Uses Script_App.html's globals: SCHOOL_NAME, escapeHtml, createToast.
+
+    var accountBtn = document.getElementById('account-menu-btn');
+    var accountWrap = accountBtn.parentNode;
+    var accountMenu = document.createElement('div');
+    accountMenu.className = 'account-menu';
+    accountMenu.id = 'account-menu';
+    accountMenu.setAttribute('role', 'menu');
+    accountMenu.setAttribute('aria-label', 'Your account');
+    accountMenu.hidden = true;
+    accountWrap.appendChild(accountMenu);
+    accountBtn.setAttribute('aria-controls', 'account-menu');
+
+    var INVITE_ICON =
+      '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
+        '<circle cx="9.5" cy="8" r="3.5" stroke="currentColor" stroke-width="2"/>' +
+        '<path d="M3 19.5c.9-3.3 3.4-5 6.5-5s5.6 1.7 6.5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>' +
+        '<path d="M18.5 8v6M15.5 11h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>' +
+      '</svg>';
+
+    // The open school's entry in the visitor's access (Code.gs's
+    // getCurrentUserAccess()): { schoolName, crestUrl, principal, invitedBy }.
+    function currentSchoolAccess() {
+      var access = window.__ACCESS__ || {};
+      var name = String(SCHOOL_NAME || access.schoolName || '').toLowerCase();
+      return (access.schools || []).filter(function (s) { return s.schoolName.toLowerCase() === name; })[0] || {};
+    }
+
+    function renderAccountMenu() {
+      var access = window.__ACCESS__ || {};
+      var here = currentSchoolAccess();
+      var role = here.principal ? 'Principal' : (here.invitedBy ? 'Access given by ' + here.invitedBy : '');
+      var html =
+        '<div class="account-menu-who">' +
+          (access.name ? '<p class="account-menu-name">' + escapeHtml(access.name) + '</p>' : '') +
+          '<p class="account-menu-email">' + escapeHtml(access.email || '') + '</p>' +
+          (here.schoolName
+            ? '<p class="account-menu-school">' + escapeHtml(here.schoolName) +
+                (role ? '<span class="account-menu-role">' + escapeHtml(role) + '</span>' : '') + '</p>'
+            : '') +
+        '</div>';
+      if (here.principal) {
+        html +=
+          '<button type="button" class="account-menu-item" role="menuitem" data-action="share">' +
+            '<span class="account-menu-item-icon">' + INVITE_ICON + '</span>' +
+            '<span class="account-menu-item-text">' +
+              '<span class="account-menu-item-label">Share access</span>' +
+              '<span class="account-menu-item-sub">Invite colleagues to your school’s wheel</span>' +
+            '</span>' +
+          '</button>';
+      }
+      accountMenu.innerHTML = html;
+    }
+
+    function openAccountMenu() {
+      renderAccountMenu();
+      accountMenu.hidden = false;
+      accountBtn.setAttribute('aria-expanded', 'true');
+      var first = accountMenu.querySelector('[role="menuitem"]');
+      if (first) first.focus();
+    }
+
+    function closeAccountMenu(returnFocus) {
+      if (accountMenu.hidden) return;
+      accountMenu.hidden = true;
+      accountBtn.setAttribute('aria-expanded', 'false');
+      if (returnFocus) accountBtn.focus();
+    }
+
+    accountBtn.addEventListener('click', function () {
+      if (accountMenu.hidden) openAccountMenu();
+      else closeAccountMenu();
+    });
+    accountMenu.addEventListener('click', function (e) {
+      var item = e.target.closest('[data-action="share"]');
+      if (!item) return;
+      closeAccountMenu();
+      openInvites();
+    });
+    document.addEventListener('pointerdown', function (e) {
+      if (!accountMenu.hidden && !accountWrap.contains(e.target)) closeAccountMenu();
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key !== 'Escape' || accountMenu.hidden) return;
+      e.stopImmediatePropagation(); // just the menu, not a panel behind it
+      closeAccountMenu(true);
+    }, true); // capture: runs before the side panels' own Escape handlers
+
+    // -- Share access panel ----------------------------------------------------
+
+    var MAX_INVITE_NAME = 80; // matches Code.gs
+
+    var invitesOverlay = document.createElement('div');
+    invitesOverlay.className = 'history-overlay invites-overlay';
+    invitesOverlay.innerHTML =
+      '<div class="history-panel" role="dialog" aria-modal="false" aria-labelledby="invites-title">' +
+        '<div class="history-header">' +
+          '<div>' +
+            '<h2 class="history-title" id="invites-title">Share access</h2>' +
+            '<p class="history-subtitle"></p>' +
+          '</div>' +
+          '<button type="button" class="history-close" aria-label="Close">&times;</button>' +
+        '</div>' +
+        '<div class="history-body invites-body" aria-live="polite"></div>' +
+      '</div>';
+    document.body.appendChild(invitesOverlay);
+
+    var invitesPanelEl = invitesOverlay.querySelector('.history-panel');
+    var invitesSubtitleEl = invitesOverlay.querySelector('.history-subtitle');
+    var invitesCloseBtn = invitesOverlay.querySelector('.history-close');
+    var invitesBodyEl = invitesOverlay.querySelector('.invites-body');
+    var invitesLastFocus = null;
+
+    var invitesUi = {
+      school: '',
+      data: null,       // getSchoolInvites() result: { schoolName, limit, domains, invites }
+      loading: false,
+      loadError: '',
+      sending: false,
+      formError: '',
+      draft: { name: '', email: '' },
+      confirming: '',   // email of the invite whose Remove is being confirmed
+      removing: ''      // email being removed
+    };
+
+    function inviteDate(ms) {
+      return ms ? new Date(ms).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+    }
+
+    function renderInviteForm(left) {
+      var d = invitesUi.data;
+      if (!left) {
+        return '<p class="invites-full">You’ve used all ' + d.limit + ' invites. Remove someone below to invite another person.</p>';
+      }
+      var placeholder = d.domains && d.domains.length ? 'name@' + d.domains[0] : 'name@school.edu.au';
+      return '<form class="invites-form" novalidate>' +
+        '<label class="history-checkpoint-label" for="invite-name-input">Name <span class="invites-optional">(optional)</span></label>' +
+        '<input id="invite-name-input" class="history-checkpoint-input" type="text" name="name" maxlength="' + MAX_INVITE_NAME + '"' +
+          ' autocomplete="off" placeholder="e.g. Jane Smith" value="' + escapeHtml(invitesUi.draft.name) + '"' +
+          (invitesUi.sending ? ' disabled' : '') + '>' +
+        '<label class="history-checkpoint-label" for="invite-email-input">School email address</label>' +
+        '<input id="invite-email-input" class="history-checkpoint-input" type="email" name="email" required' +
+          ' autocomplete="off" spellcheck="false" placeholder="' + escapeHtml(placeholder) + '" value="' + escapeHtml(invitesUi.draft.email) + '"' +
+          (invitesUi.formError ? ' aria-invalid="true" aria-describedby="invite-form-error"' : '') +
+          (invitesUi.sending ? ' disabled' : '') + '>' +
+        (invitesUi.formError ? '<p class="history-message is-error invites-form-error" id="invite-form-error">' + escapeHtml(invitesUi.formError) + '</p>' : '') +
+        '<button type="submit" class="history-btn is-checkpoint invites-send"' + (invitesUi.sending ? ' disabled' : '') + '>' +
+          INVITE_ICON + (invitesUi.sending ? 'Sending invite…' : 'Send invite') + '</button>' +
+      '</form>';
+    }
+
+    function renderInviteItem(inv) {
+      var label = inv.name || inv.email;
+      var actions;
+      if (invitesUi.removing === inv.email) {
+        actions = '<span class="invites-item-note">Removing…</span>';
+      } else if (invitesUi.confirming === inv.email) {
+        actions =
+          '<span class="invites-item-note">Remove their access?</span>' +
+          '<button type="button" class="history-btn is-secondary" data-action="cancel-remove">Cancel</button>' +
+          '<button type="button" class="history-btn is-warning" data-action="remove" data-email="' + escapeHtml(inv.email) + '">Remove</button>';
+      } else {
+        actions = '<button type="button" class="history-link-btn is-restore" data-action="confirm-remove" data-email="' + escapeHtml(inv.email) + '"' +
+          (invitesUi.removing ? ' disabled' : '') + ' aria-label="Remove ' + escapeHtml(label) + '">Remove</button>';
+      }
+      return '<li class="invites-item">' +
+        '<div class="invites-item-who">' +
+          (inv.name ? '<p class="invites-item-name">' + escapeHtml(inv.name) + '</p>' : '') +
+          '<p class="invites-item-email">' + escapeHtml(inv.email) + '</p>' +
+          (inv.invitedAt ? '<p class="invites-item-date">Invited ' + escapeHtml(inviteDate(inv.invitedAt)) + '</p>' : '') +
+        '</div>' +
+        '<div class="invites-item-actions">' + actions + '</div>' +
+      '</li>';
+    }
+
+    function renderInvites() {
+      invitesSubtitleEl.textContent = invitesUi.school;
+      if (invitesUi.loading && !invitesUi.data) {
+        invitesBodyEl.innerHTML = '<p class="history-message">Loading…</p>';
+        return;
+      }
+      if (invitesUi.loadError && !invitesUi.data) {
+        invitesBodyEl.innerHTML = '<p class="history-message is-error">' + escapeHtml(invitesUi.loadError) + '</p>' +
+          '<button type="button" class="history-btn is-secondary" data-action="retry">Try again</button>';
+        return;
+      }
+      var d = invitesUi.data;
+      var used = d.invites.length;
+      var left = Math.max(0, d.limit - used);
+      var dots = '';
+      for (var i = 0; i < d.limit; i++) dots += '<span class="invites-dot' + (i < used ? ' is-used' : '') + '"></span>';
+      invitesBodyEl.innerHTML =
+        '<p class="invites-intro">Give up to ' + d.limit + ' colleagues access to ' + escapeHtml(d.schoolName) +
+          '’s wheel. They can update ratings and evidence, just like you, and we’ll email them a link.</p>' +
+        '<div class="invites-count" aria-label="' + left + ' of ' + d.limit + ' invites left">' +
+          '<span class="invites-dots" aria-hidden="true">' + dots + '</span>' +
+          '<span>' + left + ' of ' + d.limit + ' invite' + (d.limit === 1 ? '' : 's') + ' left</span>' +
+        '</div>' +
+        renderInviteForm(left) +
+        '<h3 class="invites-list-title">People you’ve invited</h3>' +
+        (used
+          ? '<ul class="invites-list">' + d.invites.map(renderInviteItem).join('') + '</ul>'
+          : '<p class="history-message">No one yet.</p>');
+    }
+
+    function loadInvites() {
+      var school = invitesUi.school;
+      invitesUi.loading = true;
+      invitesUi.loadError = '';
+      renderInvites();
+      google.script.run
+        .withSuccessHandler(function (data) {
+          if (school !== invitesUi.school) return;
+          invitesUi.loading = false;
+          invitesUi.data = data;
+          var focusForm = document.activeElement === invitesCloseBtn;
+          renderInvites();
+          var input = focusForm && document.getElementById('invite-email-input');
+          if (input) input.focus();
+        })
+        .withFailureHandler(function (err) {
+          if (school !== invitesUi.school) return;
+          invitesUi.loading = false;
+          invitesUi.loadError = (err && err.message) || 'Couldn’t load your invites.';
+          renderInvites();
+        })
+        .getSchoolInvites(school);
+    }
+
+    function sendInvite() {
+      if (invitesUi.sending) return;
+      var email = invitesUi.draft.email.trim();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        invitesUi.formError = 'Please enter a full email address.';
+        renderInvites();
+        var input = document.getElementById('invite-email-input');
+        if (input) input.focus();
+        return;
+      }
+      var school = invitesUi.school;
+      invitesUi.sending = true;
+      invitesUi.formError = '';
+      renderInvites();
+      google.script.run
+        .withSuccessHandler(function (result) {
+          invitesUi.sending = false;
+          if (school !== invitesUi.school) return;
+          invitesUi.data = result;
+          invitesUi.draft = { name: '', email: '' };
+          renderInvites();
+          var who = result.invited.name || result.invited.email;
+          if (result.emailSent) {
+            createToast().update('success', who + ' can now open the wheel', 'We’ve emailed them a link.', 5000);
+          } else {
+            createToast().update('error', who + ' has access, but the email didn’t send',
+              'Send them the app’s link yourself.' + (result.emailError ? ' (' + result.emailError + ')' : ''));
+          }
+        })
+        .withFailureHandler(function (err) {
+          invitesUi.sending = false;
+          if (school !== invitesUi.school) return;
+          invitesUi.formError = (err && err.message) || 'Couldn’t send the invite. Please try again.';
+          renderInvites();
+          var input = document.getElementById('invite-email-input');
+          if (input) input.focus();
+        })
+        .inviteToSchool(email, invitesUi.draft.name.trim(), school);
+    }
+
+    function removeInvite(email) {
+      var school = invitesUi.school;
+      var inv = (invitesUi.data.invites || []).filter(function (i) { return i.email === email; })[0];
+      var who = (inv && inv.name) || email;
+      invitesUi.removing = email;
+      invitesUi.confirming = '';
+      renderInvites();
+      google.script.run
+        .withSuccessHandler(function (data) {
+          invitesUi.removing = '';
+          if (school !== invitesUi.school) return;
+          invitesUi.data = data;
+          renderInvites();
+          createToast().update('success', who + '’s access removed', 'You can now invite someone else.', 4000);
+        })
+        .withFailureHandler(function (err) {
+          invitesUi.removing = '';
+          if (school !== invitesUi.school) return;
+          renderInvites();
+          createToast().update('error', 'Couldn’t remove ' + who, (err && err.message) || 'Please try again.', 6000);
+          loadInvites(); // the list may have changed elsewhere
+        })
+        .removeSchoolInvite(email, school);
+    }
+
+    // -- Open / close (same behaviour as the History panel) -----------------
+
+    function openInvites() {
+      if (!SCHOOL_NAME || !currentSchoolAccess().principal) return;
+      invitesLastFocus = accountBtn;
+      if (typeof closeHistory === 'function') closeHistory(true, true);
+      if (typeof closeMessages === 'function') closeMessages(true, true);
+      if (invitesUi.school !== SCHOOL_NAME) {
+        invitesUi.school = SCHOOL_NAME;
+        invitesUi.data = null;
+        invitesUi.draft = { name: '', email: '' };
+      }
+      invitesUi.formError = '';
+      invitesUi.confirming = '';
+      layoutSidePanel(invitesPanelEl);
+      invitesOverlay.classList.add('is-open');
+      accountBtn.setAttribute('aria-expanded', 'false');
+      loadInvites();
+      var input = document.getElementById('invite-email-input');
+      (input || invitesCloseBtn).focus();
+    }
+
+    // Same arguments as closeHistory().
+    function closeInvites(keepFocus, keepLayout) {
+      if (!invitesOverlay.classList.contains('is-open')) return;
+      invitesOverlay.classList.remove('is-open');
+      if (!keepLayout) document.body.classList.remove('side-panel-alongside');
+      if (!keepFocus && invitesLastFocus && typeof invitesLastFocus.focus === 'function') invitesLastFocus.focus();
+    }
+
+    invitesCloseBtn.addEventListener('click', function () { closeInvites(); });
+    document.addEventListener('pointerdown', function (e) {
+      if (!invitesOverlay.classList.contains('is-open')) return;
+      if (invitesPanelEl.contains(e.target) || isSidePanelButton(e.target) ||
+          (e.target.closest && e.target.closest('.eia-toasts'))) return;
+      closeInvites(true);
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && invitesOverlay.classList.contains('is-open')) closeInvites();
+    });
+    window.addEventListener('resize', function () {
+      if (invitesOverlay.classList.contains('is-open')) layoutSidePanel(invitesPanelEl);
+    });
+
+    invitesBodyEl.addEventListener('input', function (e) {
+      if (e.target.name === 'name' || e.target.name === 'email') invitesUi.draft[e.target.name] = e.target.value;
+    });
+    invitesBodyEl.addEventListener('submit', function (e) {
+      e.preventDefault();
+      sendInvite();
+    });
+    invitesBodyEl.addEventListener('click', function (e) {
+      var btn = e.target.closest('[data-action]');
+      if (!btn || btn.disabled) return;
+      var action = btn.getAttribute('data-action');
+      if (action === 'retry') loadInvites();
+      else if (action === 'confirm-remove') { invitesUi.confirming = btn.getAttribute('data-email'); renderInvites(); }
+      else if (action === 'cancel-remove') { invitesUi.confirming = ''; renderInvites(); }
+      else if (action === 'remove') removeInvite(btn.getAttribute('data-email'));
+    });
+</script>

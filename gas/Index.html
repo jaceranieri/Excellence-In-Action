@@ -41,6 +41,7 @@
 <?!= include('Stylesheet_LoginGate'); ?>
 <?!= include('Stylesheet_History'); ?>
 <?!= include('Stylesheet_Messages'); ?>
+<?!= include('Stylesheet_Invites'); ?>
 <?!= include('Stylesheet_Tour'); ?>
 <style>
   :root { color-scheme: light; }
@@ -313,12 +314,16 @@
           </svg>
           <span class="app-banner-badge" hidden></span>
         </button>
-        <div class="app-banner-avatar" aria-hidden="true">
-          <!-- Placeholder avatar — enterApp() swaps in the user's initials and colour -->
-          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <circle cx="12" cy="8.5" r="3.5" fill="#fff"/>
-            <path d="M4.5 20c1.4-4 4.2-6 7.5-6s6.1 2 7.5 6" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/>
-          </svg>
+        <!-- The avatar opens the account menu (Script_Invites.html): the
+             visitor's name and email, and, for a principal, "Share access". -->
+        <div class="app-banner-account">
+          <button type="button" class="app-banner-avatar" id="account-menu-btn" aria-haspopup="menu" aria-expanded="false" aria-label="Your account" title="Your account">
+            <!-- Placeholder avatar — enterApp() swaps in the user's initials and colour -->
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <circle cx="12" cy="8.5" r="3.5" fill="#fff"/>
+              <path d="M4.5 20c1.4-4 4.2-6 7.5-6s6.1 2 7.5 6" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/>
+            </svg>
+          </button>
         </div>
       </div>
     </header>
@@ -351,6 +356,7 @@
   <?!= include('Script_App'); ?>
   <?!= include('Script_History'); ?>
   <?!= include('Script_Messages'); ?>
+  <?!= include('Script_Invites'); ?>
   <?!= include('Script_Tour'); ?>
 
 </body>

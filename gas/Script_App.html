@@ -1599,6 +1599,7 @@
       }
       whenSavesDone(function () {
         if (typeof closeHistory === 'function') closeHistory(true);
+        if (typeof closeInvites === 'function') closeInvites(true);
         if (modalOverlay.classList.contains('is-open')) closeThemeModal();
         SCHOOL_NAME = school.schoolName;
         var access = window.__ACCESS__;

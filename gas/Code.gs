@@ -47,11 +47,11 @@ function requireProp_(key) {
 
 // Shown small in the bottom-right corner of the app. Bump it with each
 // release you deploy (and in example.html's static copy).
-var APP_VERSION = '1.1.0';
+var APP_VERSION = '1.2.0';
 
 // Sheet tab names are just structure, not secrets — fine to hardcode.
 var TABS = {
-  USERS: 'Users', SCHOOLS: 'Schools', RESOURCES: 'Resources', MESSAGES: 'Messages', // Users spreadsheet
+  USERS: 'Users', SCHOOLS: 'Schools', RESOURCES: 'Resources', MESSAGES: 'Messages', INVITES: 'Invites', // Users spreadsheet
   RATINGS: 'Ratings', EVIDENCE: 'EvidenceLog', HISTORY: 'History', EVIDENCE_VERSIONS: 'EvidenceVersions' // data spreadsheet
 };
 
@@ -130,17 +130,25 @@ function isTrue_(value) {
 
 /**
  * Looks up the signed-in visitor on the Users tab (columns, in order:
- * Email, Name, SchoolName, CrestURL, Active, Admin). Someone at several
- * schools has one row per school; each row's Active applies to that
- * school only.
+ * Email, Name, SchoolName, CrestURL, Active, Admin, Principal). Someone at
+ * several schools has one row per school; each row's Active applies to
+ * that school only.
  * An active row with Admin = TRUE (SchoolName can be left blank) gives
  * them every school on the Schools tab, in A–Z order, as well as any
  * school their other rows add. Their crests come from the Schools tab's
  * CrestURL column, or failing that from any Users row for that school.
+ * An active row with Principal = TRUE lets them invite up to
+ * MAX_INVITES_PER_SCHOOL people to that school (see "Principal invites"
+ * below). Someone invited gets the school from the Invites tab, for as
+ * long as the principal who invited them is still an active principal
+ * there, and unless a Users row of their own for it has Active = FALSE.
  * Never throws on an unknown email — just comes back with found: false:
  *   { email, found, active, admin, name, schoolName, crestUrl, schools, lastSchool, tourSeen }
- * `schools` is every school they're active at, [{schoolName, crestUrl}],
- * with the one they last opened first (see rememberSchool_()).
+ * `schools` is every school they're active at,
+ * [{schoolName, crestUrl, principal, invitedBy}], with the one they last
+ * opened first (see rememberSchool_()). `principal` is true where they
+ * can invite people; `invitedBy` is the inviting principal's name where
+ * the school comes from an invite.
  * schoolName/crestUrl are that first school's, so single-school code
  * paths keep working; if no row is active they're the first row's, for
  * the "Insufficient Access" screen.
@@ -153,8 +161,10 @@ function getCurrentUserAccess() {
   var ss = SpreadsheetApp.openById(requireProp_('USERS_SHEET_ID'));
   var sheet = ss.getSheetByName(TABS.USERS) || ss.getSheets()[0];
   var rows = sheet.getDataRange().getValues();
-  var seen = {};
-  var usersCrests = {}; // school (lower case) -> a crest from any Users row, for admins
+  var seen = {};       // school (lower case) -> its entry in result.schools
+  var switchedOff = {}; // school (lower case) -> true where their own row has Active = FALSE
+  var usersCrests = {}; // school (lower case) -> a crest from any Users row, for admins and invitees
+  var principals = principalsBySchool_(rows);
   for (var i = 1; i < rows.length; i++) {
     var row = rows[i];
     var schoolName = String(row[2] || '').trim();
@@ -171,22 +181,60 @@ function getCurrentUserAccess() {
     if (!result.name) result.name = String(row[1] || '').trim();
     var active = isTrue_(row[4]);
     if (active && isTrue_(row[5])) result.admin = true;
-    if (!active || !schoolName || seen[key]) continue;
-    seen[key] = true;
-    result.schools.push({ schoolName: schoolName, crestUrl: crestUrl });
+    if (!active && key) switchedOff[key] = true;
+    if (!active || !schoolName) continue;
+    var isPrincipal = isTrue_(row[6]);
+    if (seen[key]) {
+      if (isPrincipal) seen[key].principal = true;
+      continue;
+    }
+    seen[key] = { schoolName: schoolName, crestUrl: crestUrl, principal: isPrincipal };
+    result.schools.push(seen[key]);
   }
-  if (result.admin) {
-    var schoolsTab = [];
+
+  var invites = [];
+  try {
+    invites = readInvites_(invitesSheet_(ss));
+  } catch (e) {
+    console.warn('Could not read the ' + TABS.INVITES + ' tab for ' + email + ': ' + e.message);
+  }
+  var schoolsTab = null; // read only if needed, for crests
+  function schoolsTabRows() {
+    if (schoolsTab) return schoolsTab;
     try {
       schoolsTab = readSchoolsTab_();
     } catch (e) {
-      console.warn('Admin ' + email + ' gets only their own Users rows: ' + e.message);
+      console.warn('Admin or invitee ' + email + ' gets no Schools tab crests: ' + e.message);
+      schoolsTab = [];
     }
-    schoolsTab.forEach(function (s) {
+    return schoolsTab;
+  }
+  invites.forEach(function (inv) {
+    var k = inv.schoolName.toLowerCase();
+    if (!inv.active || inv.email !== email || !k || seen[k] || switchedOff[k]) return;
+    var principal = principals[k] && principals[k][inv.invitedBy];
+    if (!principal) return; // the principal who invited them has left (or isn't one any more)
+    var crest = usersCrests[k] || '';
+    if (!crest) {
+      crest = (schoolsTabRows().filter(function (s) { return s.schoolName.toLowerCase() === k; })[0] || {}).crestUrl || '';
+    }
+    if (!result.found) {
+      result.found = true;
+      result.schoolName = inv.schoolName;
+      result.crestUrl = crest;
+    }
+    if (!result.name) result.name = inv.name || nameFromEmail_(email);
+    seen[k] = { schoolName: inv.schoolName, crestUrl: crest, principal: false,
+      invitedBy: principal.name || inv.invitedByName || inv.invitedBy };
+    result.schools.push(seen[k]);
+  });
+
+  if (result.admin) {
+    schoolsTabRows().forEach(function (s) {
       var k = s.schoolName.toLowerCase();
       if (seen[k]) return;
-      seen[k] = true;
-      result.schools.push({ schoolName: s.schoolName, crestUrl: s.crestUrl || usersCrests[k] || '' });
+      seen[k] = { schoolName: s.schoolName, crestUrl: s.crestUrl || usersCrests[k] || '', principal: false };
+      result.schools.push(seen[k]);
     });
     result.schools.sort(function (a, b) {
       return a.schoolName.localeCompare(b.schoolName, undefined, { sensitivity: 'base' });
@@ -205,6 +253,29 @@ function getCurrentUserAccess() {
     result.crestUrl = result.schools[0].crestUrl;
   }
   return result;
+}
+
+/**
+ * The active principals on the Users tab's `rows`:
+ *   { school (lower case): { email: { name } } }
+ */
+function principalsBySchool_(rows) {
+  var map = {};
+  for (var i = 1; i < rows.length; i++) {
+    var row = rows[i];
+    var rowEmail = String(row[0] || '').toLowerCase().trim();
+    var key = String(row[2] || '').trim().toLowerCase();
+    if (!rowEmail || !key || !isTrue_(row[4]) || !isTrue_(row[6])) continue;
+    (map[key] = map[key] || {})[rowEmail] = { name: String(row[1] || '').trim() };
+  }
+  return map;
+}
+
+/** "jane.smith@school.edu.au" -> "Jane Smith", for invitees given no name. */
+function nameFromEmail_(email) {
+  return String(email || '').split('@')[0].split(/[._-]+/).filter(Boolean).map(function (w) {
+    return w.charAt(0).toUpperCase() + w.slice(1);
+  }).join(' ');
 }
 
 function lastSchoolKey_(email) { return 'eia.lastSchool.' + shortHash_(email); }
@@ -244,16 +315,27 @@ function requireActiveUser_(school) {
   var email = activeEmail_();
   if (!email) throw new Error('Could not identify your Google account. Reload the page and try again.');
   var cache = CacheService.getScriptCache();
-  var key = 'eia.access2.' + shortHash_(email);
+  var key = accessCacheKey_(email);
   var cached = cache.get(key);
   var access = cached ? JSON.parse(cached) : getCurrentUserAccess();
-  if (!access.found || !access.active || !access.schools || !access.schools.length) {
-    throw new Error('Your account does not have access to Excellence in Action.');
-  }
-  if (!cached) {
+  if (!cached && access.found && access.active) {
     // An admin's list of every school could in theory pass the cache's
     // 100 KB limit; they'd then just skip the cache.
     try { cache.put(key, JSON.stringify(access), 300); } catch (e) { console.warn('Access not cached for ' + email + ': ' + e); }
+  }
+  return accessAtSchool_(access, school);
+}
+
+function accessCacheKey_(email) { return 'eia.access2.' + shortHash_(email); }
+
+/**
+ * `access` (from getCurrentUserAccess()) narrowed to `school`, which must
+ * be one they're active at, or their first school if `school` is blank.
+ * Throws if they have no access there.
+ */
+function accessAtSchool_(access, school) {
+  if (!access.found || !access.active || !access.schools || !access.schools.length) {
+    throw new Error('Your account does not have access to Excellence in Action.');
   }
   var wanted = String(school || '').trim().toLowerCase();
   var match = wanted
@@ -261,7 +343,8 @@ function requireActiveUser_(school) {
     : access.schools[0];
   if (!match) throw new Error('Your account does not have access to that school.');
   return { email: access.email, name: access.name, found: true, active: true,
-    schoolName: match.schoolName, crestUrl: match.crestUrl, schools: access.schools };
+    schoolName: match.schoolName, crestUrl: match.crestUrl, principal: !!match.principal,
+    schools: access.schools };
 }
 
 /** Folder ID from a Drive folder URL (or a bare ID), or '' if unparseable. */
@@ -1412,6 +1495,304 @@ function restoreToPoint(historyId, stateVersion, school) {
 }
 
 // ===========================================================================
+// Principal invites (Users spreadsheet)
+// ===========================================================================
+//
+// A principal (an active Users row with Principal = TRUE, column G) can
+// give up to MAX_INVITES_PER_SCHOOL people access to that school, from
+// the avatar menu's "Share access". Each invite is a row on the Users
+// spreadsheet's Invites tab (created, with its header row, the first time
+// it's needed; columns are found by header name):
+//   Email, Name       the person invited (Name is optional)
+//   SchoolName        the school they can open
+//   InvitedBy, InvitedByName, InvitedAt
+//   Active            TRUE while the invite stands. Removing someone
+//                     (the principal, in the app) sets it to FALSE and
+//                     fills RemovedBy / RemovedAt, so the row stays as a
+//                     record. Unticking it by hand removes them too.
+// Invitees get the same access as anyone else at the school (ratings and
+// evidence). Their invite only counts while the principal who made it is
+// still an active principal there, so unticking a principal (or their
+// Active) switches off their invitees as well, until it's ticked again.
+// A Users row of the invitee's own for that school with Active = FALSE
+// always wins over an invite.
+// Active invites count towards the principal's limit at that school;
+// removing one frees the slot.
+// Each new invite emails the person a link to the app, from the account
+// that owns the script (it runs as that account), with the principal as
+// reply-to. If the email fails the invite still stands, and the principal
+// is told to send the link themselves.
+// Later columns (an expiry date, say) can be added at the end.
+
+var INVITES_HEADERS = ['Email', 'Name', 'SchoolName', 'InvitedBy', 'InvitedByName', 'InvitedAt', 'Active', 'RemovedBy', 'RemovedAt'];
+var MAX_INVITES_PER_SCHOOL = 3;
+var MAX_INVITE_NAME = 80;
+
+/** The Invites tab, created (or given any missing headers) as needed. */
+function invitesSheet_(ss) {
+  ss = ss || SpreadsheetApp.openById(requireProp_('USERS_SHEET_ID'));
+  var sheet = ss.getSheetByName(TABS.INVITES);
+  if (!sheet) {
+    sheet = ss.insertSheet(TABS.INVITES);
+    sheet.getRange(1, 1, 1, INVITES_HEADERS.length).setValues([INVITES_HEADERS]);
+    sheet.setFrozenRows(1);
+    return sheet;
+  }
+  var have = sheet.getLastColumn() ? sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0] : [];
+  var lower = have.map(function (h) { return String(h).trim().toLowerCase(); });
+  var missing = INVITES_HEADERS.filter(function (h) { return lower.indexOf(h.toLowerCase()) < 0; });
+  if (missing.length) sheet.getRange(1, have.length + 1, 1, missing.length).setValues([missing]);
+  return sheet;
+}
+
+/** { lower-cased header: 0-based column } for the Invites tab. */
+function inviteColumns_(sheet) {
+  var map = {};
+  sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].forEach(function (h, i) {
+    var k = String(h).trim().toLowerCase();
+    if (k && !(k in map)) map[k] = i;
+  });
+  return map;
+}
+
+/**
+ * Every row of the Invites tab:
+ *   [{ row (1-based), email, name, schoolName, invitedBy, invitedByName, invitedAt (ms), active }]
+ */
+function readInvites_(sheet) {
+  var rows = sheet.getDataRange().getValues();
+  if (rows.length < 2) return [];
+  var col = inviteColumns_(sheet);
+  function cell(row, name) { return col[name] === undefined ? '' : row[col[name]]; }
+  var out = [];
+  for (var i = 1; i < rows.length; i++) {
+    var row = rows[i];
+    var email = String(cell(row, 'email') || '').toLowerCase().trim();
+    var schoolName = String(cell(row, 'schoolname') || '').trim();
+    if (!email || !schoolName) continue;
+    out.push({
+      row: i + 1,
+      email: email,
+      name: String(cell(row, 'name') || '').trim(),
+      schoolName: schoolName,
+      invitedBy: String(cell(row, 'invitedby') || '').toLowerCase().trim(),
+      invitedByName: String(cell(row, 'invitedbyname') || '').trim(),
+      invitedAt: toMillis_(cell(row, 'invitedat')),
+      active: isTicked_(cell(row, 'active'))
+    });
+  }
+  return out;
+}
+
+/**
+ * The visitor's access at `school`, read fresh (not from the 5-minute
+ * cache), which must make them a principal there.
+ */
+function requirePrincipal_(school) {
+  var access = accessAtSchool_(getCurrentUserAccess(), school);
+  if (!access.principal) throw new Error('Only a principal can share access to ' + access.schoolName + '.');
+  return access;
+}
+
+/** The active invites `access` (a principal) has made at their school. */
+function myInvites_(invites, access) {
+  var key = access.schoolName.toLowerCase();
+  return invites.filter(function (inv) {
+    return inv.active && inv.invitedBy === access.email && inv.schoolName.toLowerCase() === key;
+  });
+}
+
+/** What the Share access panel shows. */
+function invitesPayload_(invites, access) {
+  return {
+    schoolName: access.schoolName,
+    limit: MAX_INVITES_PER_SCHOOL,
+    domains: inviteDomains_(access),
+    invites: myInvites_(invites, access).map(function (inv) {
+      return { email: inv.email, name: inv.name, invitedAt: inv.invitedAt };
+    }).sort(function (a, b) { return a.invitedAt - b.invitedAt; })
+  };
+}
+
+/**
+ * The email domains people can be invited from: the INVITE_DOMAINS
+ * Script Property (comma-separated) if set, otherwise the script owner's
+ * and the principal's. The web app only opens for accounts in the
+ * owner's Google Workspace, so other addresses couldn't get in anyway.
+ */
+function inviteDomains_(access) {
+  var set = String(prop_('INVITE_DOMAINS') || '').split(',');
+  if (!set.join('').trim()) {
+    set = [String(Session.getEffectiveUser().getEmail() || ''), access.email].map(function (e) {
+      return e.split('@')[1] || '';
+    });
+  }
+  var out = [];
+  set.forEach(function (d) {
+    d = String(d).trim().toLowerCase().replace(/^@/, '');
+    if (d && d !== 'gmail.com' && d !== 'googlemail.com' && out.indexOf(d) < 0) out.push(d);
+  });
+  return out;
+}
+
+function usersTabRows_() {
+  var ss = SpreadsheetApp.openById(requireProp_('USERS_SHEET_ID'));
+  return (ss.getSheetByName(TABS.USERS) || ss.getSheets()[0]).getDataRange().getValues();
+}
+
+/** 'active' (incl. admin), 'off' (a row for `schoolKey` with Active = FALSE) or '' for `email` on the Users tab's `rows`. */
+function usersTabStatus_(rows, email, schoolKey) {
+  var status = '';
+  for (var i = 1; i < rows.length; i++) {
+    var row = rows[i];
+    if (String(row[0] || '').toLowerCase().trim() !== email) continue;
+    var active = isTrue_(row[4]);
+    if (active && isTrue_(row[5])) return 'active';
+    if (String(row[2] || '').trim().toLowerCase() !== schoolKey) continue;
+    if (active) return 'active';
+    status = 'off';
+  }
+  return status;
+}
+
+/** The principal's own invites at `school`, for the Share access panel. */
+function getSchoolInvites(school) {
+  var access = requirePrincipal_(school);
+  return invitesPayload_(readInvites_(invitesSheet_()), access);
+}
+
+/**
+ * Gives `email` access to `school`, as an invite from the visitor (a
+ * principal there), and emails them a link. Returns the panel's data plus
+ * { emailSent, emailError }.
+ */
+function inviteToSchool(email, name, school) {
+  var access = requirePrincipal_(school);
+  email = String(email || '').toLowerCase().trim();
+  name = String(name || '').replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, MAX_INVITE_NAME);
+  if (!/^[^\s@<>"',;]+@[^\s@<>"',;]+\.[^\s@<>"',;]+$/.test(email)) {
+    throw new Error('Please enter a full email address, e.g. jane.smith@school.edu.au.');
+  }
+  var domains = inviteDomains_(access);
+  if (domains.length && domains.indexOf(email.split('@')[1]) < 0) {
+    throw new Error('Only school Google accounts can open Excellence in Action. Use their @' + domains.join(' or @') + ' address.');
+  }
+  if (email === access.email) throw new Error('You already have access to ' + access.schoolName + '.');
+  var key = access.schoolName.toLowerCase();
+  var usersRows = usersTabRows_();
+  var principalsHere = principalsBySchool_(usersRows)[key] || {};
+  var status = usersTabStatus_(usersRows, email, key);
+  if (status === 'active') throw new Error(email + ' already has access to ' + access.schoolName + '.');
+  if (status === 'off') {
+    throw new Error(email + '’s access to ' + access.schoolName + ' has been switched off by the Excellence in Action team. Ask them to switch it back on.');
+  }
+
+  var sheet = invitesSheet_();
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  var invites;
+  try {
+    invites = readInvites_(sheet);
+    // An invite from someone who's no longer a principal here doesn't count.
+    var existing = invites.filter(function (inv) {
+      return inv.active && inv.email === email && inv.schoolName.toLowerCase() === key && principalsHere[inv.invitedBy];
+    })[0];
+    if (existing) {
+      throw new Error(existing.invitedBy === access.email
+        ? 'You’ve already invited ' + email + '.'
+        : email + ' has already been invited to ' + access.schoolName + ' by ' + (existing.invitedByName || existing.invitedBy) + '.');
+    }
+    if (myInvites_(invites, access).length >= MAX_INVITES_PER_SCHOOL) {
+      throw new Error('You’ve used all ' + MAX_INVITES_PER_SCHOOL + ' invites for ' + access.schoolName + '. Remove someone to invite another person.');
+    }
+    var col = inviteColumns_(sheet);
+    var row = [];
+    for (var i = 0; i < sheet.getLastColumn(); i++) row.push('');
+    var now = new Date();
+    var values = { email: email, name: name, schoolname: access.schoolName, invitedby: access.email,
+      invitedbyname: access.name, invitedat: now, active: true };
+    Object.keys(values).forEach(function (k) { if (col[k] !== undefined) row[col[k]] = values[k]; });
+    sheet.appendRow(row);
+    SpreadsheetApp.flush();
+    invites.push({ row: sheet.getLastRow(), email: email, name: name, schoolName: access.schoolName,
+      invitedBy: access.email, invitedByName: access.name, invitedAt: now.getTime(), active: true });
+  } finally {
+    lock.releaseLock();
+  }
+  CacheService.getScriptCache().remove(accessCacheKey_(email));
+
+  var out = invitesPayload_(invites, access);
+  out.invited = { email: email, name: name || nameFromEmail_(email) };
+  try {
+    sendInviteEmail_(email, name, access);
+    out.emailSent = true;
+  } catch (e) {
+    console.error('Invite email to ' + email + ' failed: ' + e);
+    out.emailSent = false;
+    out.emailError = String(e.message || e);
+  }
+  return out;
+}
+
+/** Ends the visitor's invite of `email` to `school`, freeing the slot. */
+function removeSchoolInvite(email, school) {
+  var access = requirePrincipal_(school);
+  email = String(email || '').toLowerCase().trim();
+  var sheet = invitesSheet_();
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  var invites;
+  try {
+    invites = readInvites_(sheet);
+    var mine = myInvites_(invites, access).filter(function (inv) { return inv.email === email; });
+    if (!mine.length) throw new Error(email + ' isn’t on your list any more. It may already have been removed.');
+    var col = inviteColumns_(sheet);
+    var now = new Date();
+    mine.forEach(function (inv) {
+      if (col.active !== undefined) sheet.getRange(inv.row, col.active + 1).setValue(false);
+      if (col.removedby !== undefined) sheet.getRange(inv.row, col.removedby + 1).setValue(access.email);
+      if (col.removedat !== undefined) sheet.getRange(inv.row, col.removedat + 1).setValue(now);
+      inv.active = false;
+    });
+    SpreadsheetApp.flush();
+  } finally {
+    lock.releaseLock();
+  }
+  // So they lose access straight away rather than within 5 minutes.
+  CacheService.getScriptCache().remove(accessCacheKey_(email));
+  return invitesPayload_(invites, access);
+}
+
+function escapeHtml_(value) {
+  return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/** Emails `email` a link to the app, from the script owner's account, replying to the principal. */
+function sendInviteEmail_(email, name, access) {
+  var url = webAppUrl_();
+  var who = access.name || access.email;
+  var subject = who + ' has given you access to ' + access.schoolName + '’s Excellence in Action wheel';
+  var greeting = name ? 'Hi ' + name.split(' ')[0] + ',' : 'Hi,';
+  var body = greeting + '\n\n' +
+    who + ' has given you access to ' + access.schoolName + '’s Excellence in Action wheel. ' +
+    'You can view and update the school’s ratings and evidence.\n\n' +
+    'Open it here, signed in with this Google account (' + email + '):\n' + url + '\n\n' +
+    'Questions? Reply to this email to reach ' + who + '.';
+  var htmlBody =
+    '<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.5;color:#14151d">' +
+      '<p>' + escapeHtml_(greeting) + '</p>' +
+      '<p><strong>' + escapeHtml_(who) + '</strong> has given you access to <strong>' + escapeHtml_(access.schoolName) +
+        '</strong>’s Excellence in Action wheel. You can view and update the school’s ratings and evidence.</p>' +
+      '<p><a href="' + escapeHtml_(url) + '" style="display:inline-block;padding:10px 20px;background:#000;color:#fff;' +
+        'border-radius:8px;text-decoration:none;font-weight:bold">Open Excellence in Action</a></p>' +
+      '<p style="color:#5b5e6b">Sign in with this Google account: ' + escapeHtml_(email) + '<br>' +
+        'Questions? Reply to this email to reach ' + escapeHtml_(who) + '.</p>' +
+    '</div>';
+  MailApp.sendEmail({ to: email, replyTo: access.email, name: 'Excellence in Action',
+    subject: subject, body: body, htmlBody: htmlBody });
+}
+
+// ===========================================================================
 // Element resources and team messages (Users spreadsheet)
 // ===========================================================================
 //
@@ -2125,6 +2506,27 @@ function checkSetup() {
       log(false, t[0] + ' tab: ' + e.message);
     }
   });
+  try {
+    var usersSs = SpreadsheetApp.openById(requireProp_('USERS_SHEET_ID'));
+    var usersRows = (usersSs.getSheetByName(TABS.USERS) || usersSs.getSheets()[0]).getDataRange().getValues();
+    var header = usersRows[0] || [];
+    log(String(header[6] || '').trim().toLowerCase() === 'principal',
+      'Users tab column G is headed "Principal" (tick it for people who can invite others)');
+    var principalCount = 0;
+    var bySchool = principalsBySchool_(usersRows);
+    Object.keys(bySchool).forEach(function (k) { principalCount += Object.keys(bySchool[k]).length; });
+    log(true, 'Principals (active, ticked): ' + principalCount);
+    var invites = readInvites_(invitesSheet_(usersSs)).filter(function (inv) { return inv.active; });
+    log(true, TABS.INVITES + ' tab (Users spreadsheet): ' + invites.length + ' active invite' + (invites.length === 1 ? '' : 's'));
+  } catch (e) {
+    log(false, 'Principal / ' + TABS.INVITES + ' check: ' + e.message);
+  }
+  try {
+    // Also what makes the editor ask for "send email as you" the first time.
+    log(true, 'Invite emails: ' + MailApp.getRemainingDailyQuota() + ' left today (sent from ' + Session.getEffectiveUser().getEmail() + ')');
+  } catch (e) {
+    log(false, 'Invite emails: ' + e.message);
+  }
   var token = ScriptApp.getOAuthToken();
   schools.forEach(function (s) {
     var id = parseDriveId_(s.folderValue);
