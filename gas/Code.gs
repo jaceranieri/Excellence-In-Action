@@ -47,7 +47,7 @@ function requireProp_(key) {
 
 // Shown small in the bottom-right corner of the app. Bump it with each
 // release you deploy (and in example.html's static copy).
-var APP_VERSION = '1.5.0';
+var APP_VERSION = '1.5.1';
 
 // Sheet tab names are just structure, not secrets — fine to hardcode.
 var TABS = {
@@ -130,7 +130,7 @@ function isTrue_(value) {
 
 /**
  * Looks up the signed-in visitor on the Users tab (columns, in order:
- * Email, Name, SchoolName, CrestURL, Active, Admin, Principal). Someone at
+ * Email, Name, SchoolName, CrestURL, Active, Admin, Principal, AdminTools). Someone at
  * several schools has one row per school; each row's Active applies to
  * that school only.
  * An active row with Admin = TRUE (SchoolName can be left blank) gives
@@ -139,11 +139,13 @@ function isTrue_(value) {
  * CrestURL column, or failing that from any Users row for that school.
  * An active row with Principal = TRUE lets them invite up to
  * MAX_INVITES_PER_SCHOOL people to that school (see "Principal invites"
- * below). Someone invited gets the school from the Invites tab, for as
+ * below). An active row with AdminTools = TRUE (column H) gives them the
+ * avatar menu's Admin tools (backups, fresh starts) at any school they can
+ * open; Admin alone doesn't. Someone invited gets the school from the Invites tab, for as
  * long as the principal who invited them is still an active principal
  * there, and unless a Users row of their own for it has Active = FALSE.
  * Never throws on an unknown email — just comes back with found: false:
- *   { email, found, active, admin, name, schoolName, crestUrl, schools, lastSchool, tourSeen }
+ *   { email, found, active, admin, adminTools, name, schoolName, crestUrl, schools, lastSchool, tourSeen }
  * `schools` is every school they're active at,
  * [{schoolName, crestUrl, principal, invitedBy}], with the one they last
  * opened first (see rememberSchool_()). `principal` is true where they
@@ -155,7 +157,7 @@ function isTrue_(value) {
  */
 function getCurrentUserAccess() {
   var email = activeEmail_();
-  var result = { email: email, found: false, active: false, admin: false, name: '', schoolName: '', crestUrl: '', schools: [] };
+  var result = { email: email, found: false, active: false, admin: false, adminTools: false, name: '', schoolName: '', crestUrl: '', schools: [] };
   if (!email) return result;
 
   var ss = SpreadsheetApp.openById(requireProp_('USERS_SHEET_ID'));
@@ -181,6 +183,7 @@ function getCurrentUserAccess() {
     if (!result.name) result.name = String(row[1] || '').trim();
     var active = isTrue_(row[4]);
     if (active && isTrue_(row[5])) result.admin = true;
+    if (active && isTrue_(row[7])) result.adminTools = true;
     if (!active && key) switchedOff[key] = true;
     if (!active || !schoolName) continue;
     var isPrincipal = isTrue_(row[6]);
@@ -1529,7 +1532,10 @@ function applyRestorePlan_(access, state, plan, label, firstChange) {
 // in each school's EvidenceFolder, and the app never deletes them for
 // good (removed evidence moves to the folder's ARCHIVE).
 //
-// Fresh start (startSchoolFresh(), admins only, from the avatar menu):
+// Who: people with AdminTools ticked on the Users tab (column H). The Admin
+// column (every school) doesn't give these tools.
+//
+// Fresh start (startSchoolFresh(), Admin tools only, from the avatar menu):
 // clears one school's ratings, priorities and evidence so it can start a
 // new review. In order:
 //   1. a backup (as above), then an archive spreadsheet of the school's
@@ -1555,14 +1561,15 @@ var GRADE_LABELS = { 'ungraded': 'Ungraded', 'pre-delivering': 'Pre-Delivering',
 var MAX_CELL_TEXT = 49000; // a cell holds 50,000 characters
 
 /**
- * The visitor's access at `school`, read fresh, which must make them an
- * admin (an active Users row with Admin = TRUE).
+ * The visitor's access at `school`, read fresh, which must give them Admin
+ * tools (an active Users row with AdminTools = TRUE, column H). Admin
+ * (every school) on its own isn't enough.
  */
-function requireAdmin_(school) {
+function requireAdminTools_(school) {
   var full = getCurrentUserAccess();
   var access = accessAtSchool_(full, school);
-  if (!full.admin) throw new Error('Only an Excellence in Action admin can do this.');
-  access.admin = true;
+  if (!full.adminTools) throw new Error('Only people with Admin tools switched on can do this.');
+  access.adminTools = true;
   return access;
 }
 
@@ -1662,9 +1669,9 @@ function setUpWeeklyBackup() {
     BACKUPS_TO_KEEP + ' weekly copies.');
 }
 
-/** "Back up now" in an admin's account menu. Returns makeBackup_()'s result. */
+/** "Back up now" in the Admin tools panel. Returns makeBackup_()'s result. */
 function backUpNow(school) {
-  var access = requireAdmin_(school);
+  var access = requireAdminTools_(school);
   return makeBackup_('Back up now by ' + (access.name || access.email));
 }
 
@@ -1819,7 +1826,7 @@ function schoolHasWork_(state, schoolName) {
 }
 
 /**
- * Admins only: clears `school`'s ratings, priorities and evidence (see the
+ * Admin tools only: clears `school`'s ratings, priorities and evidence (see the
  * section comment). `confirmName` must be the school's name, as typed by
  * the admin; `catalog` is the page's [{ id, element, title }] for the
  * archive. Returns
@@ -1829,7 +1836,7 @@ function schoolHasWork_(state, schoolName) {
  *   { ok: false, stale: true }   the page is older than the school's last restore
  */
 function startSchoolFresh(confirmName, catalog, stateVersion, school) {
-  var access = requireAdmin_(school);
+  var access = requireAdminTools_(school);
   function norm(v) { return String(v || '').replace(/\s+/g, ' ').trim().toLowerCase(); }
   if (norm(confirmName) !== norm(access.schoolName)) {
     throw new Error('Type the school’s name exactly as shown (' + access.schoolName + ') to confirm.');
@@ -2900,6 +2907,13 @@ function checkSetup() {
     var header = usersRows[0] || [];
     log(String(header[6] || '').trim().toLowerCase() === 'principal',
       'Users tab column G is headed "Principal" (tick it for people who can invite others)');
+    log(String(header[7] || '').trim().toLowerCase() === 'admintools',
+      'Users tab column H is headed "AdminTools" (tick it for people who get backups and fresh starts)');
+    var toolsPeople = {};
+    usersRows.slice(1).forEach(function (r) {
+      if (isTrue_(r[4]) && isTrue_(r[7])) toolsPeople[String(r[0] || '').toLowerCase().trim()] = true;
+    });
+    log(true, 'People with Admin tools: ' + (Object.keys(toolsPeople).join(', ') || 'none'));
     var principalCount = 0;
     var bySchool = principalsBySchool_(usersRows);
     Object.keys(bySchool).forEach(function (k) { principalCount += Object.keys(bySchool[k]).length; });

@@ -4,8 +4,8 @@
     // =======================================================================
     // The avatar in the banner opens the account menu: the visitor's name,
     // email and school. For a principal at the open school (a Users row
-    // with Principal ticked) it also has "Share access", and for an admin
-    // "Admin tools" (Script_Admin.html). Share access opens the
+    // with Principal ticked) it also has "Share access", and with AdminTools
+    // ticked "Admin tools" (Script_Admin.html). Share access opens the
     // Share access panel:
     //   - invite someone by email (and an optional name), up to the limit
     //     Code.gs sets (MAX_INVITES_PER_SCHOOL, 3) per principal per school.
@@ -75,7 +75,7 @@
             '</span>' +
           '</button>';
       }
-      if (access.admin) {
+      if (access.adminTools) {
         html +=
           '<button type="button" class="account-menu-item" role="menuitem" data-action="admin">' +
             '<span class="account-menu-item-icon is-admin">' + ADMIN_ICON + '</span>' +

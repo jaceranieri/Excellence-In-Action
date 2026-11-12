@@ -6,10 +6,13 @@ git log (`git log --oneline`) for the full blow-by-blow, since almost
 every commit message documents a real bug that was found and fixed, not
 just a style tweak.
 
-## Admin tools: backups, archives and fresh starts (v1.5.0, 12 Nov 2026), not yet confirmed live
+## Admin tools: backups, archives and fresh starts (v1.5.1, 12 Nov 2026), not yet confirmed live
 
-For admins (a Users row with `Admin` ticked), the avatar menu has **Admin
-tools**, a side panel (`Script_Admin.html`, styles in
+For people with **`AdminTools`** ticked on the Users tab (column H, on any
+active row), the avatar menu has **Admin tools**. The `Admin` column alone
+does **not** give it: Admin is for managers who should see every school,
+AdminTools is for whoever looks after backups and fresh starts. Admin
+tools is a side panel (`Script_Admin.html`, styles in
 `Stylesheet_Invites.html`; server in `Code.gs`'s "Admin: backups, school
 archives and fresh starts"):
 
@@ -55,7 +58,7 @@ archives and fresh starts"):
   only reads narrow columns, so size shouldn't matter for years. Moving
   rows out would stop schools restoring to points before the move.
 
-**To deploy v1.5.0** (on top of v1.4.0):
+**To deploy v1.5.1** (on top of v1.4.0):
 1. Apps Script editor: create a new HTML file named exactly
    `Script_Admin` and paste in `gas/Script_Admin.html`.
 2. Replace `Code.gs`, `Index.html`, `Script_App.html`,
@@ -66,12 +69,16 @@ archives and fresh starts"):
    makes the first one, creating the EIA Backups folder.
 4. Deploy → Manage deployments → Edit → New version (the Deploy step is
    what puts the change live; the test URL only runs the editor's code).
-5. Tick `Admin` on your own Users row if it isn't already.
+5. In the Users sheet, type `AdminTools` in **H1** and tick it on your
+   own row (and anyone else who should have backups and fresh starts).
+   Managers with only `Admin` ticked won't see Admin tools. The backup and
+   archive folders are in the script owner's Drive, so share them with
+   anyone else you tick here if they need to open the links.
 
 ## Principal invites — Share access (12 Nov 2026; ships in v1.4.0 with Export), not yet confirmed live
 
 **Deploying v1.4.0 (Export report + Share access together).** If you're
-deploying from scratch, do this, then the v1.5.0 steps above. The two
+deploying from scratch, do this, then the v1.5.1 steps above. The two
 features were built on separate branches and merged here. If neither is
 live yet, do this once instead of the two features' separate steps:
 1. Users sheet: type `Principal` in G1 and tick it for each principal's row.
@@ -322,7 +329,7 @@ live:**
 - **Theme modal backdrop:** the page behind is blurred (6px), not
   darkened.
 - **Version number** in the container's bottom-right corner, from
-  `APP_VERSION` in `Code.gs` (currently 1.5.0). Bump it with each
+  `APP_VERSION` in `Code.gs` (currently 1.5.1). Bump it with each
   release, and the static copy in `example.html`.
 - **Team messages** from the Users spreadsheet's new **Messages** tab:
   - The newest active message shows in a box at the top of the main
@@ -650,7 +657,7 @@ It's drawn in black (`.scs-logo { color }`).
 
 
 - **Users sheet**: `https://docs.google.com/spreadsheets/d/1OQXaRVUJopdjr4OWQbOvNLjoq-_bwaiNS3Rfu1-C62I/`
-  — columns `Email, Name, SchoolName, CrestURL, Active, Admin, Principal`. The sheet ID is
+  — columns `Email, Name, SchoolName, CrestURL, Active, Admin, Principal, AdminTools`. The sheet ID is
   the `USERS_SHEET_ID` Script Property (Project Settings → Script
   Properties in the Apps Script editor — not hardcoded in `Code.gs`).
 - `Code.gs`'s `getCurrentUserAccess()` reads `Session.getActiveUser().getEmail()`

@@ -2,8 +2,9 @@
     // =======================================================================
     // Admin tools panel (GAS build only)
     // =======================================================================
-    // For admins (a Users row with Admin ticked), from the avatar's account
-    // menu → "Admin tools" (Script_Invites.html):
+    // For people with AdminTools ticked on the Users sheet (column H; the
+    // Admin column alone doesn't give it), from the avatar's account menu →
+    // "Admin tools" (Script_Invites.html):
     //   - Back up now: copies the data and Users spreadsheets into the
     //     owner's "EIA Backups" Drive folder (Code.gs's backUpNow()). A
     //     weekly copy is also made by a trigger (setUpWeeklyBackup()).
@@ -53,7 +54,7 @@
     };
 
     function isAdminUser() {
-      return !!(window.__ACCESS__ && window.__ACCESS__.admin);
+      return !!(window.__ACCESS__ && window.__ACCESS__.adminTools);
     }
 
     function adminLink(url, text) {
