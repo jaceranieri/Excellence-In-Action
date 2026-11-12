@@ -1375,6 +1375,11 @@
     // from a page loaded before the school was restored to an earlier
     // point, and the page then reloads (reloadAfterRestore()).
     var STATE_VERSION = 0;
+    // False until the school's saved work has loaded (and again while
+    // switching school), so the Export report can wait for it.
+    var SCHOOL_STATE_LOADED = false;
+    // The school's latest change, { name, at } or null (showLastUpdated()).
+    var LAST_UPDATED = null;
 
     // Applies a school's saved {ratings, evidence} (see Code.gs's
     // getSchoolState()) onto ELEMENT_THEMES in place. Every theme is reset
@@ -1415,6 +1420,7 @@
       google.script.run
         .withSuccessHandler(function (state) {
           applySchoolState(state);
+          SCHOOL_STATE_LOADED = true;
           updateDotRingColors();
           prioritiesChanged();
           // With no Element selected, the panel beside the wheel shows the
@@ -1484,6 +1490,7 @@
     // school's state; this page's own saves update it straight away.
     // Other people's changes show on the next load.
     function showLastUpdated(lastUpdated) {
+      LAST_UPDATED = lastUpdated && lastUpdated.at ? lastUpdated : null;
       var box = document.querySelector('.app-banner-updated');
       if (!box) return;
       if (!lastUpdated || !lastUpdated.at) {
@@ -1608,6 +1615,8 @@
         window.renderBannerSchool(access);
         wheel.deselect();
         prioritiesPage = 0;
+        SCHOOL_STATE_LOADED = false;
+        if (typeof closeReport === 'function') closeReport();
         toast.update('busy', 'Loading ' + school.schoolName + '’s data…');
         loadSchoolState(function () {
           switchingSchool = false;

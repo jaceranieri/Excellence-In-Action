@@ -1,0 +1,1103 @@
+<style>
+/*!
+ * Export report — the Export dialog, its preview, and the print layout
+ * (see report.js). Shared by both builds: this file is report.css in the
+ * static build and gas/Stylesheet_Report.html (wrapped in <style>) in the
+ * GAS build. Keep the two identical.
+ *
+ * On screen the report is a stack of white "sheets", one per printed
+ * section. When printing, html.report-open hides everything else on the
+ * page, the sheets lose their frame, and each one starts on a new A4 page.
+ */
+
+/* Banner button --------------------------------------------------------- */
+
+.app-banner-export-btn {
+  --panel-color: #38b6ff;       /* sky blue, like Save checkpoint */
+  --panel-color-hover: #7ccfff;
+}
+
+/* Dialog -------------------------------------------------------------- */
+
+.report-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2500; /* above the panels and the Theme modal; toasts stay on top */
+  display: flex;
+  flex-direction: column;
+  background: #f1f1f1;
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+  color: #000000;
+}
+
+.report-overlay[hidden] {
+  display: none;
+}
+
+html.report-open {
+  overflow: hidden;
+}
+
+.report-toolbar {
+  flex: none;
+  background: #ffffff;
+  border-bottom: 2.5px solid #000000;
+}
+
+.report-toolbar-inner {
+  box-sizing: border-box;
+  max-width: 1100px; /* room for both dropdowns, the tickbox and Save as PDF on one line */
+  margin: 0 auto;
+  padding: 14px 24px 12px;
+}
+
+.report-toolbar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.report-dialog-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 800;
+  outline: none;
+}
+
+.report-close {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 2.5px solid #000000;
+  border-radius: 50%;
+  background: #ffffff;
+  color: #000000;
+  font-size: 26px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.report-close:hover,
+.report-close:focus-visible {
+  background: #f0f1f4;
+  outline: none;
+}
+
+.report-close:focus-visible {
+  box-shadow: 0 0 0 3px #17458f;
+}
+
+.report-options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+  margin-top: 12px;
+}
+
+.report-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+/* Capped so a long Element name in Include doesn't push Save as PDF onto
+   its own line; the select shows the chosen option cut off with an ellipsis. */
+.report-field select {
+  width: auto;
+  max-width: 260px;
+  text-overflow: ellipsis;
+  min-height: 40px;
+  padding: 6px 10px;
+  border: 2px solid #000000;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 3px 3px 0 0 #000000;
+  color: #000000;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.report-field select:focus-visible {
+  outline: none;
+  box-shadow: 3px 3px 0 0 #000000, 0 0 0 3px #17458f;
+}
+
+.report-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.report-check[hidden] {
+  display: none;
+}
+
+.report-check input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: #000000;
+  cursor: pointer;
+}
+
+.report-print-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  min-height: 42px;
+  padding: 8px 18px 8px 14px;
+  border: 2.5px solid #000000;
+  border-radius: 8px;
+  background: #000000;
+  box-shadow: 4px 4px 0 0 #38b6ff;
+  color: #ffffff;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+
+.report-print-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+.report-print-btn:hover,
+.report-print-btn:focus-visible {
+  background: #1d1d1d;
+  outline: none;
+}
+
+.report-print-btn:focus-visible {
+  box-shadow: 4px 4px 0 0 #38b6ff, 0 0 0 3px #17458f;
+}
+
+.report-print-btn:active {
+  transform: translate(2px, 2px);
+  box-shadow: 2px 2px 0 0 #38b6ff;
+}
+
+.report-hint {
+  margin: 10px 0 0;
+  font-size: 12.5px;
+  color: #55596a;
+}
+
+.report-preview {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 28px 24px 48px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.report-doc {
+  max-width: 210mm;
+  margin: 0 auto;
+}
+
+/* Report (screen and print) ------------------------------------------- */
+
+.report-doc {
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+  font-size: 10.5pt;
+  line-height: 1.45;
+  color: #000000;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+.report-page {
+  box-sizing: border-box;
+  margin-bottom: 24px;
+  padding: 16mm 15mm;
+  background: #ffffff;
+  border: 2.5px solid #000000;
+  border-radius: 6px;
+}
+
+.report-empty p {
+  margin: 0;
+  font-size: 12pt;
+  font-weight: 600;
+  text-align: center;
+}
+
+.report-muted {
+  margin: 0;
+  color: #6b6f7d;
+  font-size: 9.5pt;
+}
+
+.report-heading {
+  margin: 0 0 14px;
+  font-size: 17pt;
+  font-weight: 800;
+  line-height: 1.2;
+  break-after: avoid;
+}
+
+.report-subheading {
+  margin: 0 0 8px;
+  font-size: 10pt;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  break-after: avoid;
+}
+
+/* Grade chip: filled with the grade's colour, black text and outline. */
+.report-grade {
+  display: inline-block;
+  padding: 2px 10px;
+  border: 1.5px solid #000000;
+  border-radius: 999px;
+  background: var(--grade-fill);
+  box-shadow: 2px 2px 0 0 #000000;
+  font-size: 9.5pt;
+  font-weight: 800;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.report-grade.is-small {
+  padding: 1px 8px;
+  box-shadow: none;
+  font-size: 8.5pt;
+}
+
+.report-priority {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 9px 2px 7px;
+  border: 1.5px solid #000000;
+  border-radius: 999px;
+  background: #fff3c4;
+  font-size: 9pt;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.report-priority svg,
+.report-priority-list svg,
+.report-star-inline svg {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  fill: #ffc933;
+  stroke: #000000;
+  stroke-width: 1.8;
+  stroke-linejoin: round;
+}
+
+.report-star-inline {
+  display: inline-flex;
+  vertical-align: -1px;
+}
+
+.report-category {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 8.5pt;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.report-category::before {
+  content: '';
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid #000000;
+  border-radius: 50%;
+  background: var(--category-color);
+}
+
+/* Cover --------------------------------------------------------------- */
+
+.report-masthead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 12px;
+  border-bottom: 2.5px solid #000000;
+}
+
+.report-brand {
+  display: flex;
+  align-items: baseline;
+  white-space: nowrap;
+}
+
+.report-brand-top {
+  font-size: 13pt;
+  font-weight: 800;
+}
+
+.report-brand-script {
+  margin-left: 8px;
+  font-family: 'Winter Day', 'Pacifico', 'Segoe UI', cursive;
+  font-size: 26pt;
+  line-height: 1;
+  color: #17458f;
+}
+
+.report-crest {
+  max-height: 22mm;
+  max-width: 60mm;
+  object-fit: contain;
+}
+
+.report-title-block {
+  margin: 18px 0 16px;
+}
+
+.report-kicker {
+  margin: 0;
+  font-size: 9.5pt;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #17458f;
+}
+
+.report-title {
+  margin: 4px 0 6px;
+  font-size: 24pt;
+  font-weight: 800;
+  line-height: 1.15;
+}
+
+.report-meta {
+  margin: 0;
+  font-size: 9.5pt;
+  color: #55596a;
+}
+
+.report-overview {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 20px;
+  align-items: center;
+}
+
+.report-wheel {
+  max-width: 85mm;
+  width: 100%;
+  justify-self: center;
+}
+
+/* The wheel copy sits still: no entrance animation, hover lift or
+   transitions (report.js also strips its selection/highlight classes). */
+.report-wheel svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  pointer-events: none;
+}
+
+.report-wheel svg *,
+.report-wheel svg {
+  animation: none !important;
+  transition: none !important;
+}
+
+.report-wheel .ew-wedge,
+.report-wheel .ew-center {
+  transform: none !important;
+}
+
+.report-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.report-stat {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 10px;
+  border: 1.5px solid #000000;
+  border-radius: 6px;
+  box-shadow: 3px 3px 0 0 #000000;
+}
+
+.report-stat-value {
+  font-size: 18pt;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.report-stat-value small {
+  font-size: 10pt;
+  color: #55596a;
+}
+
+.report-stat-label {
+  font-size: 8.5pt;
+  font-weight: 700;
+  color: #55596a;
+}
+
+.report-bar {
+  display: flex;
+  height: 16px;
+  margin-bottom: 10px;
+  border: 1.5px solid #000000;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.report-bar-part {
+  flex-basis: 0;
+  background: var(--grade-fill);
+}
+
+.report-bar-part + .report-bar-part {
+  border-left: 1.5px solid #000000;
+}
+
+.report-legend {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.report-legend li {
+  display: grid;
+  grid-template-columns: 14px 1fr auto 3.2em;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+  font-size: 9.5pt;
+}
+
+.report-legend li + li {
+  border-top: 1px solid #e3e4e8;
+}
+
+.report-swatch {
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid #000000;
+  border-radius: 3px;
+  background: var(--grade-fill);
+}
+
+.report-legend-label {
+  font-weight: 600;
+}
+
+.report-legend-count {
+  font-weight: 800;
+  text-align: right;
+}
+
+.report-legend-pct {
+  color: #6b6f7d;
+  text-align: right;
+}
+
+.report-priorities {
+  margin-top: 20px;
+  break-inside: avoid;
+}
+
+.report-priority-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  columns: 2;
+  column-gap: 20px;
+}
+
+.report-priority-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 5px 0;
+  break-inside: avoid;
+  font-size: 9.5pt;
+  font-weight: 700;
+}
+
+.report-priority-list li svg {
+  margin-top: 3px;
+}
+
+.report-priority-list li > span:first-of-type {
+  flex: 1 1 auto;
+}
+
+.report-priority-element {
+  display: block;
+  font-size: 8pt;
+  font-weight: 600;
+  color: #6b6f7d;
+}
+
+/* At a glance --------------------------------------------------------- */
+
+.report-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 9.5pt;
+}
+
+.report-col-grade { width: 34mm; }
+.report-col-num { width: 20mm; }
+
+.report-table thead th {
+  padding: 0 8px 6px;
+  border-bottom: 2.5px solid #000000;
+  font-size: 8.5pt;
+  font-weight: 800;
+  text-align: left;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.report-table tbody {
+  break-inside: avoid;
+}
+
+.report-table tbody th,
+.report-table td {
+  padding: 5px 8px;
+  border-bottom: 1px solid #e3e4e8;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.report-table tbody th {
+  font-weight: 600;
+}
+
+.report-table .report-num {
+  text-align: right;
+}
+
+.report-table tr.report-table-element th {
+  padding-top: 14px;
+  border-bottom: 1.5px solid #000000;
+  font-size: 10.5pt;
+  font-weight: 800;
+}
+
+.report-table tr.report-table-element th > span:last-child {
+  display: block;
+  margin-top: 2px;
+}
+
+/* Element pages ------------------------------------------------------- */
+
+.report-element-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 2.5px solid #000000;
+  break-after: avoid;
+}
+
+.report-element.is-flow + .report-element.is-flow {
+  margin-top: 28px;
+}
+
+.report-element-head .report-heading {
+  margin: 2px 0 0;
+}
+
+.report-element-icon {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 15mm;
+  height: 15mm;
+}
+
+.report-element-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.report-theme {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1.5px solid #000000;
+  border-left: 6px solid var(--element-color, #000000);
+  border-radius: 6px;
+  break-inside: avoid;
+}
+
+.report-theme-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.report-theme-title {
+  margin: 0;
+  font-size: 12pt;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.report-theme-badges {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.report-indicators {
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.report-indicator {
+  padding: 7px 0;
+  border-top: 1px solid #e3e4e8;
+  break-inside: avoid;
+}
+
+.report-indicator-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.report-indicator-label {
+  font-size: 8.5pt;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #55596a;
+}
+
+.report-indicator-text {
+  margin: 4px 0 0;
+}
+
+.report-evidence {
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1.5px solid #000000;
+}
+
+.report-evidence-heading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 4px;
+  font-size: 8.5pt;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.report-count {
+  min-width: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #000000;
+  color: #ffffff;
+  font-size: 8pt;
+  line-height: 16px;
+  text-align: center;
+  letter-spacing: 0;
+}
+
+.report-evidence-list {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.report-evidence-list li {
+  padding: 1px 0;
+}
+
+/* Wheel summary (A3 landscape, one page) ------------------------------- */
+/* Drawn at the printable size of an A3 landscape page (420 x 297mm less
+   10mm margins). On screen, report.js scales it down to fit the preview
+   (fitA3Preview()); the frame takes the scaled height. */
+
+.report-doc.is-a3 {
+  max-width: 1100px;
+}
+
+.report-a3-frame {
+  position: relative;
+  overflow: hidden;
+  border: 2.5px solid #000000;
+  border-radius: 6px;
+  background: #ffffff;
+}
+
+.report-a3 {
+  box-sizing: border-box;
+  width: 400mm;
+  height: 276mm;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  transform-origin: 0 0;
+  font-size: 9pt;
+  line-height: 1.3;
+  background: #ffffff;
+}
+
+/* On screen the sheet is the whole A3 page, with its 10mm margins as
+   padding; when printing, the @page margins take their place. */
+.report-a3-frame .report-a3 {
+  width: 420mm;
+  height: 297mm;
+  padding: 10mm;
+}
+
+.report-a3-masthead {
+  flex: none;
+  gap: 10mm;
+}
+
+.report-a3-masthead .report-brand-top { font-size: 15pt; }
+.report-a3-masthead .report-brand-script { font-size: 32pt; }
+
+.report-a3-title {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.report-a3-title .report-title {
+  margin: 1mm 0;
+  font-size: 20pt;
+}
+
+.report-a3 .report-crest {
+  max-height: 20mm;
+}
+
+.report-a3-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 160mm minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-areas:
+    "top  top    top"
+    "left centre right";
+  gap: 5mm 7mm;
+  margin-top: 5mm;
+}
+
+.report-a3-group.is-top { grid-area: top; }
+.report-a3-group.is-left { grid-area: left; }
+.report-a3-group.is-right { grid-area: right; }
+
+.report-a3-domain {
+  display: flex;
+  align-items: center;
+  gap: 2mm;
+  margin: 0 0 2mm;
+  font-size: 9.5pt;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.report-a3-domain::before {
+  content: '';
+  flex: none;
+  width: 4mm;
+  height: 4mm;
+  box-sizing: border-box;
+  border: 1.5px solid #000000;
+  border-radius: 50%;
+  background: var(--category-color);
+}
+
+.report-a3-domain::after {
+  content: '';
+  flex: 1 1 auto;
+  height: 2px;
+  margin-left: 2mm;
+  background: var(--category-color);
+}
+
+/* The side domains' cards sit close together, centred beside the wheel. */
+.report-a3-group.is-left,
+.report-a3-group.is-right {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 0;
+}
+
+.report-a3-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 4mm;
+}
+
+.report-a3-group.is-top .report-a3-cards {
+  flex-direction: row;
+  align-items: stretch;
+}
+
+.report-a3-group.is-top .report-a3-card {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.report-a3-card {
+  padding: 2.5mm 3.5mm;
+  border: 1.5px solid #000000;
+  border-left: 5px solid var(--element-color);
+  border-radius: 5px;
+  break-inside: avoid;
+}
+
+.report-a3-card h3 {
+  display: flex;
+  align-items: center;
+  gap: 2.5mm;
+  margin: 0 0 1mm;
+  font-size: 10pt;
+  font-weight: 800;
+  line-height: 1.15;
+}
+
+.report-a3-card .report-element-icon {
+  width: 7.5mm;
+  height: 7.5mm;
+}
+
+.report-a3-card ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.report-a3-card li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 10mm;
+  align-items: center;
+  gap: 2mm;
+  padding: 0.8mm 0;
+  border-top: 1px solid #e3e4e8;
+  font-size: 8pt;
+}
+
+.report-a3-theme .report-star-inline {
+  margin-left: 4px;
+}
+
+/* Evidence count: a black paperclip pill, like the app's Theme cards. */
+.report-a3-evidence {
+  justify-self: end;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0.3mm 1.8mm 0.3mm 1.3mm;
+  border-radius: 999px;
+  background: #000000;
+  color: #ffffff;
+  font-size: 7pt;
+  font-weight: 800;
+  line-height: 1.3;
+}
+
+.report-a3-evidence svg {
+  width: 8px;
+  height: 8px;
+  flex: none;
+}
+
+/* Priorities version: everything but the priority Themes fades. */
+.report-a3-card li.is-faded,
+.report-a3-card.is-faded h3 {
+  opacity: 0.35;
+}
+
+.report-a3-centre {
+  grid-area: centre;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4mm;
+  min-height: 0;
+}
+
+.report-a3-centre .report-wheel {
+  max-width: 152mm;
+}
+
+.report-a3-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 2mm 5mm;
+  font-size: 8.5pt;
+  font-weight: 600;
+}
+
+.report-a3-legend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.report-a3-legend > .report-a3-legend-title {
+  flex-basis: 100%;
+  justify-content: center;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 7.5pt;
+}
+
+.report-a3-note {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+  font-size: 8.5pt;
+  color: #55596a;
+}
+
+.report-a3-note svg {
+  width: 11px;
+  height: 11px;
+  fill: #ffc933;
+  stroke: #000000;
+  stroke-width: 1.8;
+  stroke-linejoin: round;
+}
+
+/* Small screens ------------------------------------------------------- */
+
+@media (max-width: 640px) {
+  .report-toolbar-inner { padding: 10px 16px; }
+  .report-dialog-title { font-size: 19px; }
+  .report-options { gap: 10px 14px; }
+  .report-field { flex: 1 1 100%; min-width: 0; }
+  .report-field select { flex: 1 1 auto; width: 100%; max-width: none; min-width: 0; }
+  .report-print-btn { margin-left: 0; flex: 1 1 100%; justify-content: center; }
+  .report-hint { display: none; }
+  .report-preview { padding: 16px 16px 32px; }
+  .report-page { padding: 20px 16px; }
+  .report-overview { grid-template-columns: minmax(0, 1fr); }
+  .report-priority-list { columns: 1; }
+  .report-theme-head { flex-direction: column; gap: 6px; }
+  .report-col-grade { width: auto; }
+  .app-banner-export-btn { grid-area: export; }
+}
+
+/* Print --------------------------------------------------------------- */
+
+@media print {
+  @page {
+    size: A4;
+    margin: 14mm 14mm 16mm;
+    @bottom-right {
+      content: 'Page ' counter(page) ' of ' counter(pages);
+      font-family: 'Figtree', 'Segoe UI', sans-serif;
+      font-size: 8pt;
+      color: #6b6f7d;
+    }
+    @bottom-left {
+      font-family: 'Figtree', 'Segoe UI', sans-serif;
+      font-size: 8pt;
+      color: #6b6f7d;
+    }
+  }
+
+  html.report-open,
+  html.report-open body {
+    overflow: visible !important;
+    height: auto !important;
+    min-height: 0 !important;
+  }
+
+  html.report-open body {
+    display: block !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+  }
+
+  html.report-open body > *:not(.report-overlay) {
+    display: none !important;
+  }
+
+  html.report-open .report-overlay {
+    position: static;
+    display: block;
+    background: none;
+  }
+
+  html.report-open .report-toolbar {
+    display: none;
+  }
+
+  html.report-open .report-preview {
+    overflow: visible;
+    padding: 0;
+  }
+
+  html.report-open .report-doc {
+    max-width: none;
+  }
+
+  .report-page {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .report-page + .report-page {
+    break-before: page;
+  }
+
+  /* The wheel summary prints at full size on its one A3 page. */
+  .report-a3-frame {
+    height: auto !important;
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .report-a3-frame .report-a3 {
+    width: 400mm;
+    height: 276mm;
+    padding: 0;
+    transform: none !important;
+    break-inside: avoid;
+  }
+
+  html.report-open .report-doc.is-a3 {
+    max-width: none;
+  }
+}
+</style>

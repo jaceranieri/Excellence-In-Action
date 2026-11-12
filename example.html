@@ -9,6 +9,7 @@
 <link rel="stylesheet" href="theme-modal.css">
 <link rel="stylesheet" href="theme-dots.css">
 <link rel="stylesheet" href="app-banner.css">
+<link rel="stylesheet" href="report.css">
 <style>
   :root { color-scheme: light; }
 
@@ -216,8 +217,16 @@
     <div class="app-banner-school">
       <span class="app-banner-school-name">Placeholder School Name</span>
     </div>
-    <!-- The GAS build also has Last Updated and the History button here -->
+    <!-- The GAS build also has Last Updated, Help, History and Messages here -->
     <div class="app-banner-tools">
+      <!-- Opens the Export report dialog (report.js) -->
+      <button type="button" class="app-banner-export-btn app-banner-panel-btn" id="report-open-btn" aria-haspopup="dialog" aria-label="Export report" title="Export report">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="M14 3.5H7.5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V8L14 3.5Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+          <path d="M14 3.5V8h4.5" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+          <path d="M12 10.5v6m0 0-2.5-2.5m2.5 2.5 2.5-2.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
       <div class="app-banner-avatar" aria-hidden="true" title="Placeholder avatar">
         <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
           <circle cx="12" cy="8.5" r="3.5" fill="#fff"/>
@@ -239,7 +248,7 @@
       </div>
     </div>
   </div>
-  <p class="app-version">v1.2.0</p>
+  <p class="app-version">v1.4.0</p>
 </div>
 
   <script src="icons.js"></script>
@@ -2575,6 +2584,7 @@
     // wheel.deselect();
     // wheel.getSelected();
   </script>
+  <script src="report.js"></script>
 
 </body>
 </html>

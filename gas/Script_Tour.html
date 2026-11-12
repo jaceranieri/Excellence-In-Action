@@ -184,7 +184,7 @@
       {
         title: 'You’re ready!',
         body: '<p>That was practice, so nothing was saved. When you close the tour, your school’s work will be exactly as it was.</p>' +
-          '<p>Want a quick look at the other features, such as History and Messages?</p>',
+          '<p>Want a quick look at the other features, such as History, Export and Messages?</p>',
         next: 'Show me more', skip: 'Finish', noBack: true, finish: true
       }
     ];
@@ -200,6 +200,12 @@
         target: function () { return q('#history-open-btn'); },
         title: 'History',
         body: '<p>Every change is recorded here. You can save a named <strong>checkpoint</strong>, and bring the whole school back to any earlier point.</p>',
+        placement: 'bottom'
+      },
+      {
+        target: function () { return q('#report-open-btn'); },
+        title: 'Export report',
+        body: '<p>Save a PDF summary of your school’s review: grades, priorities and evidence titles. Choose the whole school, your priorities or one Element.</p>',
         placement: 'bottom'
       },
       {

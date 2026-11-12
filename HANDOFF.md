@@ -6,7 +6,23 @@ git log (`git log --oneline`) for the full blow-by-blow, since almost
 every commit message documents a real bug that was found and fixed, not
 just a style tweak.
 
-## Principal invites — Share access (v1.2.0, 12 Nov 2026), not yet confirmed live
+## Principal invites — Share access (12 Nov 2026; ships in v1.4.0 with Export), not yet confirmed live
+
+**Deploying v1.4.0 (Export report + Share access together).** The two
+features were built on separate branches and merged here. If neither is
+live yet, do this once instead of the two features' separate steps:
+1. Users sheet: type `Principal` in G1 and tick it for each principal's row.
+2. Apps Script editor: create four new HTML files named exactly
+   `Script_Report`, `Stylesheet_Report`, `Script_Invites` and
+   `Stylesheet_Invites`, and replace the starter text in each with the
+   matching `gas/*.html` file.
+3. Replace `Code.gs`, `Index.html`, `Script_App.html`,
+   `Script_History.html`, `Script_LoginGate.html`, `Script_Messages.html`,
+   `Script_Tour.html` and `Stylesheet_AppBanner.html` with the repo
+   versions.
+4. Run `checkSetup` and click Allow for "Send email as you". It also
+   checks the four new HTML files and the Principal column.
+5. Deploy → Manage deployments → Edit → New version.
 
 - A principal can give up to **3 colleagues per school** access to that
   school's wheel. Invitees can do everything the principal can (ratings
@@ -45,7 +61,7 @@ just a style tweak.
    (the principal is told to send the link themselves).
 5. Deploy → Manage deployments → Edit → New version.
 
-## Current status (as of 23 Sep 2026)
+## Current status (as of 11 Nov 2026)
 
 **Branch:** the repo's default branch is `claude/code-project-setup-1qbwa6`
 (there is no `main`). The evidence-folder and Drive work landed there in
@@ -243,7 +259,7 @@ live:**
 - **Theme modal backdrop:** the page behind is blurred (6px), not
   darkened.
 - **Version number** in the container's bottom-right corner, from
-  `APP_VERSION` in `Code.gs` (currently 1.2.0). Bump it with each
+  `APP_VERSION` in `Code.gs` (currently 1.4.0). Bump it with each
   release, and the static copy in `example.html`.
 - **Team messages** from the Users spreadsheet's new **Messages** tab:
   - The newest active message shows in a box at the top of the main
@@ -362,6 +378,107 @@ resources and messages):**
   `#a3e634` and Messages red `#de2b48`, both with black icons. The
   unread badge is white so it shows on the red bell.
 
+**Export report (v1.2.0), not yet confirmed live:**
+- An **Export** button (sky blue, a page with a down arrow) sits between
+  History and Messages in the banner. It opens a full-screen dialog with
+  options and a live preview; **Save as PDF** opens the browser's print
+  dialog, where the person picks "Save as PDF".
+- Built entirely on the page from what's already loaded: no server
+  calls, no new permissions, nothing stored. Files: `report.js` /
+  `report.css` (static build) and `gas/Script_Report.html` /
+  `gas/Stylesheet_Report.html` (GAS), which are the same files wrapped
+  in `<script>` / `<style>`. Keep each pair identical.
+- **Options:** Whole school, Our priorities, or one Element; and
+  "Include ungraded Themes" (on by default). Unticking it leaves
+  Ungraded Themes out of the table and the Element pages; the grade
+  counts on the cover still include them.
+- **What's in it** (agreed with the project owner):
+  - Cover: branding, crest, school name, who made it and when, Last
+    Updated, a copy of the wheel, totals (Themes graded, evidence entries,
+    priorities), Themes by grade, and the school's priorities.
+  - At a glance: a table of every Theme by Element, with its grade,
+    priority star and evidence count.
+  - One page (or more) per Element: each Theme's grade, priority, every
+    indicator with **only its selected level and that level's wording**
+    ("Not rated" otherwise), and **evidence titles only** (untitled older
+    entries show "Evidence N"). Evidence that's still being saved for the
+    first time is left out; an entry with an unsaved edit shows its saved
+    title.
+  - In the priorities report, Elements follow on from each other instead
+    of each starting a new page.
+- **Print layout:** A4 portrait. A Theme is never split across pages
+  (this can leave space at the bottom of a page). The footer shows the
+  school, "Excellence in Action" and the option chosen, with "Page N of M".
+  The PDF's suggested file name is
+  `<School> - Excellence in Action - <option> - <yyyy-mm-dd>`.
+  `html.report-open` hides the rest of the page when printing, so normal
+  Ctrl+P with the dialog closed is unchanged.
+- **The wheel picture** is a copy of the live wheel's SVG, reset to its
+  resting state (selection, highlight and animation removed) and with its
+  ids renamed, so its clip paths don't point at the live wheel, which is
+  hidden while printing.
+- **Not available in practice mode** (the tour): a toast says to finish
+  the tour first. It also waits for the school's data to load
+  (`SCHOOL_STATE_LOADED`, new in `Script_App.html`), and closes if the
+  school is switched.
+- `Script_App.html` also keeps the school's latest change in
+  `LAST_UPDATED` (set by `showLastUpdated()`), for the report's cover.
+- The features tour has a new Export step after History.
+- **Narrow phones:** with five round buttons the banner overflowed at
+  360px, so under 420px the buttons and avatar are 34px, and under 350px
+  the branding is a little smaller.
+- **To deploy:**
+  1. In the Apps Script editor, create two new HTML files named exactly
+     `Script_Report` and `Stylesheet_Report`, and paste in the matching
+     `gas/*.html` files.
+  2. Replace `Code.gs` (version 1.2.0), `Index.html`, `Script_App.html`,
+     `Script_Tour.html` and `Stylesheet_AppBanner.html`.
+  3. Deploy → Manage deployments → Edit → New version.
+  New HTML files open with the editor's starter page: replace all of it.
+  If `Script_Report` is left as the starter, the Export button shows a
+  red "Export report didn't load" toast (a safety net in `Index.html`),
+  and `checkSetup` reports a FIX line for either file.
+- **Check live:** that Save as PDF opens the print dialog from inside the
+  Apps Script page (the app runs in Google's sandboxed frame), that only
+  the report prints, that the grade colours come through, and that the
+  crest appears on the cover. If printing from the frame misbehaves, the
+  fallback is to open the report in a new tab and print from there.
+- **Wheel summary (v1.3.0), not yet confirmed live:** a second report,
+  picked from the dialog's new **Report** dropdown: "Full report (A4)" or
+  "Wheel summary (A3, one page)". Layout agreed with the project owner:
+  - The wheel in the middle, with each domain's Element cards beside its
+    part of the wheel: **Leading** across the top, **Learning** down the
+    left (Assessment and Feedback, Safe and Supportive Environment, Know
+    and Engage the Learner, top to bottom, as on the wheel), **Teaching**
+    down the right (Highly Effective Teaching, Differentiation,
+    Intervention). Each group has a heading in its domain colour, and the
+    side cards sit close together, centred beside the wheel.
+  - Every Theme row shows its grade, priority star and evidence count
+    (a black paperclip pill, like the app's Theme cards).
+  - Same masthead as the full report; a grade key with counts under the
+    wheel.
+  - **Include:** Whole school, or Our priorities. The priorities version
+    fades every Theme that isn't a priority (and any Element card with
+    none), and the wheel looks like the app's Our Priorities view: Elements
+    and domains with no priority are muted, and only priority Themes'
+    slices keep their colour. The one-Element choices and the "Include
+    ungraded Themes" tickbox are hidden for this report.
+  - Prints on one A3 landscape page (`@page size: A3 landscape`, 10mm
+    margins, no footer), set by report.js's injected page style. The sheet
+    (`.report-a3`) is drawn at full size; on screen `fitA3Preview()` scales
+    it down to fit the preview.
+  - PDF file name: `<School> - Excellence in Action - Wheel summary
+    [- Priorities] - <yyyy-mm-dd>`.
+  - **To deploy:** paste the new `Script_Report.html` and
+    `Stylesheet_Report.html`, and `Code.gs` (version 1.3.0), then publish
+    a new version.
+  - **Check live:** that Chrome's print window picks A3 landscape by
+    itself. If someone's printer settings force another size, they can
+    set Paper size to A3 in the print window's "More settings".
+- **Possible next step:** "Save to Google Docs", an editable copy saved
+  in the school's EvidenceFolder (planned with the project owner as
+  step 2; not started).
+
 **Open items / next steps:**
 1. **"Untitled document" copy error:** one staff member couldn't
    attach a file with that name. The root cause is unknown; nothing in
@@ -384,6 +501,8 @@ resources and messages):**
 5. **Check school history live:** make changes, save a checkpoint,
    restore to it (with evidence that has files), then undo the restore.
    Confirm the files move out of and back into ARCHIVE.
+6. **Check the Export report live:** see "Export report (v1.2.0)"
+   above.
 
 ## What this is
 
@@ -423,6 +542,8 @@ real GAS deployment.
 | `theme-modal.css` | `gas/Stylesheet_ThemeModal.html` |
 | `theme-dots.css` | `gas/Stylesheet_ThemeDots.html` |
 | `app-banner.css` | `gas/Stylesheet_AppBanner.html` |
+| `report.js` (Export report) | `gas/Script_Report.html` |
+| `report.css` | `gas/Stylesheet_Report.html` |
 | `example.html`'s `<style>`/inline `<script>` | `gas/Index.html`'s `<style>` / `gas/Script_App.html` |
 | — (no static equivalent) | `gas/Script_LoginGate.html`, `gas/Stylesheet_LoginGate.html`, `gas/Script_History.html`, `gas/Stylesheet_History.html`, `gas/Code.gs`, `gas/appsscript.json` |
 
