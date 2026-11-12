@@ -47,7 +47,7 @@ function requireProp_(key) {
 
 // Shown small in the bottom-right corner of the app. Bump it with each
 // release you deploy (and in example.html's static copy).
-var APP_VERSION = '1.4.0';
+var APP_VERSION = '1.5.0';
 
 // Sheet tab names are just structure, not secrets — fine to hardcode.
 var TABS = {
@@ -1262,7 +1262,15 @@ function planRestore_(access, state, historyId) {
   if (!snapshot || !snapshot.ratings || !Array.isArray(snapshot.evidence)) {
     throw new Error('That history entry can’t be restored: its saved state is unreadable.');
   }
+  return planRestoreToSnapshot_(access, state, snapshot, describeHistoryRow_(found.values));
+}
 
+/**
+ * The plan for putting the school back to `snapshot` ({ ratings, evidence:
+ * [versionId] }), described by `target` (a history entry, or null for a
+ * fresh start's empty snapshot). Shared by restores and fresh starts.
+ */
+function planRestoreToSnapshot_(access, state, snapshot, target) {
   currentEvidenceVersionIds_(access.schoolName); // versions any evidence that has none yet
   var current = readSchoolEvidenceRows_(access.schoolName);
   var currentByEntry = {};
@@ -1314,7 +1322,7 @@ function planRestore_(access, state, historyId) {
   });
 
   return {
-    target: describeHistoryRow_(found.values),
+    target: target,
     targetRatings: snapshot.ratings,
     toRemove: toRemove,
     toRestore: toRestore,
@@ -1411,84 +1419,464 @@ function restoreToPoint(historyId, stateVersion, school) {
     if (!plan.changes.length && !plan.toRestore.length && !plan.toRemove.length) {
       return { ok: true, nothingToChange: true, stateVersion: state.restoreCount, missingFiles: [] };
     }
-
-    // 1. Files. Nothing on the sheets changes until these are done.
-    var folderId = null;
-    function schoolFolderId() { return folderId || (folderId = getSchoolFolderId_(access.schoolName)); }
-    var missingFiles = [];
-    plan.toRemove.forEach(function (c) {
-      if (c.attachments.length) archiveEvidenceFiles_(c.attachments, schoolFolderId());
-    });
-    plan.toRestore.forEach(function (r) {
-      var currentIds = {};
-      var currentById = {};
-      (r.current ? r.current.attachments : []).forEach(function (a) { currentIds[a.fileId] = true; currentById[a.fileId] = a; });
-      var targetIds = {};
-      r.target.attachments.forEach(function (a) { targetIds[a.fileId] = true; });
-      var dropped = (r.current ? r.current.attachments : []).filter(function (a) { return !targetIds[a.fileId]; });
-      if (dropped.length) archiveEvidenceFiles_(dropped, schoolFolderId());
-      var back = r.target.attachments.filter(function (a) { return !currentIds[a.fileId]; });
-      var result = back.length ? unarchiveEvidenceFiles_(back, schoolFolderId()) : { attachments: [], missing: [] };
-      var restoredById = {};
-      result.attachments.forEach(function (a) { restoredById[a.fileId] = a; });
-      missingFiles = missingFiles.concat(result.missing);
-      r.attachments = r.target.attachments
-        .map(function (a) { return currentById[a.fileId] || restoredById[a.fileId]; })
-        .filter(Boolean);
-      r.lostFiles = r.attachments.length !== r.target.attachments.length;
-    });
-
-    // 2. Evidence rows: updates first, then re-added entries (appended at
-    //    the end), then deletions from the bottom up, so row numbers
-    //    captured by the plan stay valid.
-    var sheet = ensureSheet_(TABS.EVIDENCE, EVIDENCE_HEADERS);
-    var now = new Date().toISOString();
-    plan.toRestore.forEach(function (r) {
-      var t = r.target;
-      var attachmentsJson = JSON.stringify(r.attachments);
-      var versionId = t.versionId;
-      if (r.lostFiles) {
-        // Some files are gone for good, so the entry no longer matches
-        // that version exactly: save what it really is now as a new one.
-        versionId = newVersionId_();
-        appendEvidenceVersion_(versionId, t.entryId, access, t.themeId, t.number, t.type, t.date, t.title, t.text, attachmentsJson, now);
-      }
-      if (r.current) {
-        sheet.getRange(r.current.row, EVIDENCE_COL.ThemeId, 1, 6)
-          .setValues([[t.themeId, t.number, asText_(t.type), asText_(t.date), asText_(t.text), attachmentsJson]]);
-        sheet.getRange(r.current.row, EVIDENCE_COL.UpdatedAt, 1, 3).setValues([[now, asText_(t.title), versionId]]);
-      } else {
-        sheet.appendRow([t.entryId, access.schoolName, t.themeId, t.number, asText_(t.type), asText_(t.date),
-          asText_(t.text), attachmentsJson, t.savedBy,
-          toMillis_(t.savedAt) ? new Date(toMillis_(t.savedAt)).toISOString() : now, now, asText_(t.title), versionId]);
-      }
-    });
-    plan.toRemove.map(function (c) { return c.row; })
-      .sort(function (a, b) { return b - a; })
-      .forEach(function (row) { sheet.deleteRow(row); });
-
-    // 3. Ratings, and the restore counter that makes other open pages reload.
-    var restoreCount = state.restoreCount + 1;
-    state.sheet.getRange(state.row, RATINGS_COL.RatingsJSON).setValue(JSON.stringify(plan.targetRatings));
-    state.sheet.getRange(state.row, RATINGS_COL.RestoreCount).setValue(restoreCount);
-    markSchoolUpdated_(access, state);
-    state.restoreCount = restoreCount;
-    state.ratings = plan.targetRatings;
-
-    // 4. The restore's own history entry.
     var restoreChange = { t: 'restore', target: plan.target.id, targetKind: plan.target.kind,
       targetLabel: plan.target.label, targetActorName: plan.target.actorName, targetTime: plan.target.updatedAt };
-    var changes = [restoreChange].concat(plan.changes);
-    var historyId = null;
-    try {
-      var historySheet = ensureSheet_(TABS.HISTORY, HISTORY_HEADERS);
-      var snapshot = { ratings: plan.targetRatings, evidence: currentEvidenceVersionIds_(access.schoolName) };
-      historyId = appendHistoryRow_(historySheet, access, state, 'restore', 'Restored to ' + restoreTargetLabel_(plan.target),
-        changes.slice(0, MAX_HISTORY_CHANGES), plan.changes.length, snapshot);
-    } catch (e) {
-      console.error('Could not record restore for ' + access.schoolName + ': ' + (e && e.stack || e));
+    return applyRestorePlan_(access, state, plan, 'Restored to ' + restoreTargetLabel_(plan.target), restoreChange);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * Carries out a restore plan (planRestoreToSnapshot_()) and records it as
+ * a 'restore' history entry labelled `label`, whose first change is
+ * `firstChange` (what the History panel says the restore was). The caller
+ * holds the script lock. Returns { ok, stateVersion, historyId, missingFiles }.
+ */
+function applyRestorePlan_(access, state, plan, label, firstChange) {
+  // 1. Files. Nothing on the sheets changes until these are done.
+  var folderId = null;
+  function schoolFolderId() { return folderId || (folderId = getSchoolFolderId_(access.schoolName)); }
+  var missingFiles = [];
+  plan.toRemove.forEach(function (c) {
+    if (c.attachments.length) archiveEvidenceFiles_(c.attachments, schoolFolderId());
+  });
+  plan.toRestore.forEach(function (r) {
+    var currentIds = {};
+    var currentById = {};
+    (r.current ? r.current.attachments : []).forEach(function (a) { currentIds[a.fileId] = true; currentById[a.fileId] = a; });
+    var targetIds = {};
+    r.target.attachments.forEach(function (a) { targetIds[a.fileId] = true; });
+    var dropped = (r.current ? r.current.attachments : []).filter(function (a) { return !targetIds[a.fileId]; });
+    if (dropped.length) archiveEvidenceFiles_(dropped, schoolFolderId());
+    var back = r.target.attachments.filter(function (a) { return !currentIds[a.fileId]; });
+    var result = back.length ? unarchiveEvidenceFiles_(back, schoolFolderId()) : { attachments: [], missing: [] };
+    var restoredById = {};
+    result.attachments.forEach(function (a) { restoredById[a.fileId] = a; });
+    missingFiles = missingFiles.concat(result.missing);
+    r.attachments = r.target.attachments
+      .map(function (a) { return currentById[a.fileId] || restoredById[a.fileId]; })
+      .filter(Boolean);
+    r.lostFiles = r.attachments.length !== r.target.attachments.length;
+  });
+
+  // 2. Evidence rows: updates first, then re-added entries (appended at
+  //    the end), then deletions from the bottom up, so row numbers
+  //    captured by the plan stay valid.
+  var sheet = ensureSheet_(TABS.EVIDENCE, EVIDENCE_HEADERS);
+  var now = new Date().toISOString();
+  plan.toRestore.forEach(function (r) {
+    var t = r.target;
+    var attachmentsJson = JSON.stringify(r.attachments);
+    var versionId = t.versionId;
+    if (r.lostFiles) {
+      // Some files are gone for good, so the entry no longer matches
+      // that version exactly: save what it really is now as a new one.
+      versionId = newVersionId_();
+      appendEvidenceVersion_(versionId, t.entryId, access, t.themeId, t.number, t.type, t.date, t.title, t.text, attachmentsJson, now);
     }
-    return { ok: true, stateVersion: restoreCount, historyId: historyId, missingFiles: missingFiles };
+    if (r.current) {
+      sheet.getRange(r.current.row, EVIDENCE_COL.ThemeId, 1, 6)
+        .setValues([[t.themeId, t.number, asText_(t.type), asText_(t.date), asText_(t.text), attachmentsJson]]);
+      sheet.getRange(r.current.row, EVIDENCE_COL.UpdatedAt, 1, 3).setValues([[now, asText_(t.title), versionId]]);
+    } else {
+      sheet.appendRow([t.entryId, access.schoolName, t.themeId, t.number, asText_(t.type), asText_(t.date),
+        asText_(t.text), attachmentsJson, t.savedBy,
+        toMillis_(t.savedAt) ? new Date(toMillis_(t.savedAt)).toISOString() : now, now, asText_(t.title), versionId]);
+    }
+  });
+  plan.toRemove.map(function (c) { return c.row; })
+    .sort(function (a, b) { return b - a; })
+    .forEach(function (row) { sheet.deleteRow(row); });
+
+  // 3. Ratings, and the restore counter that makes other open pages reload.
+  var restoreCount = state.restoreCount + 1;
+  state.sheet.getRange(state.row, RATINGS_COL.RatingsJSON).setValue(JSON.stringify(plan.targetRatings));
+  state.sheet.getRange(state.row, RATINGS_COL.RestoreCount).setValue(restoreCount);
+  markSchoolUpdated_(access, state);
+  state.restoreCount = restoreCount;
+  state.ratings = plan.targetRatings;
+
+  // 4. The restore's own history entry.
+  var changes = [firstChange].concat(plan.changes);
+  var historyId = null;
+  try {
+    var historySheet = ensureSheet_(TABS.HISTORY, HISTORY_HEADERS);
+    var snapshot = { ratings: plan.targetRatings, evidence: currentEvidenceVersionIds_(access.schoolName) };
+    historyId = appendHistoryRow_(historySheet, access, state, 'restore', label,
+      changes.slice(0, MAX_HISTORY_CHANGES), plan.changes.length, snapshot);
+  } catch (e) {
+    console.error('Could not record restore for ' + access.schoolName + ': ' + (e && e.stack || e));
+  }
+  return { ok: true, stateVersion: restoreCount, historyId: historyId, missingFiles: missingFiles };
+}
+
+// ===========================================================================
+// Admin: backups, school archives and fresh starts
+// ===========================================================================
+//
+// Backups: copies of the whole data spreadsheet and the Users spreadsheet,
+// made with the script owner's Drive into a private "EIA Backups" folder
+// in their My Drive (or the folder in the BACKUP_FOLDER_ID Script
+// Property). They are made:
+//   - weekly, by a time-driven trigger that setUpWeeklyBackup() creates
+//     (run it once from the editor). Only the newest BACKUPS_TO_KEEP
+//     weekly copies of each spreadsheet are kept; older ones go to the
+//     owner's Drive bin;
+//   - just before every fresh start, and when an admin picks "Back up
+//     now" in the app. These are never removed automatically.
+// The backups cover the spreadsheets, not the evidence files: those stay
+// in each school's EvidenceFolder, and the app never deletes them for
+// good (removed evidence moves to the folder's ARCHIVE).
+//
+// Fresh start (startSchoolFresh(), admins only, from the avatar menu):
+// clears one school's ratings, priorities and evidence so it can start a
+// new review. In order:
+//   1. a backup (as above), then an archive spreadsheet of the school's
+//      work ("<School> – EIA archive – <date>": About, Ratings, Evidence
+//      and History tabs) in a private "EIA Archives" folder (or the
+//      ARCHIVES_FOLDER_ID Script Property). If either fails, nothing is
+//      cleared;
+//   2. under the script lock, a "Before fresh start – <date>" checkpoint,
+//      then a restore to an empty snapshot (planRestoreToSnapshot_() and
+//      applyRestorePlan_(), shared with restoreToPoint()): evidence files
+//      move to ARCHIVE and the evidence rows go, ratings are emptied, and
+//      a 'restore' history entry "Cleared for a fresh start" is added.
+// Nothing is deleted from History or EvidenceVersions, so restoring to the
+// checkpoint from the History panel undoes it, files included. Invites,
+// Users rows and the school's other settings are left alone.
+
+var BACKUP_FOLDER_NAME = 'EIA Backups';
+var ARCHIVES_FOLDER_NAME = 'EIA Archives';
+var BACKUPS_TO_KEEP = 12;
+var WEEKLY_BACKUP_HANDLER = 'weeklyBackup';
+var GRADE_LABELS = { 'ungraded': 'Ungraded', 'pre-delivering': 'Pre-Delivering', 'delivering': 'Delivering',
+  'sustaining': 'Sustaining', 'excelling': 'Excelling' };
+var MAX_CELL_TEXT = 49000; // a cell holds 50,000 characters
+
+/**
+ * The visitor's access at `school`, read fresh, which must make them an
+ * admin (an active Users row with Admin = TRUE).
+ */
+function requireAdmin_(school) {
+  var full = getCurrentUserAccess();
+  var access = accessAtSchool_(full, school);
+  if (!full.admin) throw new Error('Only an Excellence in Action admin can do this.');
+  access.admin = true;
+  return access;
+}
+
+/**
+ * Stops visitors calling an editor/trigger-only function from the page
+ * (every function without a trailing _ can be called with
+ * google.script.run). The editor and triggers run as the owner.
+ */
+function requireOwnerContext_() {
+  var active = activeEmail_();
+  var owner = String(Session.getEffectiveUser().getEmail() || '').toLowerCase();
+  if (active && owner && active !== owner) throw new Error('This can only be run from the Apps Script editor.');
+}
+
+/** A folder in the owner's Drive: the one in Script Property `propKey`, or `name` in My Drive (created if needed). */
+function ownerFolder_(propKey, name) {
+  var id = prop_(propKey);
+  if (id) {
+    try {
+      var existing = DriveApp.getFolderById(parseDriveId_(id) || id);
+      if (!existing.isTrashed()) return existing;
+    } catch (e) {
+      console.warn(propKey + ' folder can’t be opened (' + e.message + '); using "' + name + '" in My Drive.');
+    }
+  }
+  var folder = null;
+  var it = DriveApp.getRootFolder().getFoldersByName(name);
+  while (!folder && it.hasNext()) {
+    var f = it.next();
+    if (!f.isTrashed()) folder = f;
+  }
+  folder = folder || DriveApp.createFolder(name);
+  PropertiesService.getScriptProperties().setProperty(propKey, folder.getId());
+  return folder;
+}
+
+function stamp_(format) {
+  return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), format);
+}
+
+/**
+ * Copies the data and Users spreadsheets into the backup folder.
+ * `reason` ends each copy's name, e.g. "weekly". Returns
+ *   { folderUrl, files: [{ name, url }] }
+ */
+function makeBackup_(reason) {
+  var folder = ownerFolder_('BACKUP_FOLDER_ID', BACKUP_FOLDER_NAME);
+  var when = stamp_('yyyy-MM-dd HH:mm');
+  var files = [['DATA_SHEET_ID', 'Data'], ['USERS_SHEET_ID', 'Users']].map(function (p) {
+    var copy = DriveApp.getFileById(requireProp_(p[0]))
+      .makeCopy('EIA backup – ' + when + ' – ' + p[1] + ' (' + reason + ')', folder);
+    return { name: copy.getName(), url: copy.getUrl() };
+  });
+  return { folderUrl: folder.getUrl(), files: files };
+}
+
+/** Bins all but the newest BACKUPS_TO_KEEP weekly copies of each spreadsheet. Returns how many were binned. */
+function pruneWeeklyBackups_() {
+  var folder = ownerFolder_('BACKUP_FOLDER_ID', BACKUP_FOLDER_NAME);
+  var binned = 0;
+  ['Data', 'Users'].forEach(function (kind) {
+    var ending = ' – ' + kind + ' (weekly)';
+    var files = [];
+    var it = folder.getFiles();
+    while (it.hasNext()) {
+      var f = it.next();
+      var name = f.getName();
+      if (name.indexOf('EIA backup – ') === 0 && name.slice(-ending.length) === ending) files.push(f);
+    }
+    files.sort(function (a, b) { return b.getDateCreated().getTime() - a.getDateCreated().getTime(); });
+    files.slice(BACKUPS_TO_KEEP).forEach(function (f) { f.setTrashed(true); binned++; });
+  });
+  return binned;
+}
+
+/** Run by the weekly trigger (see setUpWeeklyBackup()). */
+function weeklyBackup() {
+  requireOwnerContext_();
+  var backup = makeBackup_('weekly');
+  var binned = pruneWeeklyBackups_();
+  Logger.log('Backed up to ' + backup.folderUrl + (binned ? '; binned ' + binned + ' older weekly copies' : ''));
+}
+
+/**
+ * Run once from the editor: schedules weeklyBackup() for early Sunday
+ * morning (the project's time zone), replacing any earlier schedule, and
+ * makes the first backup now.
+ */
+function setUpWeeklyBackup() {
+  requireOwnerContext_();
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === WEEKLY_BACKUP_HANDLER) ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger(WEEKLY_BACKUP_HANDLER).timeBased().onWeekDay(ScriptApp.WeekDay.SUNDAY).atHour(2).create();
+  weeklyBackup();
+  Logger.log('Weekly backup scheduled for Sundays around 2am (' + Session.getScriptTimeZone() + '), keeping the last ' +
+    BACKUPS_TO_KEEP + ' weekly copies.');
+}
+
+/** "Back up now" in an admin's account menu. Returns makeBackup_()'s result. */
+function backUpNow(school) {
+  var access = requireAdmin_(school);
+  return makeBackup_('Back up now by ' + (access.name || access.email));
+}
+
+/** The page's list of Themes, cleaned up: [{ id, element, title }] in wheel order. */
+function cleanCatalog_(catalog) {
+  if (!Array.isArray(catalog)) return [];
+  function text(v, max) { return String(v === undefined || v === null ? '' : v).replace(/\s+/g, ' ').trim().slice(0, max); }
+  return catalog.slice(0, 500).map(function (c) {
+    c = c || {};
+    return { id: text(c.id, 80), element: text(c.element, 200), title: text(c.title, 300) };
+  }).filter(function (c) { return c.id; });
+}
+
+function gradeLabel_(key) {
+  return GRADE_LABELS[key] || (key ? String(key) : 'Ungraded');
+}
+
+/** `value` as safe cell text (never a formula), cut to fit a cell. */
+function cellText_(value) {
+  var s = value === null || value === undefined ? '' : String(value);
+  if (s.length > MAX_CELL_TEXT) s = s.slice(0, MAX_CELL_TEXT) + '…';
+  return asText_(s);
+}
+
+/** Writes `rows` (first row = headers) to `sheet`, bold and frozen header. */
+function writeArchiveTab_(sheet, rows, wrapCols) {
+  if (!rows.length) return;
+  var width = rows[0].length;
+  rows = rows.map(function (r) { while (r.length < width) r.push(''); return r.slice(0, width); });
+  sheet.getRange(1, 1, rows.length, width).setValues(rows);
+  sheet.getRange(1, 1, 1, width).setFontWeight('bold');
+  sheet.setFrozenRows(1);
+  (wrapCols || []).forEach(function (c) {
+    sheet.setColumnWidth(c, 360);
+    sheet.getRange(1, c, rows.length, 1).setWrap(true);
+  });
+  sheet.getRange(1, 1, rows.length, width).setVerticalAlignment('top');
+}
+
+/**
+ * Creates "<School> – EIA archive – <date>" in the archives folder with
+ * the school's current work. `catalog` names the Themes; `extra` is
+ * { reason, checkpointLabel, backupFolderUrl }. Returns { name, url }.
+ */
+function createSchoolArchive_(access, catalog, extra) {
+  var schoolName = access.schoolName;
+  var state = readSchoolRow_(schoolName, false);
+  var ratings = state.ratings || {};
+  var byId = {};
+  catalog.forEach(function (c) { byId[c.id] = c; });
+  var themes = catalog.slice();
+  Object.keys(ratings).forEach(function (id) {
+    if (!byId[id]) { byId[id] = { id: id, element: '', title: id + ' (no longer in the app)' }; themes.push(byId[id]); }
+  });
+  var order = {};
+  themes.forEach(function (t, i) { order[t.id] = i; });
+
+  var name = schoolName + ' – EIA archive – ' + stamp_('yyyy-MM-dd');
+  var ss = SpreadsheetApp.create(name);
+  var file = DriveApp.getFileById(ss.getId());
+  file.moveTo(ownerFolder_('ARCHIVES_FOLDER_ID', ARCHIVES_FOLDER_NAME));
+
+  // About
+  var about = ss.getSheets()[0].setName('About');
+  writeArchiveTab_(about, [
+    ['Excellence in Action archive', ''],
+    ['School', cellText_(schoolName)],
+    ['Archived', stamp_('d MMMM yyyy, h:mm a')],
+    ['Archived by', cellText_((access.name ? access.name + ' ' : '') + '<' + access.email + '>')],
+    ['Why', cellText_(extra.reason || '')],
+    ['Bring it back', cellText_(extra.checkpointLabel
+      ? 'In the app, open History and restore to the checkpoint “' + extra.checkpointLabel + '”. That brings back the ratings, evidence and files.'
+      : '')],
+    ['Full backup', cellText_(extra.backupFolderUrl || '')],
+    ['Evidence files', 'Moved to the school’s evidence folder → ARCHIVE (names start “ARCHIVED – ”). The links below still open them.']
+  ], [2]);
+
+  // Ratings: every Theme, in wheel order.
+  var maxCriteria = 0;
+  Object.keys(ratings).forEach(function (id) { maxCriteria = Math.max(maxCriteria, (ratings[id].rubric || []).length); });
+  var ratingRows = [['Element', 'Theme', 'Grade', 'School priority'].concat(
+    Array.apply(null, Array(maxCriteria)).map(function (_, i) { return 'Criterion ' + (i + 1); }))];
+  themes.forEach(function (t) {
+    var r = ratings[t.id] || {};
+    ratingRows.push([cellText_(t.element), cellText_(t.title), gradeLabel_(r.grade), r.priority === true ? 'Yes' : '']
+      .concat((r.rubric || []).map(function (sel) { return sel ? gradeLabel_(sel) : ''; })));
+  });
+  writeArchiveTab_(ss.insertSheet('Ratings'), ratingRows);
+
+  // Evidence
+  var evidence = readSchoolEvidenceRows_(schoolName).map(function (e) {
+    var v = e.values;
+    return { themeId: String(v[EVIDENCE_COL.ThemeId - 1]), number: parseInt(v[EVIDENCE_COL.EntryNumber - 1], 10) || 0, v: v, files: e.attachments };
+  }).sort(function (a, b) {
+    var oa = a.themeId in order ? order[a.themeId] : 1e6, ob = b.themeId in order ? order[b.themeId] : 1e6;
+    return oa - ob || a.number - b.number;
+  });
+  var evidenceRows = [['Element', 'Theme', 'No.', 'Title', 'Type', 'Date', 'Details', 'Files', 'File links', 'Added by', 'Added', 'Last updated']];
+  evidence.forEach(function (e) {
+    var t = byId[e.themeId] || { element: '', title: e.themeId };
+    var v = e.v;
+    evidenceRows.push([cellText_(t.element), cellText_(t.title), e.number,
+      cellText_(v[EVIDENCE_COL.Title - 1] || ('Evidence ' + e.number)), cellText_(v[EVIDENCE_COL.Type - 1]),
+      cellText_(v[EVIDENCE_COL.Date - 1]), cellText_(v[EVIDENCE_COL.Text - 1]),
+      cellText_(e.files.map(function (f) { return f.name; }).join('\n')),
+      cellText_(e.files.map(function (f) { return f.url || ''; }).join('\n')),
+      cellText_(v[EVIDENCE_COL.CreatedBy - 1]), cellText_(v[EVIDENCE_COL.CreatedAt - 1]), cellText_(v[EVIDENCE_COL.UpdatedAt - 1])]);
+  });
+  if (evidenceRows.length === 1) evidenceRows.push(['No evidence had been added.']);
+  writeArchiveTab_(ss.insertSheet('Evidence'), evidenceRows, [7]);
+
+  // History (the list the History panel shows, newest first)
+  var historyRows = [['When', 'What', 'Who', 'Summary']];
+  var hs = ensureSheet_(TABS.HISTORY, HISTORY_HEADERS);
+  var last = hs.getLastRow();
+  if (last >= 2) {
+    var main = hs.getRange(2, 1, last - 1, HISTORY_COL.ChangeCount).getValues();
+    var summaries = hs.getRange(2, HISTORY_COL.Summary, last - 1, 1).getValues();
+    var list = [];
+    main.forEach(function (v, i) {
+      if (String(v[HISTORY_COL.SchoolName - 1]) !== schoolName) return;
+      var summary = {};
+      try { summary = JSON.parse(summaries[i][0] || '{}') || {}; } catch (err) { summary = {}; }
+      var kind = String(v[HISTORY_COL.Kind - 1]);
+      var label = String(v[HISTORY_COL.Label - 1] || '');
+      var what = kind === 'checkpoint' ? 'Checkpoint: ' + label : kind === 'auto' ? 'Changes' : (label || kind);
+      var parts = [];
+      if (summary.ratings) parts.push('ratings changed in ' + summary.ratings + ' theme' + (summary.ratings === 1 ? '' : 's'));
+      if (summary.priorities) parts.push(summary.priorities + ' priorit' + (summary.priorities === 1 ? 'y' : 'ies') + ' changed');
+      if (summary.added) parts.push(summary.added + ' evidence added');
+      if (summary.edited) parts.push(summary.edited + ' evidence edited');
+      if (summary.deleted) parts.push(summary.deleted + ' evidence deleted');
+      var at = toMillis_(v[HISTORY_COL.UpdatedAt - 1]) || toMillis_(v[HISTORY_COL.StartedAt - 1]);
+      list.push({ at: at, row: [at ? new Date(at) : '', cellText_(what),
+        cellText_(v[HISTORY_COL.ActorName - 1] || v[HISTORY_COL.Actor - 1] || ''), cellText_(parts.join(' · '))] });
+    });
+    list.sort(function (a, b) { return b.at - a.at; }).forEach(function (h) { historyRows.push(h.row); });
+  }
+  writeArchiveTab_(ss.insertSheet('History'), historyRows, [4]);
+  SpreadsheetApp.flush();
+  return { name: name, url: ss.getUrl() };
+}
+
+/** True when the school has evidence, or a grade, criterion or priority set (read only). */
+function schoolHasWork_(state, schoolName) {
+  if (readSchoolEvidenceRows_(schoolName).length) return true;
+  var ratings = state.ratings || {};
+  return Object.keys(ratings).some(function (id) {
+    var r = ratings[id] || {};
+    return (r.grade && r.grade !== 'ungraded') || r.priority === true || (r.rubric || []).some(Boolean);
+  });
+}
+
+/**
+ * Admins only: clears `school`'s ratings, priorities and evidence (see the
+ * section comment). `confirmName` must be the school's name, as typed by
+ * the admin; `catalog` is the page's [{ id, element, title }] for the
+ * archive. Returns
+ *   { ok: true, nothingToClear }
+ *   { ok: true, stateVersion, checkpointLabel, archive: { name, url }, backupFolderUrl,
+ *     cleared: { evidence, themes }, missingFiles }
+ *   { ok: false, stale: true }   the page is older than the school's last restore
+ */
+function startSchoolFresh(confirmName, catalog, stateVersion, school) {
+  var access = requireAdmin_(school);
+  function norm(v) { return String(v || '').replace(/\s+/g, ' ').trim().toLowerCase(); }
+  if (norm(confirmName) !== norm(access.schoolName)) {
+    throw new Error('Type the school’s name exactly as shown (' + access.schoolName + ') to confirm.');
+  }
+  catalog = cleanCatalog_(catalog);
+  var empty = { ratings: {}, evidence: [] };
+
+  var preview = readSchoolRow_(access.schoolName, false);
+  if (isStaleSave_(preview, stateVersion)) return { ok: false, stale: true };
+  if (!schoolHasWork_(preview, access.schoolName)) return { ok: true, nothingToClear: true };
+
+  // 1. Safety copies first. If either fails, nothing is cleared.
+  var label = 'Before fresh start – ' + stamp_('d MMM yyyy');
+  var backup, archive;
+  try {
+    backup = makeBackup_('before fresh start: ' + access.schoolName);
+  } catch (e) {
+    throw new Error('Couldn’t make the backup, so nothing was cleared. ' + (e.message || e));
+  }
+  try {
+    archive = createSchoolArchive_(access, catalog, {
+      reason: 'Fresh start: the school’s ratings, priorities and evidence were cleared for a new review.',
+      checkpointLabel: label, backupFolderUrl: backup.folderUrl });
+  } catch (e) {
+    throw new Error('Couldn’t create the archive spreadsheet, so nothing was cleared. ' + (e.message || e));
+  }
+
+  // 2. Checkpoint, then clear, without anyone saving in between.
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var state = readSchoolRow_(access.schoolName, true);
+    if (isStaleSave_(state, stateVersion)) return { ok: false, stale: true };
+    var plan = planRestoreToSnapshot_(access, state, empty, null);
+    if (!plan.changes.length && !plan.toRemove.length) return { ok: true, nothingToClear: true };
+    var historySheet = ensureSheet_(TABS.HISTORY, HISTORY_HEADERS);
+    appendHistoryRow_(historySheet, access, state, 'checkpoint', label, [], 0,
+      { ratings: state.ratings, evidence: currentEvidenceVersionIds_(access.schoolName) });
+    var themesCleared = {};
+    plan.changes.forEach(function (c) { if (c.theme && c.t !== 'evidence-delete') themesCleared[c.theme] = true; });
+    var result = applyRestorePlan_(access, state, plan, 'Cleared for a fresh start',
+      { t: 'fresh-start', checkpointLabel: label });
+    result.checkpointLabel = label;
+    result.archive = archive;
+    result.backupFolderUrl = backup.folderUrl;
+    result.cleared = { evidence: plan.toRemove.length, themes: Object.keys(themesCleared).length };
+    return result;
   } finally {
     lock.releaseLock();
   }
@@ -2551,6 +2939,24 @@ function checkSetup() {
       log(false, 'HTML file ' + f[0] + ' is missing: ' + e.message);
     }
   });
+  try {
+    var scheduled = ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === WEEKLY_BACKUP_HANDLER; });
+    log(scheduled, scheduled ? 'Weekly backup is scheduled' : 'Weekly backup isn’t scheduled: run setUpWeeklyBackup once');
+  } catch (e) {
+    log(false, 'Weekly backup check: ' + e.message);
+  }
+  try {
+    // Google Sheets allows 10 million cells per spreadsheet.
+    var dataSs = SpreadsheetApp.openById(requireProp_('DATA_SHEET_ID'));
+    var cells = 0;
+    var sizes = dataSs.getSheets().map(function (sh) {
+      cells += sh.getMaxRows() * sh.getMaxColumns();
+      return sh.getName() + ' ' + Math.max(0, sh.getLastRow() - 1) + ' rows';
+    });
+    log(cells < 8000000, 'Data spreadsheet: ' + sizes.join(', ') + ' (' + Math.round(cells / 100000) / 10 + 'M of 10M cells)');
+  } catch (e) {
+    log(false, 'Data spreadsheet size: ' + e.message);
+  }
   if (prop_('WEB_APP_URL')) logDriveRedirectUri();
   Logger.log(ok ? 'All checks passed.' : 'Some checks need fixing (see FIX lines above).');
 }

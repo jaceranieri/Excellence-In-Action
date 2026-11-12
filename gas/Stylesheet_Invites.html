@@ -1,11 +1,13 @@
 <style>
 /*!
- * Account menu (from the banner's avatar) and the Share access panel
- * (GAS build only). The panel reuses the History panel's card, buttons
+ * Account menu (from the banner's avatar), the Share access panel and the
+ * Admin tools panel (GAS build only). The panel reuses the History panel's card, buttons
  * and inputs (.history-* in Stylesheet_History.html); the avatar button
  * itself is styled in Stylesheet_AppBanner.html. Logic is in
- * Script_Invites.html; invites are kept on the Users spreadsheet's
- * Invites tab (Code.gs's "Principal invites").
+ * Script_Invites.html and Script_Admin.html; invites are kept on the Users
+ * spreadsheet's Invites tab (Code.gs's "Principal invites"), and backups
+ * and fresh starts are in Code.gs's "Admin: backups, school archives and
+ * fresh starts".
  */
 
 /* Account menu ---------------------------------------------------------------*/
@@ -296,5 +298,117 @@
 .invites-item-actions .history-link-btn:disabled {
   opacity: 0.5;
   cursor: default;
+}
+.account-menu-item-icon.is-admin {
+  background: #24CDD6;
+}
+
+/* Admin tools panel ------------------------------------------------------------*/
+
+.admin-body {
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+}
+
+.admin-section {
+  padding: 4px 0 20px;
+}
+
+.admin-section + .admin-section {
+  padding-top: 18px;
+  border-top: 1px solid #eef0f5;
+}
+
+.admin-heading {
+  margin: 0 0 6px;
+  font-size: 15px;
+  font-weight: 800;
+  color: #000000;
+}
+
+.admin-section.is-danger .admin-heading {
+  color: #b23a3a;
+}
+
+.admin-subheading {
+  margin: 12px 0 4px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: #6a6d7a;
+}
+
+.admin-text {
+  margin: 0 0 12px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #2a2c38;
+}
+
+.admin-list {
+  margin: 0 0 4px;
+  padding-left: 20px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #2a2c38;
+}
+
+.admin-list + .admin-text {
+  margin-top: 12px;
+}
+
+.admin-form {
+  margin-top: 4px;
+}
+
+.admin-form .history-checkpoint-label strong {
+  color: #000000;
+}
+
+.admin-fresh-btn {
+  margin-top: 6px;
+  min-height: 44px;
+  font-size: 14px;
+}
+
+.admin-result {
+  margin: 12px 0 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #2a2c38;
+}
+
+.admin-result.is-done {
+  margin-top: 0;
+  padding: 10px 12px;
+  border: 2px solid #000000;
+  border-radius: 10px;
+  background: #e7f9ee;
+  font-weight: 700;
+  color: #000000;
+}
+
+.admin-links {
+  list-style: none;
+  margin: 12px 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.admin-links li:empty {
+  display: none;
+}
+
+.admin-link {
+  font-size: 13px;
+  font-weight: 700;
+  color: #17458f;
+}
+
+.admin-link:hover,
+.admin-link:focus-visible {
+  text-decoration: underline;
 }
 </style>

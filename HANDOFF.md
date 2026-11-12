@@ -6,9 +6,72 @@ git log (`git log --oneline`) for the full blow-by-blow, since almost
 every commit message documents a real bug that was found and fixed, not
 just a style tweak.
 
+## Admin tools: backups, archives and fresh starts (v1.5.0, 12 Nov 2026), not yet confirmed live
+
+For admins (a Users row with `Admin` ticked), the avatar menu has **Admin
+tools**, a side panel (`Script_Admin.html`, styles in
+`Stylesheet_Invites.html`; server in `Code.gs`'s "Admin: backups, school
+archives and fresh starts"):
+
+- **Back up now:** copies the data and Users spreadsheets into a private
+  **EIA Backups** folder in the script owner's My Drive (`backUpNow()`).
+- **Weekly backup:** a time-driven trigger runs `weeklyBackup()` early on
+  Sunday mornings (project time zone) and keeps the newest **12** weekly
+  copies of each spreadsheet (older ones go to the owner's Drive bin).
+  Backups made by "Back up now" or before a fresh start are never removed
+  automatically. Set it up by running `setUpWeeklyBackup()` once.
+  `weeklyBackup()` and `setUpWeeklyBackup()` refuse to run from the page
+  (`requireOwnerContext_()`), since any public function can be called with
+  `google.script.run`.
+- **Start fresh:** clears the open school's grades, criteria, priorities
+  and evidence so it can begin a new review. The admin types the school's
+  name to confirm. `startSchoolFresh()`:
+  1. makes a backup, then an archive spreadsheet
+     `<School> – EIA archive – <date>` (tabs About, Ratings, Evidence,
+     History) in a private **EIA Archives** folder. Theme and Element
+     names come from the page (`themeCatalog()`), since the server doesn't
+     have them. If either step fails, nothing is cleared;
+  2. under the script lock, saves a **"Before fresh start – <date>"**
+     checkpoint, then restores the school to an empty snapshot with the
+     same code as a normal restore (`planRestoreToSnapshot_()`,
+     `applyRestorePlan_()`): evidence files move to the school folder's
+     ARCHIVE, evidence rows go, ratings become `{}`, `RestoreCount` goes up
+     (so open pages reload), and History gets a `restore` entry
+     **"Cleared for a fresh start"** whose first change is
+     `{ t: 'fresh-start', checkpointLabel }`.
+  - Nothing is deleted from History or EvidenceVersions, so **restoring to
+    the checkpoint undoes it**, files included.
+  - Invites, Users rows and other settings are untouched.
+  - A school with nothing to clear is left alone (no backup or archive).
+- **Folders:** found by name in the owner's My Drive and remembered in
+  the Script Properties `BACKUP_FOLDER_ID` / `ARCHIVES_FOLDER_ID`. Set
+  either to another folder's ID (e.g. on a shared drive) to use it
+  instead. Archives and backups are private to the owner; share any by
+  hand if needed.
+- **`checkSetup`** now also reports whether the weekly backup is
+  scheduled, and the data spreadsheet's size per tab (Google Sheets'
+  limit is 10 million cells per spreadsheet).
+- **Archiving old rows** out of the live tabs isn't built: each request
+  only reads narrow columns, so size shouldn't matter for years. Moving
+  rows out would stop schools restoring to points before the move.
+
+**To deploy v1.5.0** (on top of v1.4.0):
+1. Apps Script editor: create a new HTML file named exactly
+   `Script_Admin` and paste in `gas/Script_Admin.html`.
+2. Replace `Code.gs`, `Index.html`, `Script_App.html`,
+   `Script_History.html`, `Script_Invites.html`, `Script_Messages.html`,
+   `Script_Report.html` and `Stylesheet_Invites.html`.
+3. Run **`setUpWeeklyBackup`** once and click Allow (it needs a new
+   permission to manage triggers). It schedules the weekly backup and
+   makes the first one, creating the EIA Backups folder.
+4. Deploy → Manage deployments → Edit → New version (the Deploy step is
+   what puts the change live; the test URL only runs the editor's code).
+5. Tick `Admin` on your own Users row if it isn't already.
+
 ## Principal invites — Share access (12 Nov 2026; ships in v1.4.0 with Export), not yet confirmed live
 
-**Deploying v1.4.0 (Export report + Share access together).** The two
+**Deploying v1.4.0 (Export report + Share access together).** If you're
+deploying from scratch, do this, then the v1.5.0 steps above. The two
 features were built on separate branches and merged here. If neither is
 live yet, do this once instead of the two features' separate steps:
 1. Users sheet: type `Principal` in G1 and tick it for each principal's row.
@@ -259,7 +322,7 @@ live:**
 - **Theme modal backdrop:** the page behind is blurred (6px), not
   darkened.
 - **Version number** in the container's bottom-right corner, from
-  `APP_VERSION` in `Code.gs` (currently 1.4.0). Bump it with each
+  `APP_VERSION` in `Code.gs` (currently 1.5.0). Bump it with each
   release, and the static copy in `example.html`.
 - **Team messages** from the Users spreadsheet's new **Messages** tab:
   - The newest active message shows in a box at the top of the main
@@ -1267,7 +1330,7 @@ and does not include the icons.
 
 | File | What it is |
 |---|---|
-| `gas/Code.gs` | All server code:<br>• `doGet()`, which also handles the Drive OAuth redirect<br>• Users/Schools lookup and `requireActiveUser_()`<br>• principal invites (`inviteToSchool()`, Invites tab)<br>• Ratings and evidence persistence<br>• evidence-folder copy/archive (`copyPickedFiles_()`, `archiveEvidenceFiles_()`)<br>• visitor Drive auth (`getPickerAuth()`)<br>• editor utilities (`checkSetup()`, `resetLegacyDriveTokens()`, `logDriveRedirectUri()`) |
+| `gas/Code.gs` | All server code:<br>• `doGet()`, which also handles the Drive OAuth redirect<br>• Users/Schools lookup and `requireActiveUser_()`<br>• principal invites (`inviteToSchool()`, Invites tab)<br>• admin backups, archives and fresh starts (`startSchoolFresh()`, `weeklyBackup()`)<br>• Ratings and evidence persistence<br>• evidence-folder copy/archive (`copyPickedFiles_()`, `archiveEvidenceFiles_()`)<br>• visitor Drive auth (`getPickerAuth()`)<br>• editor utilities (`checkSetup()`, `resetLegacyDriveTokens()`, `logDriveRedirectUri()`) |
 | `gas/appsscript.json` | Manifest — `executeAs: USER_DEPLOYING`, `access: DOMAIN` |
 | `gas/Index.html` | Page shell: login gate markup, `#app-root`, `.stage-area`/`.main-layout`, all the page-level `<style>` |
 | `gas/Script_LoginGate.html` | 3-state login gate logic, `enterApp()` |
@@ -1275,7 +1338,8 @@ and does not include the icons.
 | `gas/Script_ExcellenceWheel.html` | Wheel component (mirrors `excellence-wheel.js`) |
 | `gas/Script_History.html` / `gas/Stylesheet_History.html` | School history panel, plus the shared side-panel layout (GAS only) |
 | `gas/Script_Messages.html` / `gas/Stylesheet_Messages.html` | Team message box, bell badge and Messages panel (GAS only) |
-| `gas/Script_Invites.html` / `gas/Stylesheet_Invites.html` | Avatar account menu and the principals' Share access panel (GAS only) |
+| `gas/Script_Invites.html` / `gas/Stylesheet_Invites.html` | Avatar account menu and the principals' Share access panel; the stylesheet also styles Admin tools (GAS only) |
+| `gas/Script_Admin.html` | Admin tools panel: Back up now, Start fresh (GAS only) |
 | `gas/Stylesheet_*.html` | Wrapped copies of the root `.css` files, plus `Stylesheet_LoginGate.html` (GAS-only) |
 | `EIA.json` | Source rubric data |
 | `import-eia.py` | One-time transform: `EIA.json` → `ELEMENT_THEMES` JS literal |

@@ -1,0 +1,307 @@
+<script>
+    // =======================================================================
+    // Admin tools panel (GAS build only)
+    // =======================================================================
+    // For admins (a Users row with Admin ticked), from the avatar's account
+    // menu → "Admin tools" (Script_Invites.html):
+    //   - Back up now: copies the data and Users spreadsheets into the
+    //     owner's "EIA Backups" Drive folder (Code.gs's backUpNow()). A
+    //     weekly copy is also made by a trigger (setUpWeeklyBackup()).
+    //   - Start fresh: clears the open school's ratings, priorities and
+    //     evidence after a backup, an archive spreadsheet and a checkpoint
+    //     (startSchoolFresh()). Typing the school's name confirms it.
+    //     Restoring to the checkpoint in History undoes it.
+    // The panel reuses the History panel's card, placement and behaviour
+    // (layoutSidePanel() and isSidePanelButton() in Script_History.html).
+    // Styles: Stylesheet_Invites.html.
+    //
+    // Uses Script_App.html's globals: SCHOOL_NAME, STATE_VERSION,
+    // ELEMENT_THEMES, escapeHtml, createToast, whenRatingsSaved,
+    // loadSchoolState, refreshOpenModal, reloadAfterRestore, savesInFlight,
+    // dirtyThemeIds and ratingsSaveTimer.
+
+    var adminOverlay = document.createElement('div');
+    adminOverlay.className = 'history-overlay admin-overlay';
+    adminOverlay.innerHTML =
+      '<div class="history-panel" role="dialog" aria-modal="false" aria-labelledby="admin-title">' +
+        '<div class="history-header">' +
+          '<div>' +
+            '<h2 class="history-title" id="admin-title">Admin tools</h2>' +
+            '<p class="history-subtitle"></p>' +
+          '</div>' +
+          '<button type="button" class="history-close" aria-label="Close">&times;</button>' +
+        '</div>' +
+        '<div class="history-body admin-body" aria-live="polite"></div>' +
+      '</div>';
+    document.body.appendChild(adminOverlay);
+
+    var adminPanelEl = adminOverlay.querySelector('.history-panel');
+    var adminSubtitleEl = adminOverlay.querySelector('.history-subtitle');
+    var adminCloseBtn = adminOverlay.querySelector('.history-close');
+    var adminBodyEl = adminOverlay.querySelector('.admin-body');
+    var adminLastFocus = null;
+
+    var adminUi = {
+      school: '',
+      backingUp: false,
+      backup: null,        // backUpNow() result: { folderUrl, files }
+      backupError: '',
+      confirmText: '',
+      clearing: false,
+      clearError: '',
+      done: null           // startSchoolFresh() result
+    };
+
+    function isAdminUser() {
+      return !!(window.__ACCESS__ && window.__ACCESS__.admin);
+    }
+
+    function adminLink(url, text) {
+      return /^https:\/\//.test(url || '')
+        ? '<a class="admin-link" href="' + escapeHtml(url) + '" target="_blank" rel="noopener">' + escapeHtml(text) + '</a>'
+        : '';
+    }
+
+    function confirmMatches() {
+      function norm(v) { return String(v || '').replace(/\s+/g, ' ').trim().toLowerCase(); }
+      return norm(adminUi.confirmText) === norm(adminUi.school);
+    }
+
+    function renderBackupSection() {
+      var result = '';
+      if (adminUi.backup) {
+        result = '<p class="admin-result">Backup saved. ' + adminLink(adminUi.backup.folderUrl, 'Open the EIA Backups folder') + '</p>';
+      } else if (adminUi.backupError) {
+        result = '<p class="history-message is-error">' + escapeHtml(adminUi.backupError) + '</p>';
+      }
+      return '<section class="admin-section">' +
+        '<h3 class="admin-heading">Back up</h3>' +
+        '<p class="admin-text">Copies the data and Users spreadsheets into “EIA Backups” in your Drive. ' +
+          'A copy is also made every week, and before every fresh start.</p>' +
+        '<button type="button" class="history-btn is-secondary" data-action="backup"' + (adminUi.backingUp || adminUi.clearing ? ' disabled' : '') + '>' +
+          (adminUi.backingUp ? 'Backing up…' : 'Back up now') + '</button>' +
+        result +
+      '</section>';
+    }
+
+    function renderFreshStartSection() {
+      var school = escapeHtml(adminUi.school);
+      if (adminUi.done) {
+        var d = adminUi.done;
+        if (d.nothingToClear) {
+          return '<section class="admin-section"><h3 class="admin-heading">Start fresh</h3>' +
+            '<p class="admin-result">' + school + ' has no ratings or evidence to clear, so nothing was changed.</p></section>';
+        }
+        var cleared = [];
+        if (d.cleared && d.cleared.themes) cleared.push(d.cleared.themes + ' Theme' + (d.cleared.themes === 1 ? '' : 's') + ' cleared');
+        if (d.cleared && d.cleared.evidence) cleared.push(d.cleared.evidence + ' evidence entr' + (d.cleared.evidence === 1 ? 'y' : 'ies') + ' archived');
+        return '<section class="admin-section">' +
+          '<h3 class="admin-heading">Start fresh</h3>' +
+          '<p class="admin-result is-done">' + school + ' has a fresh start.' + (cleared.length ? ' ' + escapeHtml(cleared.join(', ')) + '.' : '') + '</p>' +
+          '<ul class="admin-links">' +
+            '<li>' + adminLink(d.archive && d.archive.url, 'Open the archive spreadsheet') + '</li>' +
+            '<li>' + adminLink(d.backupFolderUrl, 'Open the EIA Backups folder') + '</li>' +
+          '</ul>' +
+          '<p class="admin-text">To undo it, open History and restore to “' + escapeHtml(d.checkpointLabel || 'Before fresh start') + '”.</p>' +
+          (d.missingFiles && d.missingFiles.length
+            ? '<p class="history-message is-error">' + d.missingFiles.length + ' file' + (d.missingFiles.length === 1 ? '' : 's') +
+              ' couldn’t be moved to ARCHIVE: ' + escapeHtml(d.missingFiles.join(', ')) + '</p>'
+            : '') +
+        '</section>';
+      }
+      var ready = confirmMatches() && !adminUi.clearing && !adminUi.backingUp;
+      return '<section class="admin-section is-danger">' +
+        '<h3 class="admin-heading">Start fresh</h3>' +
+        '<p class="admin-text">Clears ' + school + '’s wheel so the school can begin a new review.</p>' +
+        '<p class="admin-subheading">First, automatically</p>' +
+        '<ul class="admin-list">' +
+          '<li>A backup of all the spreadsheets (EIA Backups)</li>' +
+          '<li>An archive spreadsheet of this school’s ratings, evidence and history (EIA Archives)</li>' +
+          '<li>A “Before fresh start” checkpoint in History</li>' +
+        '</ul>' +
+        '<p class="admin-subheading">Then</p>' +
+        '<ul class="admin-list">' +
+          '<li>Grades, criteria and priorities are cleared</li>' +
+          '<li>Evidence is removed, and its files move to the school folder’s ARCHIVE</li>' +
+          '<li>Staff and invited people keep their access</li>' +
+        '</ul>' +
+        '<p class="admin-text">To undo it, restore to the checkpoint in History.</p>' +
+        '<form class="invites-form admin-form" novalidate>' +
+          '<label class="history-checkpoint-label" for="admin-confirm-input">Type <strong>' + school + '</strong> to confirm</label>' +
+          '<input id="admin-confirm-input" class="history-checkpoint-input" type="text" name="confirm" autocomplete="off" spellcheck="false"' +
+            ' value="' + escapeHtml(adminUi.confirmText) + '"' + (adminUi.clearing ? ' disabled' : '') + '>' +
+          (adminUi.clearError ? '<p class="history-message is-error invites-form-error">' + escapeHtml(adminUi.clearError) + '</p>' : '') +
+          '<button type="submit" class="history-btn is-warning admin-fresh-btn"' + (ready ? '' : ' disabled') + '>' +
+            (adminUi.clearing ? 'Backing up, archiving and clearing…' : 'Start ' + school + ' fresh') + '</button>' +
+        '</form>' +
+      '</section>';
+    }
+
+    function renderAdmin() {
+      adminSubtitleEl.textContent = adminUi.school;
+      var focusedConfirm = document.activeElement && document.activeElement.id === 'admin-confirm-input';
+      var caret = focusedConfirm ? document.activeElement.selectionStart : null;
+      adminBodyEl.innerHTML = renderBackupSection() + renderFreshStartSection();
+      if (focusedConfirm) {
+        var input = document.getElementById('admin-confirm-input');
+        if (input && !input.disabled) { input.focus(); input.setSelectionRange(caret, caret); }
+      }
+    }
+
+    function runBackup() {
+      if (adminUi.backingUp) return;
+      adminUi.backingUp = true;
+      adminUi.backupError = '';
+      adminUi.backup = null;
+      renderAdmin();
+      var school = adminUi.school;
+      google.script.run
+        .withSuccessHandler(function (result) {
+          adminUi.backingUp = false;
+          adminUi.backup = result;
+          renderAdmin();
+          createToast().update('success', 'Backup saved', 'In the EIA Backups folder in your Drive.', 5000);
+        })
+        .withFailureHandler(function (err) {
+          adminUi.backingUp = false;
+          adminUi.backupError = (err && err.message) || 'The backup didn’t work. Please try again.';
+          renderAdmin();
+        })
+        .backUpNow(school);
+    }
+
+    // [{ id, element, title }] in wheel order, so the archive can name Themes.
+    function themeCatalog() {
+      var order = ['leading', 'teaching', 'learning'];
+      var segs = (window.ExcellenceWheel && ExcellenceWheel.SEGMENTS) ? ExcellenceWheel.SEGMENTS.slice() : [];
+      segs.sort(function (a, b) { return order.indexOf(a.category) - order.indexOf(b.category); });
+      var ids = segs.length ? segs.map(function (s) { return s.id; }) : Object.keys(ELEMENT_THEMES);
+      var out = [];
+      ids.forEach(function (segId) {
+        var data = ELEMENT_THEMES[segId];
+        if (!data) return;
+        var seg = segs.filter(function (s) { return s.id === segId; })[0];
+        var element = data.title || (seg && seg.lines ? seg.lines.join(' ') : segId);
+        (data.themes || []).forEach(function (t) { out.push({ id: t.id, element: element, title: t.title }); });
+      });
+      return out;
+    }
+
+    function runFreshStart() {
+      if (adminUi.clearing || !confirmMatches()) return;
+      if (window.isPractice && window.isPractice()) {
+        adminUi.clearError = 'Finish the tour first.';
+        renderAdmin();
+        return;
+      }
+      if (savesInFlight > 0) {
+        adminUi.clearError = 'Evidence is still saving. Try again once it has finished.';
+        renderAdmin();
+        return;
+      }
+      var school = adminUi.school;
+      adminUi.clearing = true;
+      adminUi.clearError = '';
+      renderAdmin();
+      var toast = createToast();
+      toast.update('busy', 'Starting ' + school + ' fresh…', 'Backing up, archiving, then clearing. This can take a minute.');
+      whenRatingsSaved(function () {
+        google.script.run
+          .withSuccessHandler(function (result) {
+            if (result && result.stale) {
+              adminUi.clearing = false;
+              adminUi.clearError = 'The school’s work changed since this page loaded. It has been refreshed: check it, then try again.';
+              toast.dismiss();
+              renderAdmin();
+              reloadAfterRestore();
+              return;
+            }
+            // Anything typed just before is dropped: the school was cleared.
+            dirtyThemeIds = {};
+            clearTimeout(ratingsSaveTimer);
+            loadSchoolState(function () {
+              adminUi.clearing = false;
+              adminUi.done = result;
+              adminUi.confirmText = '';
+              renderAdmin();
+              refreshOpenModal();
+              if (result.nothingToClear) toast.update('info', 'Nothing to clear', school + ' had no ratings or evidence.', 6000);
+              else toast.update('success', school + ' has a fresh start', 'The archive and backup are linked in Admin tools.', 8000);
+            }, function () {
+              adminUi.clearing = false;
+              adminUi.done = result;
+              renderAdmin();
+              toast.update('error', school + ' was cleared, but the page couldn’t refresh', 'Reload the page to see it.');
+            });
+          })
+          .withFailureHandler(function (err) {
+            adminUi.clearing = false;
+            adminUi.clearError = (err && err.message) || 'Something went wrong. Nothing was cleared.';
+            toast.update('error', 'Fresh start didn’t run', adminUi.clearError, 10000);
+            renderAdmin();
+          })
+          .startSchoolFresh(adminUi.confirmText, themeCatalog(), STATE_VERSION, school);
+      });
+    }
+
+    // -- Open / close (same behaviour as the History panel) -----------------
+
+    function openAdmin() {
+      if (!SCHOOL_NAME || !isAdminUser()) return;
+      adminLastFocus = document.getElementById('account-menu-btn');
+      if (typeof closeHistory === 'function') closeHistory(true, true);
+      if (typeof closeMessages === 'function') closeMessages(true, true);
+      if (typeof closeInvites === 'function') closeInvites(true, true);
+      if (adminUi.school !== SCHOOL_NAME) {
+        adminUi.school = SCHOOL_NAME;
+        adminUi.backup = null;
+        adminUi.backupError = '';
+        adminUi.done = null;
+        adminUi.confirmText = '';
+      }
+      adminUi.clearError = '';
+      layoutSidePanel(adminPanelEl);
+      renderAdmin();
+      adminOverlay.classList.add('is-open');
+      adminCloseBtn.focus();
+    }
+
+    // Same arguments as closeHistory().
+    function closeAdmin(keepFocus, keepLayout) {
+      if (!adminOverlay.classList.contains('is-open')) return;
+      adminOverlay.classList.remove('is-open');
+      if (!keepLayout) document.body.classList.remove('side-panel-alongside');
+      if (!keepFocus && adminLastFocus && typeof adminLastFocus.focus === 'function') adminLastFocus.focus();
+    }
+
+    window.openAdmin = openAdmin;
+
+    adminCloseBtn.addEventListener('click', function () { closeAdmin(); });
+    document.addEventListener('pointerdown', function (e) {
+      if (!adminOverlay.classList.contains('is-open')) return;
+      if (adminPanelEl.contains(e.target) || isSidePanelButton(e.target) ||
+          (e.target.closest && e.target.closest('.eia-toasts'))) return;
+      closeAdmin(true);
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && adminOverlay.classList.contains('is-open')) closeAdmin();
+    });
+    window.addEventListener('resize', function () {
+      if (adminOverlay.classList.contains('is-open')) layoutSidePanel(adminPanelEl);
+    });
+
+    adminBodyEl.addEventListener('input', function (e) {
+      if (e.target.name !== 'confirm') return;
+      adminUi.confirmText = e.target.value;
+      var btn = adminBodyEl.querySelector('.admin-fresh-btn');
+      if (btn) btn.disabled = !(confirmMatches() && !adminUi.clearing && !adminUi.backingUp);
+    });
+    adminBodyEl.addEventListener('submit', function (e) {
+      e.preventDefault();
+      runFreshStart();
+    });
+    adminBodyEl.addEventListener('click', function (e) {
+      var btn = e.target.closest('[data-action="backup"]');
+      if (btn && !btn.disabled) runBackup();
+    });
+</script>

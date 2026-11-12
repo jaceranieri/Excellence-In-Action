@@ -178,6 +178,11 @@
       var byTheme = {};
       var restoreLine = '';
       changes.forEach(function (c) {
+        if (c.t === 'fresh-start') {
+          restoreLine = '<p class="history-change-theme">Cleared the whole school for a fresh start. To undo it, restore to “' +
+            escapeHtml(c.checkpointLabel || 'Before fresh start') + '”.</p>';
+          return;
+        }
         if (c.t === 'restore') {
           restoreLine = '<p class="history-change-theme">Restored the whole school to ' +
             escapeHtml(historyTargetName({ kind: c.targetKind, label: c.targetLabel, updatedAt: c.targetTime,
@@ -192,7 +197,7 @@
         }
         byTheme[c.theme].push(text);
       });
-      var shown = changes.filter(function (c) { return c.t !== 'restore'; }).length;
+      var shown = changes.filter(function (c) { return c.t !== 'restore' && c.t !== 'fresh-start'; }).length;
       var html = restoreLine + groups.map(function (themeId) {
         return '<div class="history-change-group">' +
           '<p class="history-change-theme">' + escapeHtml(themeTitle(themeId)) + '</p>' +
@@ -461,6 +466,7 @@
       historyToolbarEl.removeAttribute('data-mode');
       if (typeof closeMessages === 'function') closeMessages(true, true);
       if (typeof closeInvites === 'function') closeInvites(true, true);
+      if (typeof closeAdmin === 'function') closeAdmin(true, true);
       layoutSidePanel(historyPanelEl);
       historyOverlay.classList.add('is-open');
       historyOpenBtn.setAttribute('aria-expanded', 'true');
